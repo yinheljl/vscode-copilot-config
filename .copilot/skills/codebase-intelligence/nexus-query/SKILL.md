@@ -43,6 +43,16 @@ python $SKILL_DIR/scripts/git_detective.py $repo_path --days 90 > $GIT_JSON
 ```
 
 > `$SKILL_DIR` 为本 Skill 的安装路径（`.agent/skills/nexus-query` 或独立 repo 路径）。
+>
+> ⚠️ **在 VS Code Copilot 环境下，需手动将 `$SKILL_DIR` 替换为实际安装路径：**
+> ```powershell
+> # Windows PowerShell
+> $env:SKILL_DIR = "C:\Users\59977\.copilot\skills\codebase-intelligence\nexus-query"
+> ```
+> ```bash
+> # Git Bash / WSL / macOS / Linux
+> export SKILL_DIR="$HOME/.copilot/skills/codebase-intelligence/nexus-query"
+> ```
 
 **依赖安装（首次使用）**：
 ```bash

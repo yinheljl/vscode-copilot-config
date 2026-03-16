@@ -89,7 +89,10 @@ python scripts/code_quality_checker.py /path/to/code --json
 | Too many params | >5 |
 | Deep nesting | >4 levels |
 | High complexity | >10 branches |
-
+> **嵌入式 C / AUTOSAR 项目**：项目规范允许函数最大 75 行，添加 `--long-function-lines 75` 参数覆盖默认阈值，避免 51-75 行函数产生误报：
+> ```bash
+> python scripts/code_quality_checker.py /path/to/embedded-src --long-function-lines 75
+> ```
 ---
 
 ### Review Report Generator

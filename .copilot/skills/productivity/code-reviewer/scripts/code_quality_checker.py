@@ -527,11 +527,21 @@ def main():
         help="Output in JSON format"
     )
     parser.add_argument(
+        "--long-function-lines",
+        type=int,
+        default=THRESHOLDS["long_function_lines"],
+        metavar="N",
+        help=f"Max lines before a function is flagged as 'long' (default: {THRESHOLDS['long_function_lines']}). Use 75 for embedded C/AUTOSAR projects."
+    )
+    parser.add_argument(
         "--output", "-o",
         help="Write output to file"
     )
 
     args = parser.parse_args()
+
+    # Apply CLI threshold overrides
+    THRESHOLDS["long_function_lines"] = args.long_function_lines
 
     target = Path(args.path).resolve()
 

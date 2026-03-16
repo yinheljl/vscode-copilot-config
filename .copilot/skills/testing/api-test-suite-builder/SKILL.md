@@ -1,3 +1,8 @@
+---
+name: api-test-suite-builder
+description: Generates comprehensive API test suites for REST APIs. Use when creating test scaffolds for Next.js, Express, FastAPI, or Django REST routes with auth testing, input validation, error code matrices, pagination, file upload, and rate limiting coverage.
+---
+
 # API Test Suite Builder
 
 **Tier:** POWERFUL

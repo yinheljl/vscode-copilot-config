@@ -42,7 +42,7 @@ applyTo: "**/*.c,**/*.h,**/*.s,**/*.ld"
 ### BSW（基础软件层）
 - BSW 模块修改仅通过 Tresos/EB 配置工具生成，**不要手动编辑**生成代码
 - 生成代码目录（如 `output/generated/`）中的文件不应手动修改
-- BSW 模块 API 调用遵循 AUTOSAR 标准接口（如 `Can_Write()`, `Com_SendSignal()`）
+- BSW 模块 API 调用遵循 AUTOSAR 标准接口（如 `CanIf_Transmit()`, `Com_SendSignal()`）
 - 理解 BSW 模块依赖关系：`ComStack` → `PduR` → `CanIf` → `Can` (MCAL)
 
 ### SWC（软件组件层）
@@ -78,17 +78,6 @@ applyTo: "**/*.c,**/*.h,**/*.s,**/*.ld"
 
 ### 时钟与电源
 - 时钟树配置务必校验（HSE/PLL/分频器），修改前备份配置
-- 低功耗模式切换需按规定序列操作
-
-### Flash & 安全
-- Flash 操作期间禁止从同一 Flash Bank 执行代码
-- HSE 密钥管理遵循 NXP 安全编程指南
-- Bootloader 更新需验证签名/CRC
-
-### 外设驱动
-- MCAL 驱动配置通过 EB Tresos 生成，仅修改配置面板中的参数
-- ADC 采样需考虑采样时间与通道切换稳定时间
-- CAN FD 帧配置注意 BRS 和数据段波特率
 - 低功耗模式切换需按规定序列操作（STANDBY/RUN/VLPR）
 
 ### Flash & 安全

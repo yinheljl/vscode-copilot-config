@@ -49,7 +49,9 @@ def run_single_query(
     full assistant message, which only arrives after tool execution.
     """
     unique_id = uuid.uuid4().hex[:8]
-    clean_name = f"{skill_name}-skill-{unique_id}"
+    # Sanitize skill_name to prevent path traversal (strip dir separators and '..')
+    safe_skill_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in skill_name)
+    clean_name = f"{safe_skill_name}-skill-{unique_id}"
     project_commands_dir = Path(project_root) / ".claude" / "commands"
     command_file = project_commands_dir / f"{clean_name}.md"
 

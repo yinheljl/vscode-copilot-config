@@ -245,6 +245,9 @@ ls $repo_path/src/nexus/application/nonexist/  # [!ERROR] → 修正或删除此
 SKILL_DIR=".agent/skills/nexus-mapper"
 # 场景 B: 独立 repo（开发/调试时）
 SKILL_DIR="/path/to/nexus-mapper"
+# 场景 C: VS Code Copilot 全局安装（Windows）
+# PowerShell: $env:SKILL_DIR = "C:\Users\59977\.copilot\skills\codebase-intelligence\nexus-mapper"
+# Git Bash:   export SKILL_DIR="$HOME/.copilot/skills/codebase-intelligence/nexus-mapper"
 
 # PROFILE 阶段 — 基础用法
 python $SKILL_DIR/scripts/extract_ast.py <repo_path> [--max-nodes 500] \
