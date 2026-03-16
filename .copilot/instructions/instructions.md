@@ -28,7 +28,12 @@ applyTo: "**"
 
 ---
 
-- Always respond in 中文，Always fix code automatically. 任何时候执行python脚本都在虚拟环境下执行，如果执行pip命令安装依赖包，请使用国内源。
+## 基础行为规则（BASELINE — 始终生效）
+
+- **语言**：所有回复必须使用中文
+- **代码修复**：发现问题时直接修复代码，不只是描述问题
+- **Python 执行**：任何时候执行 Python 脚本都必须在虚拟环境（venv/conda）下运行
+- **pip 安装**：执行 `pip install` 时必须使用国内镜像源（如 `-i https://pypi.tuna.tsinghua.edu.cn/simple`）
 
 ## 防超时规则（Handling Long-Running Operations）
 
