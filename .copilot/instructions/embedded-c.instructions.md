@@ -1,5 +1,6 @@
 ---
-applyTo: "**/*.c,**/*.h,**/*.s,**/*.ld"
+description: "嵌入式 C / MCU / NXP S32K3xx 开发规范，涵盖内存安全、中断处理、编码风格。Use when writing embedded C code, MCU firmware, or working with NXP S32K platforms."
+applyTo: "**/*.{c,h,s,ld}"
 ---
 # 嵌入式 C / MCU / AUTOSAR 开发规范
 
@@ -37,40 +38,12 @@ applyTo: "**/*.c,**/*.h,**/*.s,**/*.ld"
 
 ---
 
-## AUTOSAR 开发规范
+## AUTOSAR 补充规范
 
-### BSW（基础软件层）
-- BSW 模块修改仅通过 Tresos/EB 配置工具生成，**不要手动编辑**生成代码
-- 生成代码目录（如 `output/generated/`）中的文件不应手动修改
-- BSW 模块 API 调用遵循 AUTOSAR 标准接口（如 `CanIf_Transmit()`, `Com_SendSignal()`）
-- 理解 BSW 模块依赖关系：`ComStack` → `PduR` → `CanIf` → `Can` (MCAL)
+> AUTOSAR 核心架构、SWC 开发、BSW 配置等详见 autosar.instructions.md，此处仅列出与嵌入式 C 编码直接相关的补充点。
 
-### SWC（软件组件层）
-- SWC 通过 RTE 接口与其他组件通信，不直接调用 BSW API
-- Runnable 函数命名遵循 `<SWC名>_<Runnable名>` 约定
-- Runnable 映射到 OS Task，注意执行周期和优先级配置
-- 使用 Rte_Read / Rte_Write / Rte_Call 访问端口，不直接访问全局变量
-
-### RTE 与端口
-- Sender-Receiver（S/R）端口用于数据交换
-- Client-Server（C/S）端口用于服务调用
-- 端口数据类型必须与 ARXML 定义一致
-- 访问 RTE 接口前检查返回值（`RTE_E_OK`）
-
-### NvM（非易失性内存）
-- NvM Block 的 RAM Mirror 和 ROM Default 必须正确配置
-- 使用 `NvM_ReadBlock` / `NvM_WriteBlock` 异步操作，通过回调或轮询确认完成
-- 启动时等待 NvM_ReadAll 完成后再访问 NvM 数据
-
-### 诊断（UDS/DTC）
-- DTC 状态管理通过 `Dem_SetEventStatus()` 报告
-- 诊断服务实现遵循 ISO 14229 (UDS) 规范
+### 诊断安全
 - 安全访问（0x27 服务）的算法不在源码中硬编码密钥
-
-### OS 与调度
-- Task 优先级分配遵循 Rate-Monotonic 原则（周期越短优先级越高）
-- 共享资源通过 AUTOSAR OS Resource 机制保护（`GetResource`/`ReleaseResource`）
-- Alarm/Schedule Table 配置需与 Runnable 周期一致
 
 ---
 

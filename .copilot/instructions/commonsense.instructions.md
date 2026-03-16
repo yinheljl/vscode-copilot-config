@@ -1,4 +1,5 @@
 ---
+description: "通用开发最佳实践：代码质量、命名规范、错误处理、安全基础。Use for general coding best practices, naming conventions, and code quality guidelines."
 applyTo: "**"
 ---
 # 通用开发最佳实践
@@ -26,8 +27,7 @@ applyTo: "**"
 
 ## 安全基础
 
-- 永不信任外部输入（CAN 报文、诊断请求、传感器数据）
-- 处理外部数据前验证范围和格式
+- 详细安全审查规则见 code-review.instructions.md
 - 密钥/密码/种子不硬编码在源文件中
 
 ## 代码整洁
@@ -38,7 +38,7 @@ applyTo: "**"
 
 ## 工具调用效率（AI 行为规范）
 
-> **例外**：`instructions.md` 中声明为强制的工具调用（`tool_search_tool_regex` 预加载 + `vscode_askQuestions` 结束确认）不受本节任何约束，必须无条件执行。
+> **例外**：主指令文件中声明的强制工具调用（`vscode_askQuestions` 结束确认等）不受本节约束。
 
 - 能从已有知识直接回答的，不调用工具搜索
 - 相互独立的工具调用必须并行发出，不串行等待

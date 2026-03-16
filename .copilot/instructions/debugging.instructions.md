@@ -1,5 +1,6 @@
 ---
-applyTo: "**/*.c,**/*.h,**/*.cpp,**/*.py"
+description: "嵌入式系统调试策略：MCU/AUTOSAR 常见 Bug 模式排查。Use when debugging embedded C code, investigating hardware faults, or troubleshooting CAN/AUTOSAR issues."
+applyTo: "**/*.{c,h,cpp,py}"
 ---
 # 系统化调试策略
 

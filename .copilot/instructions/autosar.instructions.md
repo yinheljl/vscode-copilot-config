@@ -1,5 +1,6 @@
 ---
-applyTo: "**/*.c,**/*.h,**/*.arxml,**/*.xdm"
+description: "AUTOSAR BSW/SWC/RTE 架构规范与开发指南。Use when writing AUTOSAR software components, configuring BSW modules, working with RTE interfaces, arxml, or xdm files."
+applyTo: "**/*.{c,h,arxml,xdm}"
 ---
 # AUTOSAR 架构与开发规范
 

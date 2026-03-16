@@ -1,5 +1,6 @@
 ---
-applyTo: "**/*.c,**/*.h"
+description: "MISRA C:2012 合规指南，嵌入式 C 代码静态分析规则参考。Use when writing or reviewing C code for safety-critical systems, MISRA compliance, or static analysis."
+applyTo: "**/*.{c,h}"
 ---
 # MISRA C:2012 合规指南
 
@@ -61,7 +62,7 @@ applyTo: "**/*.c,**/*.h"
 - **Rule 3.1** 注释中不应包含 `/*` 或 `//` 子序列（嵌套注释）
 - **Rule 8.7** 仅在一个翻译单元中引用的对象或函数应使用内部链接（`static`）
 - **Rule 8.9** 仅在一个函数中引用的对象应在块作用域中定义
-- **Rule 11.5** 不建议将 `void*` 转换为指向对象的指针类型（建议避免此类转换；若确实需要，应使用显式强转并添加 `DEVIATION` 注释）
+- **Rule 11.5** 不建议将 `void*` 转换为指向对象的指针类型（若不可避免，建议使用显式强转并添加注释说明原因）
 - **Rule 20.5** 不应使用 `#undef`（宏一旦定义应保持有效至翻译单元结束）
 
 ## 实践建议

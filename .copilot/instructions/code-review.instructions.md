@@ -1,5 +1,6 @@
 ---
-applyTo: "**"
+description: "代码审查清单与安全编码实践。Use when reviewing code, pull requests, or performing security audits on embedded/automotive software."
+applyTo: "**/*.{c,h,cpp,py}"
 ---
 # 代码审查与安全编码实践
 
