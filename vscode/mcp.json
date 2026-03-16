@@ -1,0 +1,34 @@
+{
+	"servers": {
+		"context7": {
+			"type": "stdio",
+			"command": "C:\\Program Files\\nodejs\\npx.cmd",
+			"args": [
+				"-y",
+				"@upstash/context7-mcp@latest"
+			]
+		},
+		"github": {
+			"type": "stdio",
+			"command": "C:\\Program Files\\nodejs\\npx.cmd",
+			"args": [
+				"-y",
+				"@modelcontextprotocol/server-github"
+			],
+			"env": {
+				"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_MCP_TOKEN}"
+			}
+		},
+		"microsoft/markitdown": {
+			"type": "stdio",
+			"command": "C:\\Users\\59977\\.local\\bin\\uvx.exe",
+			"args": [
+				"--with", "markitdown[pdf,docx,xlsx,pptx]",
+				"markitdown-mcp@0.0.1a4"
+			],
+			"gallery": "https://api.mcp.github.com",
+			"version": "1.0.0"
+		}
+	},
+	"inputs": []
+}
