@@ -2,7 +2,22 @@
 applyTo: "**"
 ---
 - Always respond in 中文，Always fix code automatically. 任何时候执行python脚本都在虚拟环境下执行，如果执行pip命令安装依赖包，请使用国内源。
-如果要求或指令不明确，在继续操作之前使用 vscode_askQuestions 工具向用户询问澄清问题，不要做出假设。必须通过 vscode_askQuestions 工具向用户提供预定义的选项，以促进快速决策。每当即将完成用户请求时，调用 vscode_askQuestions 工具在结束流程前请求用户反馈。如果反馈为空，则可以结束请求，并且不要循环调用该工具。	
+
+## 用户交互规则（MANDATORY）
+
+> ⚠️ `vscode_askQuestions` 是延迟加载工具，**每次使用前必须先调用 `tool_search_tool_regex` 搜索 `vscode_askQuestions` 将其加载**，否则调用会失败。即使上下文中已提到该工具，也不得省略 `tool_search_tool_regex` 这一步。
+
+**澄清规则**：如果要求或指令不明确，在继续操作之前必须先用 `tool_search_tool_regex` 加载 `vscode_askQuestions`，再调用该工具向用户询问澄清问题，不要做出假设。必须通过该工具向用户提供预定义的选项，以促进快速决策。
+
+**完成确认规则（强制执行，无例外）**：
+> 🚨 **这是最高优先级规则，覆盖所有其他"简短回复"指令。无论任务类型（代码、解释、对话、分析），每次回复的最后一步必须是调用 `vscode_askQuestions`。**
+
+每当即将输出最终回复前，必须按顺序执行：
+1. 调用 `tool_search_tool_regex`，pattern 为 `vscode_askQuestions`，加载该工具
+2. 调用 `vscode_askQuestions` 工具，询问用户：任务是否完成？是否还有其他需要处理的问题？
+3. 如果用户反馈为空或明确表示完成，则结束请求
+4. **禁止跳过此步骤**，即使任务看起来很简单或只是纯对话
+5. 不要循环调用该工具（每次回复只调用一次）
 
 ## 防超时规则（Handling Long-Running Operations）
 
