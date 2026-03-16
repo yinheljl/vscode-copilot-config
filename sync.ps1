@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     从当前机器同步最新的 Copilot 配置到本仓库并推送到 GitHub
 
@@ -32,7 +32,7 @@ foreach ($subdir in @("instructions", "skills")) {
     if (Test-Path $src) {
         if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
         Copy-Item $src $dst -Recurse -Force
-        Write-Host "  ✓ $subdir"
+        Write-Host "  √ $subdir"
     }
 }
 
@@ -40,7 +40,7 @@ foreach ($subdir in @("instructions", "skills")) {
 if (Test-Path $mcpSrc) {
     Write-Host "正在同步 mcp.json..." -ForegroundColor Green
     Copy-Item $mcpSrc $mcpDst -Force
-    Write-Host "  ✓ mcp.json"
+    Write-Host "  √ mcp.json"
 }
 
 # --- git commit & push ---
@@ -51,7 +51,7 @@ $status = git status --porcelain
 if ($status) {
     git commit -m $Message
     git push
-    Write-Host "  ✓ 已推送到 GitHub" -ForegroundColor Green
+    Write-Host "  √ 已推送到 GitHub" -ForegroundColor Green
 } else {
     Write-Host "  无变更，无需提交。" -ForegroundColor Yellow
 }
