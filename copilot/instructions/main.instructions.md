@@ -28,6 +28,15 @@ applyTo: "**"
 | 所有交互场景 | **interactive_feedback** | 始终优先使用 |
 | interactive_feedback 连续失败 3 次后 | **vscode_askQuestions** | 降级备选 |
 
+### 会话工具可见性
+
+**MCP 服务安装成功，不等于当前 Copilot 会话一定已经把 `interactive_feedback` 注册到可调用工具列表。** 如果当前会话里看不到该工具，或模型实际可调用的工具集中不存在该工具，应按“会话工具注册问题”处理，而不是误判为用户不需要交互或任务已经完成。
+
+1. **优先级规则只在工具可见时生效**：只有当当前会话中 `interactive_feedback` 实际可调用时，才强制优先使用它。
+2. **工具不可见时不得直接结束对话**：不能因为工具未注册就跳过交互或单方面结束任务。
+3. **工具不可见时直接降级**：若确认当前会话中没有 `interactive_feedback`，应直接使用 `vscode_askQuestions` 完成交互，并说明这是工具注册问题。
+4. **后续交互点允许恢复**：后续如果 `interactive_feedback` 重新出现在当前会话工具列表中，应恢复优先使用。
+
 ### 关键规则
 
 1. **所有交互（中间确认、方案选择、最终确认）都优先使用 `interactive_feedback`**

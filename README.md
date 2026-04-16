@@ -214,6 +214,10 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 如果重启后日志里没有直观看到 `Discovered 1 tools`，可以直接使用 Interactive-Feedback-MCP 虚拟环境里的 `fastmcp` 客户端执行 `list_tools`。只要 Cursor 和 VS Code 两端都能列出 `interactive_feedback`，就说明模板配置和服务启动都正常。
 
+### MCP 已安装但当前会话里没有 interactive_feedback 工具
+
+还原成功、`list_tools` 验证通过，只能说明 MCP 服务和模板配置正常；**不代表当前这一个 Copilot 会话已经把 `interactive_feedback` 注册进模型可调用工具列表**。如果当前会话工具列表里看不到该工具，应视为会话级工具注册问题，此时应降级使用 `vscode_askQuestions`，而不是把任务误判为可以直接结束。
+
 ## 同步更新
 
 修改了本地配置后，推送更新到本仓库：
