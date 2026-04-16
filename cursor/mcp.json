@@ -1,49 +1,10 @@
 {
   "mcpServers": {
-    "chrome-devtools": {
-      "command": "C:\\Program Files\\nodejs\\npx.cmd",
-      "args": [
-        "-y",
-        "chrome-devtools-mcp@latest"
-      ]
-    },
-    "context7": {
-      "command": "C:\\Program Files\\nodejs\\npx.cmd",
-      "args": [
-        "-y",
-        "@upstash/context7-mcp@latest"
-      ]
-    },
-    "github": {
-      "command": "C:\\Program Files\\nodejs\\npx.cmd",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-github"
-      ],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_MCP_TOKEN}"
-      }
-    },
-    "lark_mcp": {
-      "command": "C:\\Program Files\\nodejs\\npx.cmd",
-      "args": [
-        "-y",
-        "@larksuiteoapi/lark-mcp",
-        "mcp",
-        "-a",
-        "${LARK_APP_ID}",
-        "-s",
-        "${LARK_APP_SECRET}",
-        "--oauth",
-        "--token-mode",
-        "user_access_token"
-      ]
-    },
     "interactive-feedback": {
-      "command": "C:\\Users\\59977\\.local\\bin\\uv.exe",
+      "command": "__UV_PATH__",
       "args": [
         "--directory",
-        "C:\\Users\\59977\\.cursor\\Interactive-Feedback-MCP",
+        "__FEEDBACK_MCP_DIR__",
         "run",
         "server.py"
       ],

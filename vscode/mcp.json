@@ -1,68 +1,14 @@
 {
-	"servers": {
-		"context7": {
-			"type": "stdio",
-			"command": "C:\\Program Files\\nodejs\\npx.cmd",
-			"args": [
-				"-y",
-				"@upstash/context7-mcp@latest"
-			]
-		},
-		"github": {
-			"type": "stdio",
-			"command": "C:\\Program Files\\nodejs\\npx.cmd",
-			"args": [
-				"-y",
-				"@modelcontextprotocol/server-github"
-			],
-			"env": {
-				"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_MCP_TOKEN}"
-			}
-		},
-		"microsoft/markitdown": {
-			"type": "stdio",
-			"command": "C:\\Users\\59977\\.local\\bin\\uvx.exe",
-			"args": [
-				"--with", "markitdown[pdf,docx,xlsx,pptx]",
-				"markitdown-mcp@0.0.1a4"
-			],
-			"gallery": "https://api.mcp.github.com",
-			"version": "1.0.0"
-		},
-		"chrome-devtools": {
-			"type": "stdio",
-			"command": "C:\\Program Files\\nodejs\\npx.cmd",
-			"args": [
-				"-y",
-				"chrome-devtools-mcp@latest"
-			]
-		},
-		"lark_mcp": {
-			"type": "stdio",
-			"command": "C:\\Program Files\\nodejs\\npx.cmd",
-			"args": [
-				"-y",
-				"@larksuiteoapi/lark-mcp",
-				"mcp",
-				"-a",
-				"${LARK_APP_ID}",
-				"-s",
-				"${LARK_APP_SECRET}",
-				"--oauth",
-				"--token-mode",
-				"user_access_token"
-			]
-		},
-		"interactive-feedback": {
-			"type": "stdio",
-			"command": "C:\\Users\\59977\\.local\\bin\\uv.exe",
-			"args": [
-				"--directory",
-				"C:\\Users\\59977\\.cursor\\Interactive-Feedback-MCP",
-				"run",
-				"server.py"
-			]
-		}
-	},
-	"inputs": []
+  "servers": {
+    "interactive-feedback": {
+      "type": "stdio",
+      "command": "__UV_PATH__",
+      "args": [
+        "--directory",
+        "__FEEDBACK_MCP_DIR__",
+        "run",
+        "server.py"
+      ]
+    }
+  }
 }

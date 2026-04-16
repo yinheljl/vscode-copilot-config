@@ -4,13 +4,13 @@
 
 .DESCRIPTION
     将本仓库中的配置还原到当前用户的 Cursor 和 VS Code 配置目录：
-    - .copilot (instructions, skills) → ~/.copilot/
-    - cursor/mcp.json → ~/.cursor/mcp.json
+    - copilot (instructions, skills) → ~/.copilot/
+    - cursor/mcp.json → ~/.cursor/mcp.json（自动替换路径占位符）
     - cursor/rules/ → ~/.cursor/rules/
     - cursor/skills/ → ~/.cursor/skills/
     - cursor/skills-cursor/ → ~/.cursor/skills-cursor/
     - cursor/settings.json → 合并到 Cursor settings.json
-    - vscode/mcp.json → %APPDATA%/Code/User/mcp.json
+    - vscode/mcp.json → %APPDATA%/Code/User/mcp.json（自动替换路径占位符）
     - vscode/settings.json → 合并到 VS Code settings.json
     - 克隆 qt-interactive-feedback-mcp 并运行 uv sync
 
@@ -28,7 +28,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $scriptDir       = $PSScriptRoot
-$copilotSrc      = Join-Path $scriptDir ".copilot"
+$copilotSrc      = Join-Path $scriptDir "copilot"
 $copilotDst      = Join-Path $env:USERPROFILE ".copilot"
 $cursorSrc       = Join-Path $scriptDir "cursor"
 $cursorDst       = Join-Path $env:USERPROFILE ".cursor"
@@ -64,6 +64,35 @@ function Merge-JsonSettings($srcPath, $dstPath) {
     Write-Host "  + 合并设置到 $dstPath"
 }
 
+function Resolve-UvPath {
+    $candidates = @(
+        (Join-Path $env:USERPROFILE ".local\bin\uv.exe"),
+        (Join-Path $env:USERPROFILE ".cargo\bin\uv.exe")
+    )
+    foreach ($p in $candidates) {
+        if (Test-Path $p) { return $p }
+    }
+    $found = (Get-Command uv -ErrorAction SilentlyContinue).Source
+    if ($found) { return $found }
+    return $null
+}
+
+function Install-McpJson($srcPath, $dstPath, $uvPath, $mcpDir) {
+    if (-not (Test-Path $srcPath)) { return }
+    $content = Get-Content $srcPath -Raw
+    $escapedUv  = $uvPath.Replace('\', '\\')
+    $escapedDir = $mcpDir.Replace('\', '\\')
+    $content = $content.Replace('__UV_PATH__', $escapedUv)
+    $content = $content.Replace('__FEEDBACK_MCP_DIR__', $escapedDir)
+    $dstDir = Split-Path $dstPath -Parent
+    if (-not (Test-Path $dstDir)) {
+        New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
+    }
+    Backup-File $dstPath
+    $content | Set-Content $dstPath -Encoding UTF8
+    Write-Host "  + mcp.json (已替换路径)"
+}
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Cursor + VS Code Copilot 配置还原" -ForegroundColor Cyan
@@ -76,9 +105,9 @@ if ($DryRun) {
 }
 
 # ============================
-# 1. 还原 .copilot (VS Code Copilot instructions + skills)
+# 1. 还原 copilot → ~/.copilot (VS Code Copilot instructions + skills)
 # ============================
-Write-Host "[1/5] 还原 .copilot 配置..." -ForegroundColor Green
+Write-Host "[1/5] 还原 Copilot 配置（instructions + skills）..." -ForegroundColor Green
 if (-not (Test-Path $copilotSrc)) {
     Write-Warning "找不到源目录: $copilotSrc，跳过。"
 } elseif ($DryRun) {
@@ -107,14 +136,6 @@ if (-not (Test-Path $cursorSrc)) {
 } elseif ($DryRun) {
     Write-Host "  [DryRun] $cursorSrc -> $cursorDst"
 } else {
-    # mcp.json
-    $mcpSrc = Join-Path $cursorSrc "mcp.json"
-    if (Test-Path $mcpSrc) {
-        Backup-File (Join-Path $cursorDst "mcp.json")
-        Copy-Item $mcpSrc (Join-Path $cursorDst "mcp.json") -Force
-        Write-Host "  + mcp.json"
-    }
-
     # rules/
     $rulesSrc = Join-Path $cursorSrc "rules"
     if (Test-Path $rulesSrc) {
@@ -151,30 +172,19 @@ if (-not (Test-Path $cursorSrc)) {
 }
 
 # ============================
-# 3. 还原 VS Code MCP + settings
+# 3. 还原 VS Code 配置
 # ============================
 Write-Host "[3/5] 还原 VS Code 配置..." -ForegroundColor Green
 if ($DryRun) {
-    Write-Host "  [DryRun] mcp.json + settings.json"
+    Write-Host "  [DryRun] settings.json"
 } else {
-    # mcp.json
-    if (Test-Path $vscodeMcpSrc) {
-        $mcpDir = Split-Path $vscodeMcpDst -Parent
-        if (-not (Test-Path $mcpDir)) {
-            New-Item -ItemType Directory -Path $mcpDir -Force | Out-Null
-        }
-        Backup-File $vscodeMcpDst
-        Copy-Item $vscodeMcpSrc $vscodeMcpDst -Force
-        Write-Host "  + mcp.json"
-    }
-    # settings.json (合并)
     if (Test-Path $vscodeSettSrc) {
         Merge-JsonSettings $vscodeSettSrc $vscodeSettDst
     }
 }
 
 # ============================
-# 4. 克隆 Interactive-Feedback-MCP
+# 4. 克隆 Interactive-Feedback-MCP + 生成 mcp.json
 # ============================
 Write-Host "[4/5] 配置 Interactive-Feedback-MCP..." -ForegroundColor Green
 if ($SkipFeedbackMCP) {
@@ -192,25 +202,27 @@ if ($SkipFeedbackMCP) {
         git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git $feedbackMcpDir
     }
 
-    # 检查 uv 是否可用
-    $uvPath = Join-Path $env:USERPROFILE ".local\bin\uv.exe"
-    if (-not (Test-Path $uvPath)) {
-        $uvPath = (Get-Command uv -ErrorAction SilentlyContinue).Source
-    }
+    $uvPath = Resolve-UvPath
     if ($uvPath) {
         Write-Host "  正在运行 uv sync..."
         Push-Location $feedbackMcpDir
         & $uvPath sync
         Pop-Location
         Write-Host "  + Interactive-Feedback-MCP 已就绪"
+
+        # 用实际路径生成 Cursor 和 VS Code 的 mcp.json
+        $cursorMcpSrc = Join-Path $cursorSrc "mcp.json"
+        Install-McpJson $cursorMcpSrc (Join-Path $cursorDst "mcp.json") $uvPath $feedbackMcpDir
+        Install-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath $feedbackMcpDir
     } else {
         Write-Warning "  未找到 uv，请先安装: https://docs.astral.sh/uv/"
         Write-Warning "  然后手动执行: cd $feedbackMcpDir && uv sync"
+        Write-Warning "  安装完成后需手动编辑 mcp.json 替换 __UV_PATH__ 和 __FEEDBACK_MCP_DIR__"
     }
 }
 
 # ============================
-# 5. 完成
+# 5. 验证
 # ============================
 Write-Host "[5/5] 验证..." -ForegroundColor Green
 $checks = @(
@@ -239,5 +251,4 @@ Write-Host ""
 Write-Host "后续步骤：" -ForegroundColor Yellow
 Write-Host "  1. 重启 Cursor 和 VS Code"
 Write-Host "  2. 在 Cursor 中验证 MCP Server 是否正常加载"
-Write-Host "  3. 在 VS Code 中打开 Copilot Chat，输入 GITHUB_MCP_TOKEN"
-Write-Host "  4. 如使用飞书 MCP，需配置 LARK_APP_ID 和 LARK_APP_SECRET 环境变量"
+Write-Host "  3. 如需其他 MCP（GitHub、Context7 等），在扩展商城中安装"

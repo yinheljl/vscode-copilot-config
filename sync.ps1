@@ -4,11 +4,11 @@
 
 .DESCRIPTION
     同步以下配置到本仓库目录：
-    - ~/.copilot/instructions/ 和 ~/.copilot/skills/ → .copilot/
-    - ~/.cursor/mcp.json, rules/, skills/, skills-cursor/ → cursor/
-    - Cursor settings.json (Copilot 相关) → cursor/settings.json
-    - VS Code mcp.json → vscode/mcp.json
+    - ~/.copilot/instructions/ 和 ~/.copilot/skills/ → copilot/
+    - ~/.cursor/rules/, skills/, skills-cursor/ → cursor/
+    - Cursor settings.json (Copilot/MCP 相关) → cursor/settings.json
     - VS Code settings.json (Copilot 相关) → vscode/settings.json
+    注意：mcp.json 使用模板（含占位符），不从本机同步。
     然后 git commit 并 push。
 
 .EXAMPLE
@@ -26,17 +26,14 @@ $ErrorActionPreference = "Stop"
 
 $repoDir         = $PSScriptRoot
 $copilotSrc      = Join-Path $env:USERPROFILE ".copilot"
-$copilotDst      = Join-Path $repoDir ".copilot"
+$copilotDst      = Join-Path $repoDir "copilot"
 $cursorSrc       = Join-Path $env:USERPROFILE ".cursor"
 $cursorDst       = Join-Path $repoDir "cursor"
-$vscodeMcpSrc    = Join-Path $env:APPDATA "Code\User\mcp.json"
-$vscodeMcpDst    = Join-Path $repoDir "vscode\mcp.json"
 $vscodeSettSrc   = Join-Path $env:APPDATA "Code\User\settings.json"
 $vscodeSettDst   = Join-Path $repoDir "vscode\settings.json"
 $cursorSettSrc   = Join-Path $env:APPDATA "Cursor\User\settings.json"
 $cursorSettDst   = Join-Path $repoDir "cursor\settings.json"
 
-# Copilot 相关的 settings.json 键名前缀
 $copilotKeys = @("chat.", "github.copilot")
 
 function Extract-CopilotSettings($srcPath, $dstPath) {
@@ -51,7 +48,6 @@ function Extract-CopilotSettings($srcPath, $dstPath) {
             }
         }
     }
-    # 对 Cursor settings 额外提取 cursor.* 和 mcp.* 键
     if ($srcPath -like "*Cursor*") {
         foreach ($prop in $srcObj.PSObject.Properties) {
             if ($prop.Name.StartsWith("cursor.") -or $prop.Name.StartsWith("mcp.")) {
@@ -71,9 +67,9 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # ============================
-# 1. 同步 .copilot
+# 1. 同步 copilot
 # ============================
-Write-Host "[1/4] 同步 .copilot..." -ForegroundColor Green
+Write-Host "[1/4] 同步 Copilot..." -ForegroundColor Green
 foreach ($subdir in @("instructions", "skills")) {
     $src = Join-Path $copilotSrc $subdir
     $dst = Join-Path $copilotDst $subdir
@@ -85,18 +81,11 @@ foreach ($subdir in @("instructions", "skills")) {
 }
 
 # ============================
-# 2. 同步 Cursor 配置
+# 2. 同步 Cursor 配置（不含 mcp.json，使用模板）
 # ============================
 Write-Host "[2/4] 同步 Cursor 配置..." -ForegroundColor Green
 if (-not (Test-Path $cursorDst)) {
     New-Item -ItemType Directory -Path $cursorDst -Force | Out-Null
-}
-
-# mcp.json
-$cursorMcpSrc = Join-Path $cursorSrc "mcp.json"
-if (Test-Path $cursorMcpSrc) {
-    Copy-Item $cursorMcpSrc (Join-Path $cursorDst "mcp.json") -Force
-    Write-Host "  + mcp.json"
 }
 
 # rules/
@@ -131,22 +120,19 @@ if (Test-Path $skillsCursorSrc) {
 # settings.json (提取 Copilot 相关)
 Extract-CopilotSettings $cursorSettSrc $cursorSettDst
 Write-Host "  + settings.json (Copilot/MCP 相关)"
+Write-Host "  * mcp.json 使用模板，不从本机同步" -ForegroundColor DarkGray
 
 # ============================
-# 3. 同步 VS Code 配置
+# 3. 同步 VS Code 配置（不含 mcp.json，使用模板）
 # ============================
 Write-Host "[3/4] 同步 VS Code 配置..." -ForegroundColor Green
 if (-not (Test-Path (Join-Path $repoDir "vscode"))) {
     New-Item -ItemType Directory -Path (Join-Path $repoDir "vscode") -Force | Out-Null
 }
 
-if (Test-Path $vscodeMcpSrc) {
-    Copy-Item $vscodeMcpSrc $vscodeMcpDst -Force
-    Write-Host "  + mcp.json"
-}
-
 Extract-CopilotSettings $vscodeSettSrc $vscodeSettDst
 Write-Host "  + settings.json (Copilot 相关)"
+Write-Host "  * mcp.json 使用模板，不从本机同步" -ForegroundColor DarkGray
 
 # ============================
 # 4. Git commit & push

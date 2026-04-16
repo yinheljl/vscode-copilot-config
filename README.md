@@ -2,33 +2,71 @@
 
 本仓库备份了 **Cursor** 和 **VS Code GitHub Copilot** 的全局配置，支持换电脑后一键还原。
 
-## 包含内容
+## 仓库结构
 
 | 目录/文件 | 说明 |
 |-----------|------|
-| `.copilot/instructions/` | VS Code Copilot 全局指令文件（中文规范、代码审查、AUTOSAR 等） |
-| `.copilot/skills/` | VS Code Copilot 自定义 Skill 集合 |
-| `cursor/mcp.json` | Cursor MCP 服务器配置 |
+| `copilot/instructions/` | VS Code Copilot 全局指令（中文规范、交互反馈策略、防超时等） |
+| `copilot/skills/` | VS Code Copilot 自定义 Skill 集合（8 个） |
+| `cursor/mcp.json` | Cursor MCP 服务器配置模板 |
 | `cursor/rules/` | Cursor 全局 Rules（.mdc 格式） |
-| `cursor/skills/` | Cursor Skills |
-| `cursor/skills-cursor/` | Cursor 内置 Skills（canvas, hooks 等） |
+| `cursor/skills/` | Cursor Skills（与 Copilot 相同的 8 个） |
+| `cursor/skills-cursor/` | Cursor 内置 Skills（canvas、hooks 等 11 个） |
 | `cursor/settings.json` | Cursor 编辑器设置（Copilot/MCP 相关） |
-| `vscode/mcp.json` | VS Code MCP 服务器配置 |
+| `vscode/mcp.json` | VS Code MCP 服务器配置模板 |
 | `vscode/settings.json` | VS Code 编辑器设置（Copilot/Chat 相关） |
 | `restore.ps1` | Windows 一键还原脚本 |
 | `restore.sh` | Linux/macOS 一键还原脚本 |
 | `sync.ps1` | 从当前机器同步配置到仓库并推送 |
 
-## MCP 服务器列表
+## MCP 服务器
 
-| 服务器 | 用途 | Cursor | VS Code |
-|--------|------|:------:|:-------:|
-| context7 | 实时文档查询 | ✓ | ✓ |
-| github | GitHub API 交互 | ✓ | ✓ |
-| chrome-devtools | Chrome 调试工具 | ✓ | ✓ |
-| lark_mcp | 飞书 API | ✓ | ✓ |
-| interactive-feedback | Qt 交互反馈窗口 | ✓ | ✓ |
-| microsoft/markitdown | 文档转换 | - | ✓ |
+仓库只包含 **Interactive-Feedback-MCP**（Qt 桌面交互反馈窗口），其他 MCP 服务（GitHub、Context7、Chrome DevTools 等）可在 Cursor/VS Code 扩展商城中按需安装。
+
+| 服务器 | 用途 | 安装方式 |
+|--------|------|----------|
+| interactive-feedback | Qt 交互反馈窗口，让 AI 能通过弹窗与用户交互 | 还原脚本自动克隆 |
+
+## 全局 Rules
+
+| 规则文件 | 适用于 | 说明 |
+|----------|--------|------|
+| `copilot/instructions/main.instructions.md` | VS Code Copilot | 中文回复、Python 虚拟环境、交互反馈策略、防超时 |
+| `cursor/rules/mcp-feedback.mdc` | Cursor | interactive_feedback 交互反馈机制 |
+
+## Skills 清单（Cursor + VS Code 共享）
+
+### 文档类 (document)
+
+| 技能 | 用途 |
+|------|------|
+| docx | Word 文档创建、编辑、批注 |
+| xlsx | Excel 表格处理、公式、图表 |
+| pptx | PowerPoint 演示文稿 |
+| pdf | PDF 提取、合并、标注、填表 |
+
+### 测试类 (testing)
+
+| 技能 | 用途 |
+|------|------|
+| webapp-testing | Web 应用测试（Playwright） |
+
+### 生产力类 (productivity)
+
+| 技能 | 用途 |
+|------|------|
+| code-reviewer | 多语言代码评审（TS/Python/Go/Swift） |
+| mcp-builder | MCP 服务器构建指南 |
+
+### 工程类 (engineering)
+
+| 技能 | 用途 |
+|------|------|
+| codebase-onboarding | 代码库分析与上手文档生成 |
+
+### Cursor 内置 Skills（cursor/skills-cursor/）
+
+babysit、canvas、create-hook、create-rule、create-skill、create-subagent、migrate-to-skills、shell、statusline、update-cli-config、update-cursor-settings
 
 ## 新电脑快速还原
 
@@ -36,8 +74,8 @@
 
 1. [VS Code](https://code.visualstudio.com/) 和/或 [Cursor](https://cursor.com/)
 2. [Git](https://git-scm.com/)
-3. [Node.js](https://nodejs.org/)（MCP 需要 npx）
-4. [uv](https://docs.astral.sh/uv/)（Interactive-Feedback-MCP 和 markitdown 需要）
+3. [Node.js](https://nodejs.org/)（部分 MCP 扩展需要 npx）
+4. [uv](https://docs.astral.sh/uv/)（Interactive-Feedback-MCP 需要）
 
 ### Windows (PowerShell)
 
@@ -52,7 +90,7 @@ cd C:\Temp\copilot-restore
 # 可选：预览模式（不实际修改）
 .\restore.ps1 -DryRun
 
-# 可选：跳过 Interactive-Feedback-MCP（如不需要）
+# 可选：跳过 Interactive-Feedback-MCP
 .\restore.ps1 -SkipFeedbackMCP
 ```
 
@@ -67,50 +105,22 @@ chmod +x restore.sh
 
 ### 手动还原
 
-若不想运行脚本，可手动操作：
-
 ```powershell
 # VS Code Copilot 配置
-Copy-Item -Recurse ".\.copilot" "$env:USERPROFILE\" -Force
-Copy-Item ".\vscode\mcp.json" "$env:APPDATA\Code\User\mcp.json" -Force
+Copy-Item -Recurse ".\copilot" "$env:USERPROFILE\.copilot" -Force
 
 # Cursor 配置
-Copy-Item ".\cursor\mcp.json" "$env:USERPROFILE\.cursor\mcp.json" -Force
 Copy-Item -Recurse ".\cursor\rules" "$env:USERPROFILE\.cursor\" -Force
 Copy-Item -Recurse ".\cursor\skills" "$env:USERPROFILE\.cursor\" -Force
 Copy-Item -Recurse ".\cursor\skills-cursor" "$env:USERPROFILE\.cursor\" -Force
 
-# Interactive-Feedback-MCP
+# Interactive-Feedback-MCP（需手动编辑 mcp.json 替换路径占位符）
 git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$env:USERPROFILE\.cursor\Interactive-Feedback-MCP"
 cd "$env:USERPROFILE\.cursor\Interactive-Feedback-MCP"
 uv sync
 ```
 
-## Token 与环境变量配置
-
-### GitHub MCP Token
-
-`mcp.json` 中 GitHub MCP Server 的 token 使用了输入变量 `${GITHUB_MCP_TOKEN}`。
-
-- **VS Code**：首次打开 Copilot Chat 时会弹出输入框
-- **Cursor**：在 Settings > MCP 中配置
-
-所需 GitHub Personal Access Token 权限：`repo`, `read:org`（可选）
-
-### 飞书 MCP
-
-需要设置环境变量：
-- `LARK_APP_ID` — 飞书应用 ID
-- `LARK_APP_SECRET` — 飞书应用密钥
-
-## Interactive-Feedback-MCP
-
-[qt-interactive-feedback-mcp](https://github.com/rooney2020/qt-interactive-feedback-mcp) 提供 Qt 桌面交互反馈窗口，让 AI 在执行任务时能通过弹窗与用户交互确认。
-
-- 还原脚本会自动克隆到 `~/.cursor/Interactive-Feedback-MCP/` 并运行 `uv sync`
-- 需要 Python 3.11+（uv 会自动管理）
-- Cursor 中通过 `mcp-feedback.mdc` 规则自动启用
-- VS Code Copilot 中通过 `main.instructions.md` 中的交互反馈规范启用
+> 手动还原时，需要编辑 `cursor/mcp.json` 和 `vscode/mcp.json`，将 `__UV_PATH__` 替换为 uv 的绝对路径，将 `__FEEDBACK_MCP_DIR__` 替换为 Interactive-Feedback-MCP 的安装路径。还原脚本会自动完成这一步。
 
 ## 同步更新
 
@@ -123,12 +133,6 @@ cd <仓库目录>
 .\sync.ps1 -NoPush                      # 只提交不推送
 ```
 
-## Cursor 一键配置提示词
-
-换电脑后，在 Cursor 中可以发送以下提示词让 AI 自动完成所有配置：
-
-> 请按照 https://github.com/yinheljl/vscode-copilot-config 帮我配置，并更新全局 Rules、mcp.json、skills 等
-
 ## 格式差异说明
 
 | 特性 | Cursor | VS Code |
@@ -139,4 +143,4 @@ cd <仓库目录>
 | 超时配置 | `mcp.json` 中 `timeout`（秒）+ `settings.json` 中 `mcp.server.timeout`（毫秒） | 不支持 |
 | 自动批准 | `autoApprove` 字段 | 不支持 |
 
-> **注意**：本仓库为私有仓库，仅限个人使用。
+> **注意**：本仓库为私有仓库，仅限个人使用。mcp.json 中不含任何 API Key 或 Token，路径使用占位符。
