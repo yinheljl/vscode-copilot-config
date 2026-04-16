@@ -50,11 +50,12 @@
    ```
 
 4. **验证**
-   - 确认 `~/.copilot/instructions/` 和 `~/.copilot/skills/` 已创建
+   - 确认 `~/.copilot/instructions/` 和 `~/.copilot/skills/` 已创建（VS Code）
    - 确认 `~/MCP/Interactive-Feedback-MCP/` 目录存在且 `.venv` 已初始化
-   - 确认 VS Code 的 `mcp.json`（Windows: `%APPDATA%/Code/User/mcp.json`）已生成
-   - 确认 Cursor 的 `~/.cursor/mcp.json` 已生成
-   - 提示用户重启 VS Code 和 Cursor
+   - 确认对应 IDE 的 `mcp.json` 已生成
+   - 提示用户重启已安装的 IDE
+
+> 还原脚本会自动检测电脑上安装了哪些 IDE（VS Code / Cursor），仅配置已安装的环境。如果都未检测到，则全部安装。
 
 ### 场景二：更新配置
 

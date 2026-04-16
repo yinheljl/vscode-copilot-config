@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # restore.sh — 还原 Cursor + VS Code GitHub Copilot 个人配置（Linux / macOS）
+# 自动检测已安装的 IDE，仅配置已安装的环境。
 
 set -euo pipefail
 
@@ -19,6 +20,20 @@ fi
 
 MCP_SRC="$SCRIPT_DIR/vscode/mcp.json"
 MCP_DST="$VSCODE_USER_DIR/mcp.json"
+
+# ============================
+# IDE 自动检测
+# ============================
+HAS_VSCODE=false
+HAS_CURSOR=false
+
+if [ -d "$VSCODE_USER_DIR" ] || command -v code &>/dev/null; then
+    HAS_VSCODE=true
+fi
+
+if [ -d "$CURSOR_DST" ] || command -v cursor &>/dev/null; then
+    HAS_CURSOR=true
+fi
 
 resolve_uv_path() {
     for p in "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv"; do
@@ -48,56 +63,71 @@ echo "  Cursor + VS Code Copilot 配置还原"
 echo "========================================"
 echo ""
 
-# --- 1. 还原 copilot → ~/.copilot ---
-echo "[1/4] 还原 Copilot 配置（instructions + skills）..."
-if [ ! -d "$COPILOT_SRC" ]; then
-    echo "  警告：找不到源目录: $COPILOT_SRC" >&2
-else
-    mkdir -p "$COPILOT_DST"
-    for subdir in instructions skills; do
-        if [ -d "$COPILOT_SRC/$subdir" ]; then
-            rm -rf "$COPILOT_DST/$subdir"
-            cp -rf "$COPILOT_SRC/$subdir" "$COPILOT_DST/"
-            echo "  + $subdir"
-        fi
-    done
+# 显示检测结果
+echo "[IDE 检测]"
+if [ "$HAS_VSCODE" = true ]; then echo "  + VS Code"; fi
+if [ "$HAS_CURSOR" = true ]; then echo "  + Cursor"; fi
+if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ]; then
+    echo "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。"
+    HAS_VSCODE=true
+    HAS_CURSOR=true
+fi
+echo ""
+
+# --- 1. 还原 copilot → ~/.copilot (VS Code) ---
+if [ "$HAS_VSCODE" = true ]; then
+    echo "[1] 还原 VS Code Copilot 配置（instructions + skills）..."
+    if [ ! -d "$COPILOT_SRC" ]; then
+        echo "  警告：找不到源目录: $COPILOT_SRC" >&2
+    else
+        mkdir -p "$COPILOT_DST"
+        for subdir in instructions skills; do
+            if [ -d "$COPILOT_SRC/$subdir" ]; then
+                rm -rf "$COPILOT_DST/$subdir"
+                cp -rf "$COPILOT_SRC/$subdir" "$COPILOT_DST/"
+                echo "  + $subdir"
+            fi
+        done
+    fi
 fi
 
 # --- 2. 还原 Cursor 配置 ---
-echo "[2/4] 还原 Cursor 配置..."
-if [ ! -d "$CURSOR_SRC" ]; then
-    echo "  警告：找不到源目录: $CURSOR_SRC" >&2
-else
-    mkdir -p "$CURSOR_DST"
+if [ "$HAS_CURSOR" = true ]; then
+    echo "[2] 还原 Cursor 配置..."
+    if [ ! -d "$CURSOR_SRC" ]; then
+        echo "  警告：找不到源目录: $CURSOR_SRC" >&2
+    else
+        mkdir -p "$CURSOR_DST"
 
-    # rules/
-    if [ -d "$CURSOR_SRC/rules" ]; then
-        mkdir -p "$CURSOR_DST/rules"
-        cp -rf "$CURSOR_SRC/rules/"* "$CURSOR_DST/rules/"
-        echo "  + rules/"
-    fi
+        # rules/
+        if [ -d "$CURSOR_SRC/rules" ]; then
+            mkdir -p "$CURSOR_DST/rules"
+            cp -rf "$CURSOR_SRC/rules/"* "$CURSOR_DST/rules/"
+            echo "  + rules/"
+        fi
 
-    # skills/
-    if [ -d "$CURSOR_SRC/skills" ]; then
-        rm -rf "$CURSOR_DST/skills"
-        cp -rf "$CURSOR_SRC/skills" "$CURSOR_DST/skills"
-        echo "  + skills/"
-    fi
+        # skills/
+        if [ -d "$CURSOR_SRC/skills" ]; then
+            rm -rf "$CURSOR_DST/skills"
+            cp -rf "$CURSOR_SRC/skills" "$CURSOR_DST/skills"
+            echo "  + skills/"
+        fi
 
-    # skills-cursor/
-    if [ -d "$CURSOR_SRC/skills-cursor" ]; then
-        rm -rf "$CURSOR_DST/skills-cursor"
-        cp -rf "$CURSOR_SRC/skills-cursor" "$CURSOR_DST/skills-cursor"
-        echo "  + skills-cursor/"
+        # skills-cursor/
+        if [ -d "$CURSOR_SRC/skills-cursor" ]; then
+            rm -rf "$CURSOR_DST/skills-cursor"
+            cp -rf "$CURSOR_SRC/skills-cursor" "$CURSOR_DST/skills-cursor"
+            echo "  + skills-cursor/"
+        fi
     fi
 fi
 
 # --- 3. 克隆 Interactive-Feedback-MCP + 生成 mcp.json ---
-echo "[3/4] 配置 Interactive-Feedback-MCP..."
+echo "[3] 配置 Interactive-Feedback-MCP..."
 if [ -d "$FEEDBACK_MCP_DIR" ]; then
     echo "  目录已存在，尝试更新..."
     if command -v git &>/dev/null; then
-        (cd "$FEEDBACK_MCP_DIR" && git pull --ff-only)
+        (cd "$FEEDBACK_MCP_DIR" && git pull --ff-only) || echo "  更新失败，使用已有版本"
     else
         echo "  未安装 git，跳过更新"
     fi
@@ -132,8 +162,13 @@ if [ -n "$UV_PATH" ]; then
 
     FEEDBACK_PYTHON="$FEEDBACK_MCP_DIR/.venv/bin/python"
     if [ -x "$FEEDBACK_PYTHON" ]; then
-        install_mcp_json "$CURSOR_SRC/mcp.json" "$CURSOR_DST/mcp.json" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
-        install_mcp_json "$MCP_SRC" "$MCP_DST" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
+        # 仅为检测到的 IDE 生成 mcp.json
+        if [ "$HAS_CURSOR" = true ]; then
+            install_mcp_json "$CURSOR_SRC/mcp.json" "$CURSOR_DST/mcp.json" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
+        fi
+        if [ "$HAS_VSCODE" = true ]; then
+            install_mcp_json "$MCP_SRC" "$MCP_DST" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
+        fi
     else
         echo "  警告：找不到反馈服务虚拟环境 Python: $FEEDBACK_PYTHON" >&2
         echo "  请确认 uv sync 是否成功完成" >&2
@@ -141,21 +176,25 @@ if [ -n "$UV_PATH" ]; then
 else
     echo "  警告：未找到 uv，请先安装: https://docs.astral.sh/uv/"
     echo "  然后手动执行: cd $FEEDBACK_MCP_DIR && uv sync"
-    echo "  Cursor 模板需替换 __UV_PATH__ 和 __FEEDBACK_MCP_DIR__；VS Code 模板需替换 __FEEDBACK_MCP_PYTHON__ 和 __FEEDBACK_SERVER_PATH__" >&2
 fi
 
-# --- 4. 验证 ---
-echo "[4/4] 验证..."
-for item in \
-    "~/.copilot/instructions/:$COPILOT_DST/instructions" \
-    "~/.copilot/skills/:$COPILOT_DST/skills" \
-    "~/.cursor/mcp.json:$CURSOR_DST/mcp.json" \
-    "~/.cursor/rules/:$CURSOR_DST/rules" \
-    "~/.cursor/skills/:$CURSOR_DST/skills" \
-    "~/.cursor/skills-cursor/:$CURSOR_DST/skills-cursor" \
-    "VS Code mcp.json:$MCP_DST" \
-    "Interactive-Feedback-MCP:$FEEDBACK_MCP_DIR"
-do
+# --- 验证 ---
+echo "[验证]"
+CHECKS=""
+if [ "$HAS_VSCODE" = true ]; then
+    CHECKS="$CHECKS ~/.copilot/instructions/:$COPILOT_DST/instructions"
+    CHECKS="$CHECKS ~/.copilot/skills/:$COPILOT_DST/skills"
+    CHECKS="$CHECKS VS_Code_mcp.json:$MCP_DST"
+fi
+if [ "$HAS_CURSOR" = true ]; then
+    CHECKS="$CHECKS ~/.cursor/mcp.json:$CURSOR_DST/mcp.json"
+    CHECKS="$CHECKS ~/.cursor/rules/:$CURSOR_DST/rules"
+    CHECKS="$CHECKS ~/.cursor/skills/:$CURSOR_DST/skills"
+    CHECKS="$CHECKS ~/.cursor/skills-cursor/:$CURSOR_DST/skills-cursor"
+fi
+CHECKS="$CHECKS Interactive-Feedback-MCP:$FEEDBACK_MCP_DIR"
+
+for item in $CHECKS; do
     name="${item%%:*}"
     path="${item#*:}"
     if [ -e "$path" ]; then
@@ -171,6 +210,6 @@ echo "  还原完成！"
 echo "========================================"
 echo ""
 echo "后续步骤："
-echo "  1. 重启 Cursor 和 VS Code"
-echo "  2. 在 Cursor 中验证 MCP Server 是否正常加载"
-echo "  3. 如需其他 MCP（GitHub、Context7 等），在扩展商城中安装"
+if [ "$HAS_VSCODE" = true ]; then echo "  1. 重启 VS Code"; fi
+if [ "$HAS_CURSOR" = true ]; then echo "  2. 重启 Cursor，验证 MCP Server 是否正常加载"; fi
+echo "  3. 如需其他 MCP（GitHub、Context7 等），按需手动安装"
