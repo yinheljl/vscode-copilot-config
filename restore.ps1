@@ -222,8 +222,13 @@ if ($SkipFeedbackMCP) {
         Write-Host "  目录已存在，尝试更新..."
         if (Get-Command git -ErrorAction SilentlyContinue) {
             Push-Location $feedbackMcpDir
-            git pull --ff-only 2>&1 | Out-Null
-            Pop-Location
+            try {
+                git pull --ff-only 2>&1 | Out-Null
+            } catch {
+                Write-Warning "  更新反馈服务目录失败，继续使用本地已有版本: $($_.Exception.Message)"
+            } finally {
+                Pop-Location
+            }
         } else {
             Write-Host "  未安装 git，跳过更新" -ForegroundColor Yellow
         }
