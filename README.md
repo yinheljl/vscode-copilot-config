@@ -19,6 +19,10 @@
 | `restore.sh` | Linux/macOS 一键还原脚本 |
 | `sync.ps1` | 从当前机器同步配置到仓库并推送 |
 
+## 项目来源
+
+本仓库的 Interactive-Feedback-MCP 恢复流程和验证思路，参考了 [rooney2020/qt-interactive-feedback-mcp](https://github.com/rooney2020/qt-interactive-feedback-mcp)。当前还原脚本默认也是从该仓库拉取反馈服务，并在本地生成适配 Cursor 与 VS Code 的模板配置。
+
 ## MCP 服务器
 
 仓库当前自动部署的只有 **Interactive-Feedback-MCP**（Qt 桌面交互反馈窗口）。为避免 VS Code 与 Cursor 耦合到 `.cursor` 目录，反馈服务统一安装到用户级共享目录：Windows 为 `%USERPROFILE%\MCP\Interactive-Feedback-MCP`，Linux/macOS 为 `~/MCP/Interactive-Feedback-MCP`。其中 VS Code 使用该目录下虚拟环境的 Python 直接启动，Cursor 保持原有的 `uv run` 启动方式。其他 MCP 服务（GitHub、Context7、Markitdown、Chrome DevTools 等）仍按需安装或手动补充配置。
@@ -191,6 +195,25 @@ uv sync
 3. GitHub、Context7、Markitdown 不由本仓库自动安装；如需与当前机器完全一致，仍需在扩展商城安装或手动补充对应配置。
 4. Context7 和 GitHub 的 API Key/Token 不应提交到仓库；推荐使用环境变量或用户级私有配置管理。
 
+## 常见排错
+
+### Windows 执行策略拦截 restore.ps1
+
+如果 PowerShell 因执行策略阻止 `restore.ps1` 运行，可仅在当前会话临时放行：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\restore.ps1
+```
+
+### ZIP 目录不能直接用于 sync.ps1 推送
+
+`sync.ps1` 需要当前目录本身就是一个 Git 仓库。如果你是通过 GitHub ZIP 解压得到目录，脚本会明确提示缺少 `.git`。这种情况下请先使用 `git clone` 获取完整仓库，再运行 `sync.ps1`。
+
+### 日志不直观时如何验证 interactiveFeedback
+
+如果重启后日志里没有直观看到 `Discovered 1 tools`，可以直接使用 Interactive-Feedback-MCP 虚拟环境里的 `fastmcp` 客户端执行 `list_tools`。只要 Cursor 和 VS Code 两端都能列出 `interactive_feedback`，就说明模板配置和服务启动都正常。
+
 ## 同步更新
 
 修改了本地配置后，推送更新到本仓库：
@@ -201,6 +224,8 @@ cd <仓库目录>
 .\sync.ps1 -Message "更新 MCP 配置"     # 自定义提交信息
 .\sync.ps1 -NoPush                      # 只提交不推送
 ```
+
+> `sync.ps1` 依赖当前目录中的 `.git` 元数据。若当前目录来自 ZIP 解压，请先重新 `git clone` 仓库。
 
 ## 格式差异说明
 

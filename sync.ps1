@@ -36,6 +36,17 @@ $cursorSettDst   = Join-Path $repoDir "cursor\settings.json"
 
 $copilotKeys = @("chat.", "github.copilot")
 
+function Assert-GitReady($repoPath) {
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        throw "未找到 git。sync.ps1 需要在已安装 git 的环境下运行。"
+    }
+
+    $gitDir = Join-Path $repoPath ".git"
+    if (-not (Test-Path $gitDir)) {
+        throw "当前目录不是 Git 仓库。若该目录来自 ZIP 解压，请先使用 git clone 获取完整仓库后再运行 sync.ps1。"
+    }
+}
+
 function Extract-CopilotSettings($srcPath, $dstPath) {
     if (-not (Test-Path $srcPath)) { return }
     $srcObj = Get-Content $srcPath -Raw | ConvertFrom-Json
@@ -65,6 +76,8 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  同步 Cursor + VS Code 配置到仓库" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
+
+Assert-GitReady $repoDir
 
 # ============================
 # 1. 同步 copilot

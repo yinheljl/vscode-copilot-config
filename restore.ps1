@@ -48,6 +48,11 @@ function Backup-File($path) {
     }
 }
 
+function Write-Utf8NoBomFile($path, $content) {
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($path, $content, $utf8NoBom)
+}
+
 function Merge-JsonSettings($srcPath, $dstPath) {
     if (-not (Test-Path $srcPath)) { return }
     $srcObj = Get-Content $srcPath -Raw | ConvertFrom-Json
@@ -60,7 +65,8 @@ function Merge-JsonSettings($srcPath, $dstPath) {
     foreach ($prop in $srcObj.PSObject.Properties) {
         $dstObj | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value -Force
     }
-    $dstObj | ConvertTo-Json -Depth 10 | Set-Content $dstPath -Encoding UTF8
+    $json = $dstObj | ConvertTo-Json -Depth 10
+    Write-Utf8NoBomFile $dstPath $json
     Write-Host "  + 合并设置到 $dstPath"
 }
 
@@ -83,14 +89,18 @@ function Get-FeedbackPythonPath($mcpDir) {
     return $null
 }
 
+function Escape-JsonString($value) {
+    return $value.Replace('\', '\\')
+}
+
 function Install-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir) {
     if (-not (Test-Path $srcPath)) { return }
     $content = Get-Content $srcPath -Raw
     $serverPath = Join-Path $mcpDir "server.py"
-    $escapedUv = $uvPath.Replace('\\', '\\\\')
-    $escapedPython = $feedbackPythonPath.Replace('\\', '\\\\')
-    $escapedDir = $mcpDir.Replace('\\', '\\\\')
-    $escapedServer = $serverPath.Replace('\\', '\\\\')
+    $escapedUv = Escape-JsonString $uvPath
+    $escapedPython = Escape-JsonString $feedbackPythonPath
+    $escapedDir = Escape-JsonString $mcpDir
+    $escapedServer = Escape-JsonString $serverPath
     $content = $content.Replace('__UV_PATH__', $escapedUv)
     $content = $content.Replace('__FEEDBACK_MCP_PYTHON__', $escapedPython)
     $content = $content.Replace('__FEEDBACK_MCP_DIR__', $escapedDir)
@@ -99,8 +109,13 @@ function Install-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpD
     if (-not (Test-Path $dstDir)) {
         New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
     }
+    try {
+        $null = $content | ConvertFrom-Json
+    } catch {
+        throw "生成的 mcp.json 不是合法 JSON: $($_.Exception.Message)"
+    }
     Backup-File $dstPath
-    $content | Set-Content $dstPath -Encoding UTF8
+    Write-Utf8NoBomFile $dstPath $content
     Write-Host "  + mcp.json (已替换路径)"
 }
 
