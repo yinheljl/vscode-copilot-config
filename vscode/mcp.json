@@ -1,14 +1,16 @@
 {
   "servers": {
-    "interactive-feedback": {
+    "interactiveFeedback": {
       "type": "stdio",
-      "command": "__UV_PATH__",
+      "command": "__FEEDBACK_MCP_PYTHON__",
       "args": [
-        "--directory",
-        "__FEEDBACK_MCP_DIR__",
-        "run",
-        "server.py"
-      ]
+        "-u",
+        "__FEEDBACK_SERVER_PATH__"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONUTF8": "1"
+      }
     }
   }
 }

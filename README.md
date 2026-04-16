@@ -21,11 +21,11 @@
 
 ## MCP 服务器
 
-仓库只包含 **Interactive-Feedback-MCP**（Qt 桌面交互反馈窗口），其他 MCP 服务（GitHub、Context7、Chrome DevTools 等）可在 Cursor/VS Code 扩展商城中按需安装。
+仓库当前自动部署的只有 **Interactive-Feedback-MCP**（Qt 桌面交互反馈窗口）。为避免 VS Code 与 Cursor 耦合到 `.cursor` 目录，反馈服务统一安装到用户级共享目录：Windows 为 `%USERPROFILE%\MCP\Interactive-Feedback-MCP`，Linux/macOS 为 `~/MCP/Interactive-Feedback-MCP`。其中 VS Code 使用该目录下虚拟环境的 Python 直接启动，Cursor 保持原有的 `uv run` 启动方式。其他 MCP 服务（GitHub、Context7、Markitdown、Chrome DevTools 等）仍按需安装或手动补充配置。
 
 | 服务器 | 用途 | 安装方式 |
 |--------|------|----------|
-| interactive-feedback | Qt 交互反馈窗口，让 AI 能通过弹窗与用户交互 | 还原脚本自动克隆 |
+| interactiveFeedback | Qt 交互反馈窗口，让 AI 能通过弹窗与用户交互 | 还原脚本自动克隆到用户级共享 MCP 目录 |
 
 ## 全局 Rules
 
@@ -76,6 +76,8 @@ babysit、canvas、create-hook、create-rule、create-skill、create-subagent、
 2. [Node.js](https://nodejs.org/)（部分 MCP 扩展需要 npx）
 3. [uv](https://docs.astral.sh/uv/)（Interactive-Feedback-MCP 需要）
 4. [Git](https://git-scm.com/)（可选，无 git 时脚本会自动通过 ZIP 下载）
+
+> VS Code 模板默认开启 `chat.mcp.autostart`。首次使用 Markitdown 时，`uvx` 可能会先下载依赖，冷启动会比其他 MCP 更慢，这属于正常现象。
 
 ### Windows (PowerShell)
 
@@ -145,12 +147,21 @@ Copy-Item -Recurse ".\cursor\skills" "$env:USERPROFILE\.cursor\" -Force
 Copy-Item -Recurse ".\cursor\skills-cursor" "$env:USERPROFILE\.cursor\" -Force
 
 # Interactive-Feedback-MCP
-git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$env:USERPROFILE\.cursor\Interactive-Feedback-MCP"
-cd "$env:USERPROFILE\.cursor\Interactive-Feedback-MCP"
+git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$env:USERPROFILE\MCP\Interactive-Feedback-MCP"
+cd "$env:USERPROFILE\MCP\Interactive-Feedback-MCP"
 uv sync
 ```
 
-> 手动还原时，需要编辑 `cursor/mcp.json` 和 `vscode/mcp.json`，将 `__UV_PATH__` 替换为 uv 的绝对路径，将 `__FEEDBACK_MCP_DIR__` 替换为 Interactive-Feedback-MCP 的安装路径。还原脚本会自动完成这一步。
+> 手动还原时，需要分别处理两套模板：
+> Cursor 的 `cursor/mcp.json` 需将 `__UV_PATH__` 替换为 uv 的绝对路径，并将 `__FEEDBACK_MCP_DIR__` 替换为反馈服务目录；
+> VS Code 的 `vscode/mcp.json` 需将 `__FEEDBACK_MCP_PYTHON__` 替换为虚拟环境 Python 的绝对路径，并将 `__FEEDBACK_SERVER_PATH__` 替换为 `server.py` 的绝对路径。还原脚本会自动完成这一步。
+
+### 首次启动检查
+
+1. 重启 Cursor 和 VS Code，让新的 `mcp.json` 与 `settings.json` 生效。
+2. 在 MCP 服务器列表里确认 `interactiveFeedback` 已发现工具；VS Code 日志中应能看到 `Discovered 1 tools`。
+3. GitHub、Context7、Markitdown 不由本仓库自动安装；如需与当前机器完全一致，仍需在扩展商城安装或手动补充对应配置。
+4. Context7 和 GitHub 的 API Key/Token 不应提交到仓库；推荐使用环境变量或用户级私有配置管理。
 
 ## 同步更新
 
@@ -173,4 +184,4 @@ cd <仓库目录>
 | 超时配置 | `mcp.json` 中 `timeout`（秒）+ `settings.json` 中 `mcp.server.timeout`（毫秒） | 不支持 |
 | 自动批准 | `autoApprove` 字段 | 不支持 |
 
-> **注意**：本仓库为私有仓库，仅限个人使用。mcp.json 中不含任何 API Key 或 Token，路径使用占位符。
+> **注意**：本仓库为私有仓库，仅限个人使用。仓库中的 mcp.json 模板不应包含任何 API Key 或 Token，路径使用占位符。

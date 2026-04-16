@@ -8,7 +8,7 @@ COPILOT_SRC="$SCRIPT_DIR/copilot"
 COPILOT_DST="$HOME/.copilot"
 CURSOR_SRC="$SCRIPT_DIR/cursor"
 CURSOR_DST="$HOME/.cursor"
-FEEDBACK_MCP_DIR="$CURSOR_DST/Interactive-Feedback-MCP"
+FEEDBACK_MCP_DIR="$HOME/MCP/Interactive-Feedback-MCP"
 
 # VS Code 用户配置目录（macOS 和 Linux 路径不同）
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -29,12 +29,14 @@ resolve_uv_path() {
 }
 
 install_mcp_json() {
-    local src="$1" dst="$2" uv_path="$3" mcp_dir="$4"
+    local src="$1" dst="$2" uv_path="$3" feedback_python="$4" mcp_dir="$5"
     [ ! -f "$src" ] && return
     local content
     content=$(cat "$src")
     content="${content//__UV_PATH__/$uv_path}"
+    content="${content//__FEEDBACK_MCP_PYTHON__/$feedback_python}"
     content="${content//__FEEDBACK_MCP_DIR__/$mcp_dir}"
+    content="${content//__FEEDBACK_SERVER_PATH__/$mcp_dir/server.py}"
     mkdir -p "$(dirname "$dst")"
     [ -f "$dst" ] && cp "$dst" "${dst}.bak_$(date +%Y%m%d_%H%M%S)"
     echo "$content" > "$dst"
@@ -128,11 +130,18 @@ if [ -n "$UV_PATH" ]; then
     (cd "$FEEDBACK_MCP_DIR" && "$UV_PATH" sync)
     echo "  + Interactive-Feedback-MCP 已就绪"
 
-    install_mcp_json "$CURSOR_SRC/mcp.json" "$CURSOR_DST/mcp.json" "$UV_PATH" "$FEEDBACK_MCP_DIR"
-    install_mcp_json "$MCP_SRC" "$MCP_DST" "$UV_PATH" "$FEEDBACK_MCP_DIR"
+    FEEDBACK_PYTHON="$FEEDBACK_MCP_DIR/.venv/bin/python"
+    if [ -x "$FEEDBACK_PYTHON" ]; then
+        install_mcp_json "$CURSOR_SRC/mcp.json" "$CURSOR_DST/mcp.json" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
+        install_mcp_json "$MCP_SRC" "$MCP_DST" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
+    else
+        echo "  警告：找不到反馈服务虚拟环境 Python: $FEEDBACK_PYTHON" >&2
+        echo "  请确认 uv sync 是否成功完成" >&2
+    fi
 else
     echo "  警告：未找到 uv，请先安装: https://docs.astral.sh/uv/"
     echo "  然后手动执行: cd $FEEDBACK_MCP_DIR && uv sync"
+    echo "  Cursor 模板需替换 __UV_PATH__ 和 __FEEDBACK_MCP_DIR__；VS Code 模板需替换 __FEEDBACK_MCP_PYTHON__ 和 __FEEDBACK_SERVER_PATH__" >&2
 fi
 
 # --- 4. 验证 ---

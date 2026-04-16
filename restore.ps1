@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     还原 Cursor + VS Code GitHub Copilot 个人配置到当前机器
 
@@ -12,7 +12,7 @@
     - cursor/settings.json → 合并到 Cursor settings.json
     - vscode/mcp.json → %APPDATA%/Code/User/mcp.json（自动替换路径占位符）
     - vscode/settings.json → 合并到 VS Code settings.json
-    - 克隆/下载 qt-interactive-feedback-mcp 并运行 uv sync
+    - 克隆/下载 qt-interactive-feedback-mcp 到用户级共享 MCP 目录并运行 uv sync
 
 .EXAMPLE
     .\restore.ps1
@@ -38,7 +38,7 @@ $vscodeSettSrc   = Join-Path $scriptDir "vscode\settings.json"
 $vscodeSettDst   = Join-Path $env:APPDATA "Code\User\settings.json"
 $cursorSettSrc   = Join-Path $scriptDir "cursor\settings.json"
 $cursorSettDst   = Join-Path $env:APPDATA "Cursor\User\settings.json"
-$feedbackMcpDir  = Join-Path $cursorDst "Interactive-Feedback-MCP"
+$feedbackMcpDir  = Join-Path (Join-Path $env:USERPROFILE "MCP") "Interactive-Feedback-MCP"
 
 function Backup-File($path) {
     if (Test-Path $path) {
@@ -77,13 +77,24 @@ function Resolve-UvPath {
     return $null
 }
 
-function Install-McpJson($srcPath, $dstPath, $uvPath, $mcpDir) {
+function Get-FeedbackPythonPath($mcpDir) {
+    $pythonPath = Join-Path $mcpDir ".venv\Scripts\python.exe"
+    if (Test-Path $pythonPath) { return $pythonPath }
+    return $null
+}
+
+function Install-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir) {
     if (-not (Test-Path $srcPath)) { return }
     $content = Get-Content $srcPath -Raw
-    $escapedUv  = $uvPath.Replace('\', '\\')
-    $escapedDir = $mcpDir.Replace('\', '\\')
+    $serverPath = Join-Path $mcpDir "server.py"
+    $escapedUv = $uvPath.Replace('\\', '\\\\')
+    $escapedPython = $feedbackPythonPath.Replace('\\', '\\\\')
+    $escapedDir = $mcpDir.Replace('\\', '\\\\')
+    $escapedServer = $serverPath.Replace('\\', '\\\\')
     $content = $content.Replace('__UV_PATH__', $escapedUv)
+    $content = $content.Replace('__FEEDBACK_MCP_PYTHON__', $escapedPython)
     $content = $content.Replace('__FEEDBACK_MCP_DIR__', $escapedDir)
+    $content = $content.Replace('__FEEDBACK_SERVER_PATH__', $escapedServer)
     $dstDir = Split-Path $dstPath -Parent
     if (-not (Test-Path $dstDir)) {
         New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
@@ -233,15 +244,21 @@ if ($SkipFeedbackMCP) {
         Push-Location $feedbackMcpDir
         & $uvPath sync
         Pop-Location
-        Write-Host "  + Interactive-Feedback-MCP 已就绪"
+        $feedbackPythonPath = Get-FeedbackPythonPath $feedbackMcpDir
+        if ($feedbackPythonPath) {
+            Write-Host "  + Interactive-Feedback-MCP 已就绪"
 
-        $cursorMcpSrc = Join-Path $cursorSrc "mcp.json"
-        Install-McpJson $cursorMcpSrc (Join-Path $cursorDst "mcp.json") $uvPath $feedbackMcpDir
-        Install-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath $feedbackMcpDir
+            $cursorMcpSrc = Join-Path $cursorSrc "mcp.json"
+            Install-McpJson $cursorMcpSrc (Join-Path $cursorDst "mcp.json") $uvPath $feedbackPythonPath $feedbackMcpDir
+            Install-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath $feedbackPythonPath $feedbackMcpDir
+        } else {
+            Write-Warning "  找不到反馈服务虚拟环境 Python: $feedbackMcpDir\.venv\Scripts\python.exe"
+            Write-Warning "  请确认 uv sync 是否成功完成。"
+        }
     } else {
         Write-Warning "  未找到 uv，请先安装: https://docs.astral.sh/uv/"
         Write-Warning "  然后手动执行: cd $feedbackMcpDir && uv sync"
-        Write-Warning "  安装完成后需手动编辑 mcp.json 替换 __UV_PATH__ 和 __FEEDBACK_MCP_DIR__"
+        Write-Warning "  Cursor 模板需替换 __UV_PATH__ 和 __FEEDBACK_MCP_DIR__；VS Code 模板需替换 __FEEDBACK_MCP_PYTHON__ 和 __FEEDBACK_SERVER_PATH__"
     }
 }
 

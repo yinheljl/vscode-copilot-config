@@ -1,5 +1,6 @@
 {
     "chat.mcp.gallery.enabled": true,
+    "chat.mcp.autostart": true,
     "chat.planAgent.defaultModel": "Claude Sonnet 4.6 (copilot)",
     "chat.tools.terminal.autoApprove": {
         "/rm\\s+-[rRfF]*rf|rm\\s+--recursive|Remove-Item.{0,60}-Recurse.{0,30}-Force\\s*[Cc]:/|Remove-Item\\s+[Cc]:/|rmdir\\s+\\/[sS]/": {
