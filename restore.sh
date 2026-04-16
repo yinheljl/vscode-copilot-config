@@ -93,11 +93,33 @@ fi
 # --- 3. 克隆 Interactive-Feedback-MCP + 生成 mcp.json ---
 echo "[3/4] 配置 Interactive-Feedback-MCP..."
 if [ -d "$FEEDBACK_MCP_DIR" ]; then
-    echo "  目录已存在，执行 git pull..."
-    (cd "$FEEDBACK_MCP_DIR" && git pull --ff-only)
+    echo "  目录已存在，尝试更新..."
+    if command -v git &>/dev/null; then
+        (cd "$FEEDBACK_MCP_DIR" && git pull --ff-only)
+    else
+        echo "  未安装 git，跳过更新"
+    fi
 else
-    echo "  正在克隆..."
-    git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$FEEDBACK_MCP_DIR"
+    if command -v git &>/dev/null; then
+        echo "  正在克隆（使用 git）..."
+        git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$FEEDBACK_MCP_DIR"
+    else
+        echo "  未安装 git，使用 ZIP 下载..."
+        ZIP_URL="https://github.com/rooney2020/qt-interactive-feedback-mcp/archive/refs/heads/main.zip"
+        ZIP_PATH="/tmp/interactive-feedback-mcp.zip"
+        EXTRACT_DIR="/tmp/interactive-feedback-mcp-extract"
+        if curl -fsSL "$ZIP_URL" -o "$ZIP_PATH"; then
+            rm -rf "$EXTRACT_DIR"
+            unzip -q "$ZIP_PATH" -d "$EXTRACT_DIR"
+            mv "$EXTRACT_DIR"/qt-interactive-feedback-mcp-main "$FEEDBACK_MCP_DIR"
+            rm -f "$ZIP_PATH"
+            rm -rf "$EXTRACT_DIR"
+            echo "  + 已通过 ZIP 下载完成"
+        else
+            echo "  ZIP 下载失败，请手动下载: $ZIP_URL" >&2
+            echo "  解压到: $FEEDBACK_MCP_DIR" >&2
+        fi
+    fi
 fi
 
 UV_PATH=$(resolve_uv_path || true)

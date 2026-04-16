@@ -12,7 +12,7 @@
     - cursor/settings.json → 合并到 Cursor settings.json
     - vscode/mcp.json → %APPDATA%/Code/User/mcp.json（自动替换路径占位符）
     - vscode/settings.json → 合并到 VS Code settings.json
-    - 克隆 qt-interactive-feedback-mcp 并运行 uv sync
+    - 克隆/下载 qt-interactive-feedback-mcp 并运行 uv sync
 
 .EXAMPLE
     .\restore.ps1
@@ -193,13 +193,38 @@ if ($SkipFeedbackMCP) {
     Write-Host "  [DryRun] 将克隆到 $feedbackMcpDir 并运行 uv sync"
 } else {
     if (Test-Path $feedbackMcpDir) {
-        Write-Host "  目录已存在，执行 git pull..."
-        Push-Location $feedbackMcpDir
-        git pull --ff-only 2>&1 | Out-Null
-        Pop-Location
+        Write-Host "  目录已存在，尝试更新..."
+        if (Get-Command git -ErrorAction SilentlyContinue) {
+            Push-Location $feedbackMcpDir
+            git pull --ff-only 2>&1 | Out-Null
+            Pop-Location
+        } else {
+            Write-Host "  未安装 git，跳过更新" -ForegroundColor Yellow
+        }
     } else {
-        Write-Host "  正在克隆..."
-        git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git $feedbackMcpDir
+        if (Get-Command git -ErrorAction SilentlyContinue) {
+            Write-Host "  正在克隆（使用 git）..."
+            git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git $feedbackMcpDir
+        } else {
+            Write-Host "  未安装 git，使用 ZIP 下载..." -ForegroundColor Yellow
+            $zipUrl = "https://github.com/rooney2020/qt-interactive-feedback-mcp/archive/refs/heads/main.zip"
+            $zipPath = Join-Path $env:TEMP "interactive-feedback-mcp.zip"
+            $extractDir = Join-Path $env:TEMP "interactive-feedback-mcp-extract"
+            try {
+                Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
+                if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+                Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+                $innerDir = Get-ChildItem $extractDir -Directory | Select-Object -First 1
+                Move-Item $innerDir.FullName $feedbackMcpDir
+                Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+                Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+                Write-Host "  + 已通过 ZIP 下载完成"
+            } catch {
+                Write-Warning "  ZIP 下载失败: $_"
+                Write-Warning "  请手动下载: $zipUrl"
+                Write-Warning "  解压到: $feedbackMcpDir"
+            }
+        }
     }
 
     $uvPath = Resolve-UvPath
@@ -210,7 +235,6 @@ if ($SkipFeedbackMCP) {
         Pop-Location
         Write-Host "  + Interactive-Feedback-MCP 已就绪"
 
-        # 用实际路径生成 Cursor 和 VS Code 的 mcp.json
         $cursorMcpSrc = Join-Path $cursorSrc "mcp.json"
         Install-McpJson $cursorMcpSrc (Join-Path $cursorDst "mcp.json") $uvPath $feedbackMcpDir
         Install-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath $feedbackMcpDir

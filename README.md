@@ -73,48 +73,78 @@ babysit、canvas、create-hook、create-rule、create-skill、create-subagent、
 ### 前提条件
 
 1. [VS Code](https://code.visualstudio.com/) 和/或 [Cursor](https://cursor.com/)
-2. [Git](https://git-scm.com/)
-3. [Node.js](https://nodejs.org/)（部分 MCP 扩展需要 npx）
-4. [uv](https://docs.astral.sh/uv/)（Interactive-Feedback-MCP 需要）
+2. [Node.js](https://nodejs.org/)（部分 MCP 扩展需要 npx）
+3. [uv](https://docs.astral.sh/uv/)（Interactive-Feedback-MCP 需要）
+4. [Git](https://git-scm.com/)（可选，无 git 时脚本会自动通过 ZIP 下载）
 
 ### Windows (PowerShell)
 
+**方式一：通过 git clone**
+
 ```powershell
-# 1. 克隆本仓库
 git clone https://github.com/yinheljl/vscode-copilot-config.git C:\Temp\copilot-restore
 cd C:\Temp\copilot-restore
-
-# 2. 运行还原脚本
 .\restore.ps1
+```
 
-# 可选：预览模式（不实际修改）
-.\restore.ps1 -DryRun
+**方式二：下载 ZIP（无需 git）**
 
-# 可选：跳过 Interactive-Feedback-MCP
-.\restore.ps1 -SkipFeedbackMCP
+1. 打开 https://github.com/yinheljl/vscode-copilot-config/archive/refs/heads/main.zip
+2. 解压到任意目录（如 `C:\Temp\copilot-restore`）
+3. 运行脚本：
+
+```powershell
+cd C:\Temp\copilot-restore
+.\restore.ps1
+```
+
+**方式三：直接拷贝文件夹**
+
+如果已有本仓库的完整文件夹（U 盘拷贝、网盘同步等），直接进入该目录运行：
+
+```powershell
+cd <仓库文件夹路径>
+.\restore.ps1
+```
+
+**可选参数：**
+
+```powershell
+.\restore.ps1 -DryRun          # 预览模式，不实际修改
+.\restore.ps1 -SkipFeedbackMCP # 跳过 Interactive-Feedback-MCP
 ```
 
 ### Linux / macOS
 
 ```bash
+# 方式一：git clone
 git clone https://github.com/yinheljl/vscode-copilot-config.git /tmp/copilot-restore
 cd /tmp/copilot-restore
 chmod +x restore.sh
 ./restore.sh
+
+# 方式二：下载 ZIP
+curl -fsSL https://github.com/yinheljl/vscode-copilot-config/archive/refs/heads/main.zip -o /tmp/copilot.zip
+unzip -q /tmp/copilot.zip -d /tmp/copilot-restore
+cd /tmp/copilot-restore/vscode-copilot-config-main
+chmod +x restore.sh
+./restore.sh
 ```
+
+> 还原脚本会自动检测是否安装了 git。如有 git 则用 git clone 安装 Interactive-Feedback-MCP，否则自动通过 ZIP 下载。
 
 ### 手动还原
 
 ```powershell
 # VS Code Copilot 配置
-Copy-Item -Recurse ".\copilot" "$env:USERPROFILE\.copilot" -Force
+Copy-Item -Recurse ".\copilot\*" "$env:USERPROFILE\.copilot\" -Force
 
 # Cursor 配置
 Copy-Item -Recurse ".\cursor\rules" "$env:USERPROFILE\.cursor\" -Force
 Copy-Item -Recurse ".\cursor\skills" "$env:USERPROFILE\.cursor\" -Force
 Copy-Item -Recurse ".\cursor\skills-cursor" "$env:USERPROFILE\.cursor\" -Force
 
-# Interactive-Feedback-MCP（需手动编辑 mcp.json 替换路径占位符）
+# Interactive-Feedback-MCP
 git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$env:USERPROFILE\.cursor\Interactive-Feedback-MCP"
 cd "$env:USERPROFILE\.cursor\Interactive-Feedback-MCP"
 uv sync
