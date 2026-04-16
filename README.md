@@ -27,6 +27,34 @@
 |--------|------|----------|
 | interactiveFeedback | Qt 交互反馈窗口，让 AI 能通过弹窗与用户交互 | 还原脚本自动克隆到用户级共享 MCP 目录 |
 
+## 恢复范围说明
+
+默认执行本仓库的还原脚本时，恢复范围是：
+
+1. Cursor 和 VS Code 的全局规则、instructions、skills、settings。
+2. Interactive-Feedback-MCP 的安装与对应模板配置。
+3. README 和还原脚本中已经明确声明的配置项。
+
+默认**不自动恢复**的内容是：
+
+1. GitHub、Context7、Markitdown、Chrome DevTools 等其他 MCP 服务。
+2. 任何 API Key、Token、个人账号信息。
+3. README 和脚本没有声明的额外工具或扩展。
+
+## 给 AI 的推荐提示词
+
+如果你已经把本仓库克隆到新电脑，并在仓库目录中打开 VS Code，可以直接对 AI 说：
+
+```text
+请参考当前仓库 README 和还原脚本，帮我在这台电脑上恢复 Cursor + VS Code GitHub Copilot 的全局规则、skills、settings，以及 README 中自动恢复范围内的 MCP 配置。
+先检查 Node.js 和 uv 是否已安装；如果缺失直接帮我安装。
+先执行 DryRun，确认后再正式执行。
+完成后分别验证 Cursor 和 VS Code 的 interactiveFeedback MCP 是否正常。
+对于 README 未声明自动恢复的 MCP，不要自行安装，除非我再要求。
+```
+
+如果你不想先 DryRun，可以把上面那句里的“先执行 DryRun，确认后再正式执行”删掉。
+
 ## 全局 Rules
 
 | 规则文件 | 适用于 | 说明 |
