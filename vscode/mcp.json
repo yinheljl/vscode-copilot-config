@@ -11,6 +11,15 @@
         "PYTHONUNBUFFERED": "1",
         "PYTHONUTF8": "1"
       }
+    },
+    "markitdown": {
+      "type": "stdio",
+      "command": "__UV_PATH__",
+      "args": [
+        "tool",
+        "run",
+        "markitdown-mcp"
+      ]
     }
   }
 }

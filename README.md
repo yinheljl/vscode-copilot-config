@@ -128,9 +128,10 @@
 | 服务器 | 用途 | 安装位置 |
 |--------|------|----------|
 | Interactive-Feedback-MCP | Qt 桌面交互反馈窗口，让 AI 通过弹窗与用户持续对话 | `~/MCP/Interactive-Feedback-MCP` |
+| markitdown (Microsoft) | 将 Word/PDF/PPT/Excel 等文件转换为 Markdown，AI 可直接读取 | 通过 `uvx tool run` 按需启动，无需本地安装 |
 
 > 反馈服务统一安装到用户级共享目录，VS Code 和 Cursor 各自使用不同启动方式。
-> 其他 MCP 服务（GitHub、Context7、Markitdown 等）不由本仓库自动安装，按需手动配置。
+> 其他 MCP 服务（GitHub、Context7 等）不由本仓库自动安装，按需手动配置。
 > mcp.json 模板不包含任何 API Key 或 Token，路径使用占位符，由还原脚本自动替换。
 
 ## 📐 全局 Rules

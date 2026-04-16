@@ -10,6 +10,14 @@
       ],
       "timeout": 43200,
       "autoApprove": ["interactive_feedback"]
+    },
+    "markitdown": {
+      "command": "__UV_PATH__",
+      "args": [
+        "tool",
+        "run",
+        "markitdown-mcp"
+      ]
     }
   }
 }
