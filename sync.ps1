@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    从当前机器同步最新的 Cursor + VS Code Copilot 配置到本仓库并推送到 GitHub
+    从当前机器同步最新的 Cursor + VS Code Copilot + Codex 配置到本仓库并推送到 GitHub
 
 .DESCRIPTION
     同步以下配置到本仓库目录：
@@ -8,7 +8,8 @@
     - ~/.cursor/rules/, skills/, skills-cursor/ → cursor/
     - Cursor settings.json (Copilot/MCP 相关) → cursor/settings.json
     - VS Code settings.json (Copilot 相关) → vscode/settings.json
-    注意：mcp.json 使用模板（含占位符），不从本机同步。
+    - ~/.codex/AGENTS.md → codex/AGENTS.md
+    注意：mcp.json 和 config.toml 使用模板（含占位符），不从本机同步。
     然后 git commit 并 push。
 
 .EXAMPLE
@@ -29,6 +30,8 @@ $copilotSrc      = Join-Path $env:USERPROFILE ".copilot"
 $copilotDst      = Join-Path $repoDir "copilot"
 $cursorSrc       = Join-Path $env:USERPROFILE ".cursor"
 $cursorDst       = Join-Path $repoDir "cursor"
+$codexSrc        = Join-Path $env:USERPROFILE ".codex"
+$codexDst        = Join-Path $repoDir "codex"
 $vscodeSettSrc   = Join-Path $env:APPDATA "Code\User\settings.json"
 $vscodeSettDst   = Join-Path $repoDir "vscode\settings.json"
 $cursorSettSrc   = Join-Path $env:APPDATA "Cursor\User\settings.json"
@@ -73,7 +76,7 @@ function Extract-CopilotSettings($srcPath, $dstPath) {
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  同步 Cursor + VS Code 配置到仓库" -ForegroundColor Cyan
+Write-Host "  同步 Cursor + VS Code + Codex 配置到仓库" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -82,7 +85,7 @@ Assert-GitReady $repoDir
 # ============================
 # 1. 同步 copilot
 # ============================
-Write-Host "[1/4] 同步 Copilot..." -ForegroundColor Green
+Write-Host "[1/5] 同步 Copilot..." -ForegroundColor Green
 foreach ($subdir in @("instructions", "skills")) {
     $src = Join-Path $copilotSrc $subdir
     $dst = Join-Path $copilotDst $subdir
@@ -96,7 +99,7 @@ foreach ($subdir in @("instructions", "skills")) {
 # ============================
 # 2. 同步 Cursor 配置（不含 mcp.json，使用模板）
 # ============================
-Write-Host "[2/4] 同步 Cursor 配置..." -ForegroundColor Green
+Write-Host "[2/5] 同步 Cursor 配置..." -ForegroundColor Green
 if (-not (Test-Path $cursorDst)) {
     New-Item -ItemType Directory -Path $cursorDst -Force | Out-Null
 }
@@ -136,9 +139,25 @@ Write-Host "  + settings.json (Copilot/MCP 相关)"
 Write-Host "  * mcp.json 使用模板，不从本机同步" -ForegroundColor DarkGray
 
 # ============================
-# 3. 同步 VS Code 配置（不含 mcp.json，使用模板）
+# 3. 同步 Codex 配置（只同步 AGENTS.md，config.toml 使用模板）
 # ============================
-Write-Host "[3/4] 同步 VS Code 配置..." -ForegroundColor Green
+Write-Host "[3/5] 同步 Codex 配置..." -ForegroundColor Green
+$codexAgentsSrc = Join-Path $codexSrc "AGENTS.md"
+if (Test-Path $codexAgentsSrc) {
+    if (-not (Test-Path $codexDst)) {
+        New-Item -ItemType Directory -Path $codexDst -Force | Out-Null
+    }
+    Copy-Item $codexAgentsSrc (Join-Path $codexDst "AGENTS.md") -Force
+    Write-Host "  + AGENTS.md"
+} else {
+    Write-Host "  未找到 ~/.codex/AGENTS.md，跳过" -ForegroundColor Yellow
+}
+Write-Host "  * config.toml 使用模板，不从本机同步" -ForegroundColor DarkGray
+
+# ============================
+# 4. 同步 VS Code 配置（不含 mcp.json，使用模板）
+# ============================
+Write-Host "[4/5] 同步 VS Code 配置..." -ForegroundColor Green
 if (-not (Test-Path (Join-Path $repoDir "vscode"))) {
     New-Item -ItemType Directory -Path (Join-Path $repoDir "vscode") -Force | Out-Null
 }
@@ -148,9 +167,9 @@ Write-Host "  + settings.json (Copilot 相关)"
 Write-Host "  * mcp.json 使用模板，不从本机同步" -ForegroundColor DarkGray
 
 # ============================
-# 4. Git commit & push
+# 5. Git commit & push
 # ============================
-Write-Host "[4/4] 提交到 Git..." -ForegroundColor Green
+Write-Host "[5/5] 提交到 Git..." -ForegroundColor Green
 Push-Location $repoDir
 git add -A
 $status = git status --porcelain

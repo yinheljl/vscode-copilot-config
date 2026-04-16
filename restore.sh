@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# restore.sh — 还原 Cursor + VS Code GitHub Copilot 个人配置（Linux / macOS）
+# restore.sh — 还原 Cursor + VS Code GitHub Copilot + Codex 个人配置（Linux / macOS）
 # 自动检测已安装的 IDE，仅配置已安装的环境。
 # 默认增量模式（不覆盖用户已有配置），使用 --force 切换为覆盖模式。
 
@@ -18,6 +18,8 @@ COPILOT_SRC="$SCRIPT_DIR/copilot"
 COPILOT_DST="$HOME/.copilot"
 CURSOR_SRC="$SCRIPT_DIR/cursor"
 CURSOR_DST="$HOME/.cursor"
+CODEX_SRC="$SCRIPT_DIR/codex"
+CODEX_DST="$HOME/.codex"
 FEEDBACK_MCP_DIR="$HOME/MCP/Interactive-Feedback-MCP"
 
 # VS Code 用户配置目录（macOS 和 Linux 路径不同）
@@ -35,6 +37,7 @@ MCP_DST="$VSCODE_USER_DIR/mcp.json"
 # ============================
 HAS_VSCODE=false
 HAS_CURSOR=false
+HAS_CODEX=false
 
 if [ -d "$VSCODE_USER_DIR" ] || command -v code &>/dev/null; then
     HAS_VSCODE=true
@@ -42,6 +45,10 @@ fi
 
 if [ -d "$CURSOR_DST" ] || command -v cursor &>/dev/null; then
     HAS_CURSOR=true
+fi
+
+if [ -d "$CODEX_DST" ] || command -v codex &>/dev/null; then
+    HAS_CODEX=true
 fi
 
 resolve_uv_path() {
@@ -106,7 +113,7 @@ with open('$dst', 'w') as f:
 }
 
 echo "========================================"
-echo "  Cursor + VS Code Copilot 配置还原"
+echo "  Cursor + VS Code Copilot + Codex 配置还原"
 echo "========================================"
 echo ""
 
@@ -121,10 +128,12 @@ fi
 echo "[IDE 检测]"
 if [ "$HAS_VSCODE" = true ]; then echo "  + VS Code"; fi
 if [ "$HAS_CURSOR" = true ]; then echo "  + Cursor"; fi
-if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ]; then
+if [ "$HAS_CODEX" = true ]; then echo "  + Codex"; fi
+if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ] && [ "$HAS_CODEX" = false ]; then
     echo "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。"
     HAS_VSCODE=true
     HAS_CURSOR=true
+    HAS_CODEX=true
 fi
 echo ""
 
@@ -170,8 +179,29 @@ if [ "$HAS_CURSOR" = true ]; then
     fi
 fi
 
-# --- 3. 克隆 Interactive-Feedback-MCP + 生成 mcp.json ---
-echo "[3] 配置 Interactive-Feedback-MCP..."
+# --- 3. 还原 Codex 配置 ---
+if [ "$HAS_CODEX" = true ]; then
+    echo "[3] 还原 Codex 配置（AGENTS.md）..."
+    if [ ! -d "$CODEX_SRC" ]; then
+        echo "  警告：找不到源目录: $CODEX_SRC" >&2
+    else
+        mkdir -p "$CODEX_DST"
+        AGENTS_SRC="$CODEX_SRC/AGENTS.md"
+        AGENTS_DST="$CODEX_DST/AGENTS.md"
+        if [ -f "$AGENTS_SRC" ]; then
+            if [ "$FORCE" = true ] || [ ! -f "$AGENTS_DST" ]; then
+                [ -f "$AGENTS_DST" ] && cp "$AGENTS_DST" "${AGENTS_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+                cp "$AGENTS_SRC" "$AGENTS_DST"
+                echo "  + AGENTS.md"
+            else
+                echo "  + AGENTS.md (已存在，增量模式跳过。使用 --force 覆盖)"
+            fi
+        fi
+    fi
+fi
+
+# --- 4. 克隆 Interactive-Feedback-MCP + 生成 mcp.json ---
+echo "[4] 配置 Interactive-Feedback-MCP..."
 if [ -d "$FEEDBACK_MCP_DIR" ]; then
     echo "  目录已存在，尝试更新..."
     if command -v git &>/dev/null; then
@@ -216,6 +246,44 @@ if [ -n "$UV_PATH" ]; then
         if [ "$HAS_VSCODE" = true ]; then
             install_mcp_json "$MCP_SRC" "$MCP_DST" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
         fi
+        if [ "$HAS_CODEX" = true ]; then
+            # 合并 Codex config.toml MCP 服务器配置
+            CODEX_CONFIG_SRC="$CODEX_SRC/config.toml"
+            CODEX_CONFIG_DST="$CODEX_DST/config.toml"
+            if [ -f "$CODEX_CONFIG_SRC" ]; then
+                config_content=$(cat "$CODEX_CONFIG_SRC")
+                config_content="${config_content//__UV_PATH__/$UV_PATH}"
+                config_content="${config_content//__FEEDBACK_MCP_PYTHON__/$FEEDBACK_PYTHON}"
+                config_content="${config_content//__FEEDBACK_SERVER_PATH__/$FEEDBACK_MCP_DIR/server.py}"
+                mkdir -p "$CODEX_DST"
+                if [ -f "$CODEX_CONFIG_DST" ] && [ "$FORCE" = false ]; then
+                    cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+                    # 增量模式：追加缺失的 MCP 服务器
+                    existing=$(cat "$CODEX_CONFIG_DST")
+                    added=false
+                    if ! echo "$existing" | grep -q '\[mcp_servers\.interactiveFeedback\]'; then
+                        echo "" >> "$CODEX_CONFIG_DST"
+                        echo "$config_content" | sed -n '/\[mcp_servers\.interactiveFeedback\]/,/^$/p' >> "$CODEX_CONFIG_DST"
+                        echo "$config_content" | sed -n '/\[mcp_servers\.interactiveFeedback\.env\]/,/^$/p' >> "$CODEX_CONFIG_DST"
+                        added=true
+                    fi
+                    if ! echo "$existing" | grep -q '\[mcp_servers\.markitdown\]'; then
+                        echo "" >> "$CODEX_CONFIG_DST"
+                        echo "$config_content" | sed -n '/\[mcp_servers\.markitdown\]/,/^$/p' >> "$CODEX_CONFIG_DST"
+                        added=true
+                    fi
+                    if [ "$added" = true ]; then
+                        echo "  + config.toml (增量合并，追加 MCP 服务器)"
+                    else
+                        echo "  + config.toml (MCP 服务器已存在，无需修改)"
+                    fi
+                else
+                    [ -f "$CODEX_CONFIG_DST" ] && cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+                    echo "$config_content" > "$CODEX_CONFIG_DST"
+                    echo "  + config.toml (已替换路径)"
+                fi
+            fi
+        fi
     else
         echo "  警告：找不到反馈服务虚拟环境 Python: $FEEDBACK_PYTHON" >&2
         echo "  请确认 uv sync 是否成功完成" >&2
@@ -239,6 +307,10 @@ if [ "$HAS_CURSOR" = true ]; then
     CHECKS="$CHECKS ~/.cursor/skills/:$CURSOR_DST/skills"
     CHECKS="$CHECKS ~/.cursor/skills-cursor/:$CURSOR_DST/skills-cursor"
 fi
+if [ "$HAS_CODEX" = true ]; then
+    CHECKS="$CHECKS ~/.codex/AGENTS.md:$CODEX_DST/AGENTS.md"
+    CHECKS="$CHECKS ~/.codex/config.toml:$CODEX_DST/config.toml"
+fi
 CHECKS="$CHECKS Interactive-Feedback-MCP:$FEEDBACK_MCP_DIR"
 
 for item in $CHECKS; do
@@ -259,4 +331,5 @@ echo ""
 echo "后续步骤："
 if [ "$HAS_VSCODE" = true ]; then echo "  1. 重启 VS Code"; fi
 if [ "$HAS_CURSOR" = true ]; then echo "  2. 重启 Cursor，验证 MCP Server 是否正常加载"; fi
-echo "  3. 如需其他 MCP（GitHub、Context7 等），按需手动安装"
+if [ "$HAS_CODEX" = true ]; then echo "  3. 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载"; fi
+echo "  4. 如需其他 MCP（GitHub、Context7 等），按需手动安装"

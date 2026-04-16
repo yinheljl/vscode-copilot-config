@@ -1,15 +1,15 @@
-# VS Code & Cursor 全局配置中心
+# VS Code & Cursor & Codex 全局配置中心
 
-> **一键配置 VS Code GitHub Copilot 和 Cursor 的全局 Rules、Skills、MCP 服务器等。**
+> **一键配置 VS Code GitHub Copilot、Cursor 和 Codex 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
 
-当前版本：`1.1.0`
+当前版本：`1.2.0`
 
 ---
 
 ## 🤖 AI Agent 操作指南
 
-> **本节内容供 AI Agent（GitHub Copilot、Cursor AI 等）直接解析和执行。**
+> **本节内容供 AI Agent（GitHub Copilot、Cursor AI、Codex 等）直接解析和执行。**
 > **当用户提到本仓库 URL 或要求配置/更新时，请按以下指令操作。**
 
 ### 场景一：首次配置
@@ -53,9 +53,10 @@
    - 确认 `~/.copilot/instructions/` 和 `~/.copilot/skills/` 已创建（VS Code）
    - 确认 `~/MCP/Interactive-Feedback-MCP/` 目录存在且 `.venv` 已初始化
    - 确认对应 IDE 的 `mcp.json` 已生成
+   - 确认 Codex 用户已有 `~/.codex/AGENTS.md` 和 `~/.codex/config.toml`（如已安装 Codex）
    - 提示用户重启已安装的 IDE
 
-> **自动检测**：还原脚本会自动检测电脑上安装了哪些 IDE（VS Code / Cursor），仅配置已安装的环境。
+> **自动检测**：还原脚本会自动检测电脑上安装了哪些 IDE（VS Code / Cursor / Codex），仅配置已安装的环境。
 >
 > **增量模式**（默认）：只添加/更新配置文件，不删除用户已有的自定义 Rules、Skills、MCP 服务器。`mcp.json` 中已有的服务器配置会被保留。
 >
@@ -109,6 +110,8 @@
 |-----------|------|
 | `copilot/instructions/` | VS Code Copilot 全局指令（中文规范、交互反馈策略、防超时等） |
 | `copilot/skills/` | VS Code Copilot 自定义 Skill（8 个） |
+| `codex/AGENTS.md` | Codex 全局指令（AGENTS.md 格式，中文规范、交互反馈策略） |
+| `codex/config.toml` | Codex MCP 服务器配置模板（含路径占位符） |
 | `cursor/mcp.json` | Cursor MCP 服务器配置模板（含路径占位符） |
 | `cursor/rules/` | Cursor 全局 Rules（`.mdc` 格式） |
 | `cursor/skills/` | Cursor Skills（与 Copilot 共享的 8 个） |
@@ -130,7 +133,7 @@
 | Interactive-Feedback-MCP | Qt 桌面交互反馈窗口，让 AI 通过弹窗与用户持续对话 | `~/MCP/Interactive-Feedback-MCP` |
 | markitdown (Microsoft) | 将 Word/PDF/PPT/Excel 等文件转换为 Markdown，AI 可直接读取 | 通过 `uvx tool run` 按需启动，无需本地安装 |
 
-> 反馈服务统一安装到用户级共享目录，VS Code 和 Cursor 各自使用不同启动方式。
+> 反馈服务统一安装到用户级共享目录，VS Code、Cursor 和 Codex 各自使用不同启动方式。
 > 其他 MCP 服务（GitHub、Context7 等）不由本仓库自动安装，按需手动配置。
 > mcp.json 模板不包含任何 API Key 或 Token，路径使用占位符，由还原脚本自动替换。
 
@@ -139,6 +142,7 @@
 | 规则文件 | 适用于 | 说明 |
 |----------|--------|------|
 | `copilot/instructions/main.instructions.md` | VS Code Copilot | 中文回复、Python 虚拟环境、交互反馈策略、防超时 |
+| `codex/AGENTS.md` | Codex | 中文回复、Python 虚拟环境、交互反馈策略 |
 | `cursor/rules/mcp-feedback.mdc` | Cursor | interactive_feedback 交互反馈机制 |
 
 ## 🛠️ Skills 清单
@@ -178,13 +182,17 @@ Copy-Item -Recurse "C:\Temp\copilot-config\cursor\rules" "$env:USERPROFILE\.curs
 Copy-Item -Recurse "C:\Temp\copilot-config\cursor\skills" "$env:USERPROFILE\.cursor\" -Force
 Copy-Item -Recurse "C:\Temp\copilot-config\cursor\skills-cursor" "$env:USERPROFILE\.cursor\" -Force
 
-# 4. 安装 Interactive-Feedback-MCP
+# 4. 复制 Codex 配置
+New-Item -ItemType Directory -Path "$env:USERPROFILE\.codex" -Force
+Copy-Item "C:\Temp\copilot-config\codex\AGENTS.md" "$env:USERPROFILE\.codex\AGENTS.md" -Force
+
+# 5. 安装 Interactive-Feedback-MCP
 git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$env:USERPROFILE\MCP\Interactive-Feedback-MCP"
 cd "$env:USERPROFILE\MCP\Interactive-Feedback-MCP"
 uv sync
 ```
 
-> 手动安装时需自行处理 mcp.json 模板中的路径占位符替换，详见 `vscode/mcp.json` 和 `cursor/mcp.json`。
+> 手动安装时需自行处理 mcp.json 和 config.toml 模板中的路径占位符替换，详见 `vscode/mcp.json`、`cursor/mcp.json` 和 `codex/config.toml`。
 
 ### 可选参数（脚本安装）
 
@@ -219,17 +227,17 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 ### 格式差异说明
 
-| 特性 | Cursor | VS Code |
-|------|--------|---------|
-| MCP 配置键名 | `mcpServers` | `servers` |
-| MCP 条目格式 | 无需 `type` 字段 | 需要 `type: "stdio"` |
-| 规则格式 | `.mdc` + YAML frontmatter | `.instructions.md` + YAML frontmatter |
+| 特性 | Cursor | VS Code | Codex |
+|------|--------|---------|-------|
+| MCP 配置格式 | `mcp.json` (`mcpServers`) | `mcp.json` (`servers`) | `config.toml` (`[mcp_servers]`) |
+| MCP 条目格式 | 无需 `type` 字段 | 需要 `type: "stdio"` | TOML 表格式 |
+| 规则格式 | `.mdc` + YAML frontmatter | `.instructions.md` + YAML frontmatter | `AGENTS.md`（纯 Markdown） |
 
 ## 🗺️ 路线图
 
 - [x] AI Agent 自动配置支持
 - [x] 远程更新 + 版本检查
-- [ ] VS Code Codex 自动配置
+- [x] VS Code Codex 自动配置
 - [ ] 设置页面内一键更新按钮
 - [ ] 更多 MCP 服务器预配置
 

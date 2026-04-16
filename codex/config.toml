@@ -1,0 +1,19 @@
+# Codex MCP 服务器配置模板
+# 由 vscode-copilot-config 自动生成，路径占位符由 restore 脚本替换
+#
+# 此文件仅包含 MCP 服务器配置。其他 Codex 设置（model、sandbox 等）
+# 请参考: https://developers.openai.com/codex/config-basic
+
+[mcp_servers.interactiveFeedback]
+command = "__FEEDBACK_MCP_PYTHON__"
+args = ["-u", "__FEEDBACK_SERVER_PATH__"]
+startup_timeout_sec = 30
+tool_timeout_sec = 43200
+
+[mcp_servers.interactiveFeedback.env]
+PYTHONUNBUFFERED = "1"
+PYTHONUTF8 = "1"
+
+[mcp_servers.markitdown]
+command = "__UV_PATH__"
+args = ["tool", "run", "markitdown-mcp"]

@@ -1,9 +1,9 @@
-<#
+﻿<#
 .SYNOPSIS
-    还原 Cursor + VS Code GitHub Copilot 个人配置到当前机器
+    还原 Cursor + VS Code GitHub Copilot + Codex 个人配置到当前机器
 
 .DESCRIPTION
-    自动检测已安装的 IDE（VS Code、Cursor），仅配置已安装的环境。
+    自动检测已安装的 IDE（VS Code、Cursor、Codex），仅配置已安装的环境。
     默认使用增量模式：仅添加/更新配置，不删除用户已有的自定义内容。
     使用 -Force 参数可切换为完全覆盖模式。
 
@@ -15,6 +15,8 @@
     - cursor/settings.json → 合并到 Cursor settings.json（Cursor）
     - vscode/mcp.json → 合并到 VS Code mcp.json（VS Code）
     - vscode/settings.json → 合并到 VS Code settings.json（VS Code）
+    - codex/AGENTS.md → ~/.codex/AGENTS.md（Codex）
+    - codex/config.toml → 合并到 ~/.codex/config.toml（Codex）
     - 克隆/下载 qt-interactive-feedback-mcp 到用户级共享 MCP 目录
 
 .EXAMPLE
@@ -43,6 +45,12 @@ $vscodeSettSrc   = Join-Path $scriptDir "vscode\settings.json"
 $vscodeSettDst   = Join-Path $env:APPDATA "Code\User\settings.json"
 $cursorSettSrc   = Join-Path $scriptDir "cursor\settings.json"
 $cursorSettDst   = Join-Path $env:APPDATA "Cursor\User\settings.json"
+$codexSrc        = Join-Path $scriptDir "codex"
+$codexDst        = Join-Path $env:USERPROFILE ".codex"
+$codexConfigSrc  = Join-Path $codexSrc "config.toml"
+$codexConfigDst  = Join-Path $codexDst "config.toml"
+$codexAgentsSrc  = Join-Path $codexSrc "AGENTS.md"
+$codexAgentsDst  = Join-Path $codexDst "AGENTS.md"
 $feedbackMcpDir  = Join-Path (Join-Path $env:USERPROFILE "MCP") "Interactive-Feedback-MCP"
 
 # ============================
@@ -52,6 +60,7 @@ $vscodeUserDir = Join-Path $env:APPDATA "Code\User"
 $cursorUserDir = Join-Path $env:APPDATA "Cursor\User"
 $hasVSCode = (Test-Path $vscodeUserDir) -or [bool](Get-Command code -ErrorAction SilentlyContinue)
 $hasCursor = (Test-Path $cursorUserDir) -or (Test-Path $cursorDst) -or [bool](Get-Command cursor -ErrorAction SilentlyContinue)
+$hasCodex  = (Test-Path $codexDst) -or [bool](Get-Command codex -ErrorAction SilentlyContinue)
 
 function Backup-File($path) {
     if (Test-Path $path) {
@@ -170,9 +179,56 @@ function Copy-DirReplace($src, $dst) {
     Copy-Item $src $dst -Recurse -Force
 }
 
+function Merge-CodexConfig($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir) {
+    if (-not (Test-Path $srcPath)) { return }
+    $content = Get-Content $srcPath -Raw
+    $serverPath = Join-Path $mcpDir "server.py"
+    $content = $content.Replace('__UV_PATH__', (Escape-JsonString $uvPath))
+    $content = $content.Replace('__FEEDBACK_MCP_PYTHON__', (Escape-JsonString $feedbackPythonPath))
+    $content = $content.Replace('__FEEDBACK_SERVER_PATH__', (Escape-JsonString $serverPath))
+
+    $dstDir = Split-Path $dstPath -Parent
+    if (-not (Test-Path $dstDir)) {
+        New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
+    }
+
+    if ((Test-Path $dstPath) -and -not $Force) {
+        # 增量模式：检查已有配置，追加缺失的 MCP 服务器
+        Backup-File $dstPath
+        $existing = Get-Content $dstPath -Raw
+        $serversToAdd = @()
+
+        # 提取模板中的 MCP 服务器段落
+        $blocks = [regex]::Split($content, '(?m)(?=^\[mcp_servers\.\w+\])')
+        foreach ($block in $blocks) {
+            $block = $block.Trim()
+            if ($block -match '^\[mcp_servers\.(\w+)\]') {
+                $serverName = $Matches[1]
+                if (-not $existing.Contains("[mcp_servers.$serverName]")) {
+                    $serversToAdd += $block
+                }
+            }
+        }
+
+        if ($serversToAdd.Count -gt 0) {
+            $appendContent = "`n`n" + ($serversToAdd -join "`n`n") + "`n"
+            $result = $existing.TrimEnd() + $appendContent
+            Write-Utf8NoBomFile $dstPath $result
+            Write-Host "  + config.toml (增量合并，追加 MCP 服务器)"
+        } else {
+            Write-Host "  + config.toml (MCP 服务器已存在，无需修改)"
+        }
+    } else {
+        # 覆盖模式或目标不存在
+        Backup-File $dstPath
+        Write-Utf8NoBomFile $dstPath $content
+        Write-Host "  + config.toml (已替换路径)"
+    }
+}
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  Cursor + VS Code Copilot 配置还原" -ForegroundColor Cyan
+Write-Host "  Cursor + VS Code Copilot + Codex 配置还原" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -187,10 +243,12 @@ if ($Force) {
 Write-Host "[IDE 检测]" -ForegroundColor Cyan
 if ($hasVSCode) { Write-Host "  + VS Code" -ForegroundColor Green }
 if ($hasCursor) { Write-Host "  + Cursor" -ForegroundColor Green }
-if (-not $hasVSCode -and -not $hasCursor) {
+if ($hasCodex)  { Write-Host "  + Codex" -ForegroundColor Green }
+if (-not $hasVSCode -and -not $hasCursor -and -not $hasCodex) {
     Write-Host "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
     $hasVSCode = $true
     $hasCursor = $true
+    $hasCodex  = $true
 }
 Write-Host ""
 
@@ -203,6 +261,7 @@ if ($DryRun) {
 $totalSteps = 1  # 验证
 if ($hasVSCode) { $totalSteps += 2 }
 if ($hasCursor) { $totalSteps++ }
+if ($hasCodex)  { $totalSteps++ }
 if (-not $SkipFeedbackMCP) { $totalSteps++ }
 $step = 0
 
@@ -294,6 +353,32 @@ if ($hasCursor) {
 }
 
 # ============================
+# 还原 Codex 配置
+# ============================
+if ($hasCodex) {
+    $step++
+    Write-Host "[$step/$totalSteps] 还原 Codex 配置（AGENTS.md）..." -ForegroundColor Green
+    if (-not (Test-Path $codexSrc)) {
+        Write-Warning "找不到源目录: $codexSrc，跳过。"
+    } elseif ($DryRun) {
+        Write-Host "  [DryRun] $codexAgentsSrc -> $codexAgentsDst"
+    } else {
+        if (-not (Test-Path $codexDst)) {
+            New-Item -ItemType Directory -Path $codexDst -Force | Out-Null
+        }
+        if (Test-Path $codexAgentsSrc) {
+            if ($Force -or -not (Test-Path $codexAgentsDst)) {
+                Backup-File $codexAgentsDst
+                Copy-Item $codexAgentsSrc $codexAgentsDst -Force
+                Write-Host "  + AGENTS.md"
+            } else {
+                Write-Host "  + AGENTS.md (已存在，增量模式跳过。使用 -Force 覆盖)"
+            }
+        }
+    }
+}
+
+# ============================
 # 还原 VS Code 配置
 # ============================
 if ($hasVSCode) {
@@ -375,6 +460,9 @@ if (-not $SkipFeedbackMCP) {
                 if ($hasVSCode) {
                     Merge-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath $feedbackPythonPath $feedbackMcpDir "servers"
                 }
+                if ($hasCodex) {
+                    Merge-CodexConfig $codexConfigSrc $codexConfigDst $uvPath $feedbackPythonPath $feedbackMcpDir
+                }
             } else {
                 Write-Warning "  找不到反馈服务虚拟环境 Python: $feedbackMcpDir\.venv\Scripts\python.exe"
                 Write-Warning "  请确认 uv sync 是否成功完成。"
@@ -409,6 +497,12 @@ if ($hasCursor) {
         @{ Name = "~/.cursor/skills-cursor/"; Path = (Join-Path $cursorDst "skills-cursor") }
     ) + $checks
 }
+if ($hasCodex) {
+    $checks = @(
+        @{ Name = "~/.codex/AGENTS.md"; Path = $codexAgentsDst },
+        @{ Name = "~/.codex/config.toml"; Path = $codexConfigDst }
+    ) + $checks
+}
 foreach ($c in $checks) {
     if (Test-Path $c.Path) {
         Write-Host "  + $($c.Name)" -ForegroundColor Green
@@ -425,4 +519,5 @@ Write-Host ""
 Write-Host "后续步骤：" -ForegroundColor Yellow
 if ($hasVSCode) { Write-Host "  1. 重启 VS Code" }
 if ($hasCursor) { Write-Host "  2. 重启 Cursor，验证 MCP Server 是否正常加载" }
-Write-Host "  3. 如需其他 MCP（GitHub、Context7 等），在扩展商城中安装"
+if ($hasCodex)  { Write-Host "  3. 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载" }
+Write-Host "  4. 如需其他 MCP（GitHub、Context7 等），在扩展商城中安装"
