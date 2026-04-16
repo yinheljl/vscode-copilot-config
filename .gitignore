@@ -1,5 +1,14 @@
-# VS Code Copilot 运行时锁文件，不需要同步
+# VS Code Copilot 运行时锁文件
 .copilot/ide/
 
 # 备份文件
 *.bak_*
+
+# Python 运行时
+__pycache__/
+*.pyc
+.venv/
+
+# 系统文件
+.DS_Store
+Thumbs.db

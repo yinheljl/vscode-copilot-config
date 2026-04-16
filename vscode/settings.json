@@ -1,0 +1,53 @@
+{
+    "chat.mcp.gallery.enabled": true,
+    "chat.planAgent.defaultModel": "Claude Sonnet 4.6 (copilot)",
+    "chat.tools.terminal.autoApprove": {
+        "/rm\\s+-[rRfF]*rf|rm\\s+--recursive|Remove-Item.{0,60}-Recurse.{0,30}-Force\\s*[Cc]:/|Remove-Item\\s+[Cc]:/|rmdir\\s+\\/[sS]/": {
+            "approve": false,
+            "matchCommandLine": true
+        },
+        "/git\\s+(push\\s+.*--force|reset\\s+--hard|clean\\s+-[fdx]+)|git\\s+push\\s+-f\\b/": {
+            "approve": false,
+            "matchCommandLine": true
+        },
+        "/format\\s+[a-zA-Z]:|diskpart|del\\s+\\/[sS]\\s+\\/[qQ]\\s+[Cc]:|rd\\s+\\/[sS]\\s+[Cc]:/": {
+            "approve": false,
+            "matchCommandLine": true
+        },
+        "/curl\\s.*\\|\\s*(ba)?sh|wget\\s.*\\|\\s*(ba)?sh|Invoke-WebRequest.*\\|.*Invoke-Expression|iex\\s*\\(.*Net\\.WebClient/": {
+            "approve": false,
+            "matchCommandLine": true
+        },
+        "/Invoke-Expression|\\biex\\b.*http|Set-ExecutionPolicy\\s+(Unrestricted|Bypass)/": {
+            "approve": false,
+            "matchCommandLine": true
+        },
+        "/\\breg\\s+(delete|add)\\s+HK|bcdedit|\\bnet\\s+(user|localgroup)\\s+\\w+\\s+\\/add/": {
+            "approve": false,
+            "matchCommandLine": true
+        },
+        "/netsh\\s+(advfirewall|firewall)\\s.*(delete|disable|set.*off)|schtasks\\s+\\/create/": {
+            "approve": false,
+            "matchCommandLine": true
+        },
+        "/.*/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    },
+    "chat.tools.urls.autoApprove": {
+        "https://code.visualstudio.com": {
+            "approveRequest": false,
+            "approveResponse": true
+        },
+        "https://api.github.com": {
+            "approveRequest": false,
+            "approveResponse": true
+        },
+        "https://github.com": {
+            "approveRequest": false,
+            "approveResponse": true
+        }
+    },
+    "chat.viewSessions.orientation": "stacked"
+}
