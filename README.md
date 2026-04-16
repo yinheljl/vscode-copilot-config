@@ -39,7 +39,7 @@
    git clone https://github.com/yinheljl/vscode-copilot-config.git ~/.copilot-config
    ```
 
-3. **执行还原脚本**
+3. **执行还原脚本**（默认增量模式，不覆盖用户已有配置）
    ```powershell
    # Windows
    & "$env:USERPROFILE\.copilot-config\restore.ps1"
@@ -55,7 +55,14 @@
    - 确认对应 IDE 的 `mcp.json` 已生成
    - 提示用户重启已安装的 IDE
 
-> 还原脚本会自动检测电脑上安装了哪些 IDE（VS Code / Cursor），仅配置已安装的环境。如果都未检测到，则全部安装。
+> **自动检测**：还原脚本会自动检测电脑上安装了哪些 IDE（VS Code / Cursor），仅配置已安装的环境。
+>
+> **增量模式**（默认）：只添加/更新配置文件，不删除用户已有的自定义 Rules、Skills、MCP 服务器。`mcp.json` 中已有的服务器配置会被保留。
+>
+> **覆盖模式**：如果用户希望完全覆盖（例如干净安装），使用 `-Force` 参数：
+> ```powershell
+> & "$env:USERPROFILE\.copilot-config\restore.ps1" -Force
+> ```
 
 ### 场景二：更新配置
 
@@ -181,8 +188,16 @@ uv sync
 ### 可选参数（脚本安装）
 
 ```powershell
-.\restore.ps1 -DryRun          # 预览模式，不实际修改
-.\restore.ps1 -SkipFeedbackMCP # 跳过 Interactive-Feedback-MCP
+.\restore.ps1                   # 增量模式（默认，保留用户已有配置）
+.\restore.ps1 -Force            # 完全覆盖模式
+.\restore.ps1 -DryRun           # 预览模式，不实际修改
+.\restore.ps1 -SkipFeedbackMCP  # 跳过 Interactive-Feedback-MCP
+```
+
+```bash
+# Linux / macOS
+bash restore.sh                 # 增量模式（默认）
+bash restore.sh --force         # 完全覆盖模式
 ```
 
 ## ❓ 常见问题

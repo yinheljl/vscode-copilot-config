@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 # restore.sh — 还原 Cursor + VS Code GitHub Copilot 个人配置（Linux / macOS）
 # 自动检测已安装的 IDE，仅配置已安装的环境。
+# 默认增量模式（不覆盖用户已有配置），使用 --force 切换为覆盖模式。
 
 set -euo pipefail
+
+# 参数解析
+FORCE=false
+for arg in "$@"; do
+    case "$arg" in
+        --force|-f) FORCE=true ;;
+    esac
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COPILOT_SRC="$SCRIPT_DIR/copilot"
@@ -43,6 +52,18 @@ resolve_uv_path() {
     return 1
 }
 
+copy_dir_merge() {
+    local src="$1" dst="$2"
+    mkdir -p "$dst"
+    cp -rf "$src/"* "$dst/"
+}
+
+copy_dir_replace() {
+    local src="$1" dst="$2"
+    rm -rf "$dst"
+    cp -rf "$src" "$dst"
+}
+
 install_mcp_json() {
     local src="$1" dst="$2" uv_path="$3" feedback_python="$4" mcp_dir="$5"
     [ ! -f "$src" ] && return
@@ -53,15 +74,48 @@ install_mcp_json() {
     content="${content//__FEEDBACK_MCP_DIR__/$mcp_dir}"
     content="${content//__FEEDBACK_SERVER_PATH__/$mcp_dir/server.py}"
     mkdir -p "$(dirname "$dst")"
-    [ -f "$dst" ] && cp "$dst" "${dst}.bak_$(date +%Y%m%d_%H%M%S)"
-    echo "$content" > "$dst"
-    echo "  + mcp.json (已替换路径)"
+
+    if [ -f "$dst" ] && [ "$FORCE" = false ]; then
+        # 增量模式：备份并保留已有内容（简单合并）
+        cp "$dst" "${dst}.bak_$(date +%Y%m%d_%H%M%S)"
+        # 使用 python 进行 JSON 合并（如果可用）
+        if command -v python3 &>/dev/null; then
+            python3 -c "
+import json, sys
+with open('$dst') as f:
+    existing = json.load(f)
+new_data = json.loads('''$content''')
+# 合并 servers 或 mcpServers
+for key in ['servers', 'mcpServers']:
+    if key in new_data:
+        if key not in existing:
+            existing[key] = {}
+        existing[key].update(new_data[key])
+with open('$dst', 'w') as f:
+    json.dump(existing, f, indent=2)
+" 2>/dev/null && echo "  + mcp.json (增量合并，保留已有服务器)" && return
+        fi
+        # python 不可用则回退到覆盖
+        echo "$content" > "$dst"
+        echo "  + mcp.json (已替换路径)"
+    else
+        [ -f "$dst" ] && cp "$dst" "${dst}.bak_$(date +%Y%m%d_%H%M%S)"
+        echo "$content" > "$dst"
+        echo "  + mcp.json (已替换路径)"
+    fi
 }
 
 echo "========================================"
 echo "  Cursor + VS Code Copilot 配置还原"
 echo "========================================"
 echo ""
+
+# 显示模式
+if [ "$FORCE" = true ]; then
+    echo "[模式] 完全覆盖（--force）"
+else
+    echo "[模式] 增量合并（保留用户已有配置）"
+fi
 
 # 显示检测结果
 echo "[IDE 检测]"
@@ -80,12 +134,15 @@ if [ "$HAS_VSCODE" = true ]; then
     if [ ! -d "$COPILOT_SRC" ]; then
         echo "  警告：找不到源目录: $COPILOT_SRC" >&2
     else
-        mkdir -p "$COPILOT_DST"
         for subdir in instructions skills; do
             if [ -d "$COPILOT_SRC/$subdir" ]; then
-                rm -rf "$COPILOT_DST/$subdir"
-                cp -rf "$COPILOT_SRC/$subdir" "$COPILOT_DST/"
-                echo "  + $subdir"
+                if [ "$FORCE" = true ]; then
+                    copy_dir_replace "$COPILOT_SRC/$subdir" "$COPILOT_DST/$subdir"
+                    echo "  + $subdir (覆盖)"
+                else
+                    copy_dir_merge "$COPILOT_SRC/$subdir" "$COPILOT_DST/$subdir"
+                    echo "  + $subdir (增量)"
+                fi
             fi
         done
     fi
@@ -99,26 +156,17 @@ if [ "$HAS_CURSOR" = true ]; then
     else
         mkdir -p "$CURSOR_DST"
 
-        # rules/
-        if [ -d "$CURSOR_SRC/rules" ]; then
-            mkdir -p "$CURSOR_DST/rules"
-            cp -rf "$CURSOR_SRC/rules/"* "$CURSOR_DST/rules/"
-            echo "  + rules/"
-        fi
-
-        # skills/
-        if [ -d "$CURSOR_SRC/skills" ]; then
-            rm -rf "$CURSOR_DST/skills"
-            cp -rf "$CURSOR_SRC/skills" "$CURSOR_DST/skills"
-            echo "  + skills/"
-        fi
-
-        # skills-cursor/
-        if [ -d "$CURSOR_SRC/skills-cursor" ]; then
-            rm -rf "$CURSOR_DST/skills-cursor"
-            cp -rf "$CURSOR_SRC/skills-cursor" "$CURSOR_DST/skills-cursor"
-            echo "  + skills-cursor/"
-        fi
+        for subdir in rules skills skills-cursor; do
+            if [ -d "$CURSOR_SRC/$subdir" ]; then
+                if [ "$FORCE" = true ]; then
+                    copy_dir_replace "$CURSOR_SRC/$subdir" "$CURSOR_DST/$subdir"
+                    echo "  + $subdir/ (覆盖)"
+                else
+                    copy_dir_merge "$CURSOR_SRC/$subdir" "$CURSOR_DST/$subdir"
+                    echo "  + $subdir/ (增量)"
+                fi
+            fi
+        done
     fi
 fi
 
@@ -162,7 +210,6 @@ if [ -n "$UV_PATH" ]; then
 
     FEEDBACK_PYTHON="$FEEDBACK_MCP_DIR/.venv/bin/python"
     if [ -x "$FEEDBACK_PYTHON" ]; then
-        # 仅为检测到的 IDE 生成 mcp.json
         if [ "$HAS_CURSOR" = true ]; then
             install_mcp_json "$CURSOR_SRC/mcp.json" "$CURSOR_DST/mcp.json" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
         fi

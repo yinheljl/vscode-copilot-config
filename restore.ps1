@@ -4,24 +4,28 @@
 
 .DESCRIPTION
     自动检测已安装的 IDE（VS Code、Cursor），仅配置已安装的环境。
-    将本仓库中的配置还原到当前用户的配置目录：
+    默认使用增量模式：仅添加/更新配置，不删除用户已有的自定义内容。
+    使用 -Force 参数可切换为完全覆盖模式。
+
+    还原内容：
     - copilot (instructions, skills) → ~/.copilot/（VS Code）
-    - cursor/mcp.json → ~/.cursor/mcp.json（Cursor）
     - cursor/rules/ → ~/.cursor/rules/（Cursor）
     - cursor/skills/ → ~/.cursor/skills/（Cursor）
     - cursor/skills-cursor/ → ~/.cursor/skills-cursor/（Cursor）
     - cursor/settings.json → 合并到 Cursor settings.json（Cursor）
-    - vscode/mcp.json → %APPDATA%/Code/User/mcp.json（VS Code）
+    - vscode/mcp.json → 合并到 VS Code mcp.json（VS Code）
     - vscode/settings.json → 合并到 VS Code settings.json（VS Code）
-    - 克隆/下载 qt-interactive-feedback-mcp 到用户级共享 MCP 目录并运行 uv sync
+    - 克隆/下载 qt-interactive-feedback-mcp 到用户级共享 MCP 目录
 
 .EXAMPLE
-    .\restore.ps1
-    .\restore.ps1 -DryRun
-    .\restore.ps1 -SkipFeedbackMCP
+    .\restore.ps1                   # 增量模式（默认，不覆盖用户已有配置）
+    .\restore.ps1 -Force            # 完全覆盖模式
+    .\restore.ps1 -DryRun           # 预览模式
+    .\restore.ps1 -SkipFeedbackMCP  # 跳过 Interactive-Feedback-MCP
 #>
 param(
     [switch]$DryRun,
+    [switch]$Force,
     [switch]$SkipFeedbackMCP
 )
 
@@ -79,6 +83,56 @@ function Merge-JsonSettings($srcPath, $dstPath) {
     Write-Host "  + 合并设置到 $dstPath"
 }
 
+function Merge-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir, $serverKey) {
+    if (-not (Test-Path $srcPath)) { return }
+    $content = Get-Content $srcPath -Raw
+    $serverPath = Join-Path $mcpDir "server.py"
+    $content = $content.Replace('__UV_PATH__', (Escape-JsonString $uvPath))
+    $content = $content.Replace('__FEEDBACK_MCP_PYTHON__', (Escape-JsonString $feedbackPythonPath))
+    $content = $content.Replace('__FEEDBACK_MCP_DIR__', (Escape-JsonString $mcpDir))
+    $content = $content.Replace('__FEEDBACK_SERVER_PATH__', (Escape-JsonString $serverPath))
+    try {
+        $srcObj = $content | ConvertFrom-Json
+    } catch {
+        throw "模板 mcp.json 不是合法 JSON: $($_.Exception.Message)"
+    }
+    $dstDir = Split-Path $dstPath -Parent
+    if (-not (Test-Path $dstDir)) {
+        New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
+    }
+    if ((Test-Path $dstPath) -and -not $Force) {
+        # 增量模式：合并 MCP 服务器配置
+        Backup-File $dstPath
+        try {
+            $dstObj = Get-Content $dstPath -Raw | ConvertFrom-Json
+        } catch {
+            Write-Warning "  现有 mcp.json 格式错误，将使用新配置覆盖"
+            $dstObj = $null
+        }
+        if ($dstObj) {
+            # 确保目标有 servers/mcpServers 键
+            if (-not ($dstObj.PSObject.Properties.Name -contains $serverKey)) {
+                $dstObj | Add-Member -MemberType NoteProperty -Name $serverKey -Value ([PSCustomObject]@{}) -Force
+            }
+            # 从源中合并每个 server 到目标
+            $srcServers = $srcObj.$serverKey
+            if ($srcServers) {
+                foreach ($prop in $srcServers.PSObject.Properties) {
+                    $dstObj.$serverKey | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value -Force
+                }
+            }
+            $json = $dstObj | ConvertTo-Json -Depth 10
+            Write-Utf8NoBomFile $dstPath $json
+            Write-Host "  + mcp.json (增量合并，保留已有服务器)"
+            return
+        }
+    }
+    # 覆盖模式或目标不存在
+    Backup-File $dstPath
+    Write-Utf8NoBomFile $dstPath $content
+    Write-Host "  + mcp.json (已替换路径)"
+}
+
 function Resolve-UvPath {
     $candidates = @(
         (Join-Path $env:USERPROFILE ".local\bin\uv.exe"),
@@ -102,30 +156,18 @@ function Escape-JsonString($value) {
     return $value.Replace('\', '\\')
 }
 
-function Install-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir) {
-    if (-not (Test-Path $srcPath)) { return }
-    $content = Get-Content $srcPath -Raw
-    $serverPath = Join-Path $mcpDir "server.py"
-    $escapedUv = Escape-JsonString $uvPath
-    $escapedPython = Escape-JsonString $feedbackPythonPath
-    $escapedDir = Escape-JsonString $mcpDir
-    $escapedServer = Escape-JsonString $serverPath
-    $content = $content.Replace('__UV_PATH__', $escapedUv)
-    $content = $content.Replace('__FEEDBACK_MCP_PYTHON__', $escapedPython)
-    $content = $content.Replace('__FEEDBACK_MCP_DIR__', $escapedDir)
-    $content = $content.Replace('__FEEDBACK_SERVER_PATH__', $escapedServer)
-    $dstDir = Split-Path $dstPath -Parent
-    if (-not (Test-Path $dstDir)) {
-        New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
+function Copy-DirMerge($src, $dst) {
+    # 增量复制：只添加/更新文件，不删除目标中已有的其他文件
+    if (-not (Test-Path $dst)) {
+        New-Item -ItemType Directory -Path $dst -Force | Out-Null
     }
-    try {
-        $null = $content | ConvertFrom-Json
-    } catch {
-        throw "生成的 mcp.json 不是合法 JSON: $($_.Exception.Message)"
-    }
-    Backup-File $dstPath
-    Write-Utf8NoBomFile $dstPath $content
-    Write-Host "  + mcp.json (已替换路径)"
+    Copy-Item "$src\*" $dst -Recurse -Force
+}
+
+function Copy-DirReplace($src, $dst) {
+    # 完全覆盖：先删除目标目录再复制
+    if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
+    Copy-Item $src $dst -Recurse -Force
 }
 
 Write-Host ""
@@ -133,6 +175,13 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Cursor + VS Code Copilot 配置还原" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
+
+# 显示模式
+if ($Force) {
+    Write-Host "[模式] 完全覆盖（-Force）" -ForegroundColor Red
+} else {
+    Write-Host "[模式] 增量合并（保留用户已有配置）" -ForegroundColor Green
+}
 
 # 显示检测结果
 Write-Host "[IDE 检测]" -ForegroundColor Cyan
@@ -152,9 +201,9 @@ if ($DryRun) {
 
 # 计算总步骤数
 $totalSteps = 1  # 验证
-if ($hasVSCode) { $totalSteps += 2 }  # copilot + vscode settings
-if ($hasCursor) { $totalSteps++ }      # cursor
-if (-not $SkipFeedbackMCP) { $totalSteps++ }  # feedback mcp
+if ($hasVSCode) { $totalSteps += 2 }
+if ($hasCursor) { $totalSteps++ }
+if (-not $SkipFeedbackMCP) { $totalSteps++ }
 $step = 0
 
 # ============================
@@ -175,9 +224,13 @@ if ($hasVSCode) {
             $src = Join-Path $copilotSrc $subdir
             $dst = Join-Path $copilotDst $subdir
             if (Test-Path $src) {
-                if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
-                Copy-Item $src $dst -Recurse -Force
-                Write-Host "  + $subdir"
+                if ($Force) {
+                    Copy-DirReplace $src $dst
+                    Write-Host "  + $subdir (覆盖)"
+                } else {
+                    Copy-DirMerge $src $dst
+                    Write-Host "  + $subdir (增量)"
+                }
             }
         }
     }
@@ -198,32 +251,42 @@ if ($hasCursor) {
         $rulesSrc = Join-Path $cursorSrc "rules"
         if (Test-Path $rulesSrc) {
             $rulesDst = Join-Path $cursorDst "rules"
-            if (-not (Test-Path $rulesDst)) {
-                New-Item -ItemType Directory -Path $rulesDst -Force | Out-Null
+            if ($Force) {
+                Copy-DirReplace $rulesSrc $rulesDst
+                Write-Host "  + rules/ (覆盖)"
+            } else {
+                Copy-DirMerge $rulesSrc $rulesDst
+                Write-Host "  + rules/ (增量)"
             }
-            Copy-Item "$rulesSrc\*" $rulesDst -Recurse -Force
-            Write-Host "  + rules/"
         }
 
         # skills/
         $skillsSrc = Join-Path $cursorSrc "skills"
         if (Test-Path $skillsSrc) {
             $skillsDst = Join-Path $cursorDst "skills"
-            if (Test-Path $skillsDst) { Remove-Item $skillsDst -Recurse -Force }
-            Copy-Item $skillsSrc $skillsDst -Recurse -Force
-            Write-Host "  + skills/"
+            if ($Force) {
+                Copy-DirReplace $skillsSrc $skillsDst
+                Write-Host "  + skills/ (覆盖)"
+            } else {
+                Copy-DirMerge $skillsSrc $skillsDst
+                Write-Host "  + skills/ (增量)"
+            }
         }
 
         # skills-cursor/
         $skillsCursorSrc = Join-Path $cursorSrc "skills-cursor"
         if (Test-Path $skillsCursorSrc) {
             $skillsCursorDst = Join-Path $cursorDst "skills-cursor"
-            if (Test-Path $skillsCursorDst) { Remove-Item $skillsCursorDst -Recurse -Force }
-            Copy-Item $skillsCursorSrc $skillsCursorDst -Recurse -Force
-            Write-Host "  + skills-cursor/"
+            if ($Force) {
+                Copy-DirReplace $skillsCursorSrc $skillsCursorDst
+                Write-Host "  + skills-cursor/ (覆盖)"
+            } else {
+                Copy-DirMerge $skillsCursorSrc $skillsCursorDst
+                Write-Host "  + skills-cursor/ (增量)"
+            }
         }
 
-        # settings.json (合并)
+        # settings.json (始终合并)
         if (Test-Path $cursorSettSrc) {
             Merge-JsonSettings $cursorSettSrc $cursorSettDst
         }
@@ -304,13 +367,13 @@ if (-not $SkipFeedbackMCP) {
             if ($feedbackPythonPath) {
                 Write-Host "  + Interactive-Feedback-MCP 已就绪"
 
-                # 仅为检测到的 IDE 生成 mcp.json
+                # 生成/合并 mcp.json
                 if ($hasCursor) {
                     $cursorMcpSrc = Join-Path $cursorSrc "mcp.json"
-                    Install-McpJson $cursorMcpSrc (Join-Path $cursorDst "mcp.json") $uvPath $feedbackPythonPath $feedbackMcpDir
+                    Merge-McpJson $cursorMcpSrc (Join-Path $cursorDst "mcp.json") $uvPath $feedbackPythonPath $feedbackMcpDir "mcpServers"
                 }
                 if ($hasVSCode) {
-                    Install-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath $feedbackPythonPath $feedbackMcpDir
+                    Merge-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath $feedbackPythonPath $feedbackMcpDir "servers"
                 }
             } else {
                 Write-Warning "  找不到反馈服务虚拟环境 Python: $feedbackMcpDir\.venv\Scripts\python.exe"
