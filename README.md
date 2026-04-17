@@ -11,33 +11,28 @@
 
 > **本节内容供 AI Agent（GitHub Copilot、Cursor AI、Codex 等）直接解析和执行。**
 > **当用户提到本仓库 URL 或要求配置/更新时，请按以下指令操作。**
+>
+> ⚠️ **重要：必须通过运行 `restore.ps1` / `restore.sh` 脚本来配置，禁止手动复制文件。脚本会自动处理 IDE 检测、路径替换、MCP 安装等所有工作。**
 
 ### 场景一：首次配置
 
 **触发条件**：用户说 _"请按照 https://github.com/yinheljl/vscode-copilot-config 帮我配置"_ 或类似表述。
 
-**IDE 识别规则**：AI Agent 应根据用户措辞判断要配置的 IDE：
-- 用户提到 "Copilot" / "VS Code" / "VSCode" → `-Target VSCode`
-- 用户提到 "Cursor" → `-Target Cursor`
-- 用户提到 "Codex" → `-Target Codex`
-- 用户提到多个 IDE → `-Target VSCode,Cursor` 等组合
-- 用户未指定或说"全部配置" → 不传 `-Target`（默认配置所有已安装的 IDE）
-- 用户提到"覆盖" / "覆盖模式" / "干净安装" → 加 `-Force`
+**操作步骤（按顺序执行，不可跳过）**：
 
-**操作步骤**：
-
-1. **检查前置依赖**
+1. **安装 uv**（如已安装则跳过）
    ```powershell
-   # 必需：Git
-   git --version
-   # 必需：uv（Interactive-Feedback-MCP 依赖）
+   # Windows — 检查是否已安装
    uv --version
+   # 未安装则执行：
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
    ```
-   - 如果 `uv` 未安装：
-     - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
-     - Linux/macOS: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+   ```bash
+   # Linux / macOS
+   uv --version || curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
 
-2. **克隆仓库到持久目录**
+2. **克隆仓库**（如 `~/.copilot-config` 已存在则跳过）
    ```powershell
    # Windows
    git clone https://github.com/yinheljl/vscode-copilot-config.git "$env:USERPROFILE\.copilot-config"
@@ -47,46 +42,34 @@
    git clone https://github.com/yinheljl/vscode-copilot-config.git ~/.copilot-config
    ```
 
-3. **执行还原脚本**（根据用户意图选择参数）
+3. **运行还原脚本**
    ```powershell
-   # Windows — 全部配置（默认）
+   # Windows
    & "$env:USERPROFILE\.copilot-config\restore.ps1"
-   # Windows — 仅配置指定 IDE
-   & "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex
-   # Windows — 覆盖模式 + 指定 IDE
-   & "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex -Force
    ```
    ```bash
-   # Linux / macOS — 全部配置（默认）
+   # Linux / macOS
    bash ~/.copilot-config/restore.sh
-   # Linux / macOS — 仅配置指定 IDE
-   bash ~/.copilot-config/restore.sh --target=codex
-   # Linux / macOS — 覆盖模式 + 指定 IDE
-   bash ~/.copilot-config/restore.sh --force --target=codex
    ```
 
-4. **验证**
-   - 确认 `~/.copilot/instructions/` 和 `~/.copilot/skills/` 已创建（VS Code）
-   - 确认 `~/MCP/Interactive-Feedback-MCP/` 目录存在且 `.venv` 已初始化
-   - 确认对应 IDE 的 `mcp.json` 已生成
-   - 确认 Codex 用户已有 `~/.codex/AGENTS.md` 和 `~/.codex/config.toml`（如已安装 Codex）
-   - 提示用户重启已安装的 IDE
+4. **提示用户重启所有已安装的 IDE**（VS Code、Cursor 等）
 
-> **自动检测**：还原脚本会自动检测电脑上安装了哪些 IDE（VS Code / Cursor / Codex），仅配置已安装的环境。
+> **脚本会自动检测并配置所有已安装的 IDE**（VS Code / Cursor / Codex），无需手动指定。
 >
-> **按 IDE 配置**：使用 `-Target` 参数可仅配置指定的 IDE，不影响其他 IDE 的配置：
-> ```powershell
-> & "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex          # 仅 Codex
-> & "$env:USERPROFILE\.copilot-config\restore.ps1" -Target VSCode,Cursor  # 仅 VS Code 和 Cursor
-> ```
+> **可选参数**（仅在用户明确要求时使用）：
 >
-> **增量模式**（默认）：只添加/更新配置文件，不删除用户已有的自定义 Rules、Skills、MCP 服务器。`mcp.json` 中已有的服务器配置会被保留。
+> | 用户意图 | 参数 |
+> |----------|------|
+> | 仅配置指定 IDE | `-Target Codex`、`-Target VSCode,Cursor` |
+> | 覆盖已有配置 | `-Force` |
+> | 组合使用 | `-Target Codex -Force` |
 >
-> **覆盖模式**：如果用户希望完全覆盖（例如干净安装），使用 `-Force` 参数：
-> ```powershell
-> & "$env:USERPROFILE\.copilot-config\restore.ps1" -Force
-> & "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex -Force   # 仅覆盖 Codex
-> ```
+> **IDE 识别规则**：当用户明确提到特定 IDE 时添加 `-Target`：
+> - "Copilot" / "VS Code" / "VSCode" → `-Target VSCode`
+> - "Cursor" → `-Target Cursor`
+> - "Codex" → `-Target Codex`
+> - "覆盖" / "覆盖模式" / "干净安装" → 加 `-Force`
+> - 未指定 → 不传 `-Target`（配置所有 IDE）
 
 ### 场景二：更新配置
 

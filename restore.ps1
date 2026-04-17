@@ -475,18 +475,6 @@ if (-not $SkipFeedbackMCP) {
             $feedbackPythonPath = Get-FeedbackPythonPath $feedbackMcpDir
             if ($feedbackPythonPath) {
                 Write-Host "  + Interactive-Feedback-MCP 已就绪"
-
-                # 生成/合并 mcp.json
-                if ($hasCursor) {
-                    $cursorMcpSrc = Join-Path $cursorSrc "mcp.json"
-                    Merge-McpJson $cursorMcpSrc (Join-Path $cursorDst "mcp.json") $uvPath $feedbackPythonPath $feedbackMcpDir "mcpServers"
-                }
-                if ($hasVSCode) {
-                    Merge-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath $feedbackPythonPath $feedbackMcpDir "servers"
-                }
-                if ($hasCodex) {
-                    Merge-CodexConfig $codexConfigSrc $codexConfigDst $uvPath $feedbackPythonPath $feedbackMcpDir
-                }
             } else {
                 Write-Warning "  找不到反馈服务虚拟环境 Python: $feedbackMcpDir\.venv\Scripts\python.exe"
                 Write-Warning "  请确认 uv sync 是否成功完成。"
@@ -494,6 +482,20 @@ if (-not $SkipFeedbackMCP) {
         } else {
             Write-Warning "  未找到 uv，请先安装: https://docs.astral.sh/uv/"
             Write-Warning "  然后手动执行: cd $feedbackMcpDir && uv sync"
+        }
+
+        # 始终生成 mcp.json（即使 MCP 安装失败，也用预期路径生成配置）
+        if (-not $uvPath) { $uvPath = Join-Path $env:USERPROFILE ".local\bin\uv.exe" }
+        if (-not $feedbackPythonPath) { $feedbackPythonPath = Join-Path $feedbackMcpDir ".venv\Scripts\python.exe" }
+        if ($hasCursor) {
+            $cursorMcpSrc = Join-Path $cursorSrc "mcp.json"
+            Merge-McpJson $cursorMcpSrc (Join-Path $cursorDst "mcp.json") $uvPath $feedbackPythonPath $feedbackMcpDir "mcpServers"
+        }
+        if ($hasVSCode) {
+            Merge-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath $feedbackPythonPath $feedbackMcpDir "servers"
+        }
+        if ($hasCodex) {
+            Merge-CodexConfig $codexConfigSrc $codexConfigDst $uvPath $feedbackPythonPath $feedbackMcpDir
         }
     }
 }

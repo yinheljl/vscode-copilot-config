@@ -275,54 +275,10 @@ UV_PATH=$(resolve_uv_path || true)
 if [ -n "$UV_PATH" ]; then
     echo "  正在运行 uv sync..."
     (cd "$FEEDBACK_MCP_DIR" && "$UV_PATH" sync)
-    echo "  + Interactive-Feedback-MCP 已就绪"
 
     FEEDBACK_PYTHON="$FEEDBACK_MCP_DIR/.venv/bin/python"
     if [ -x "$FEEDBACK_PYTHON" ]; then
-        if [ "$HAS_CURSOR" = true ]; then
-            install_mcp_json "$CURSOR_SRC/mcp.json" "$CURSOR_DST/mcp.json" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
-        fi
-        if [ "$HAS_VSCODE" = true ]; then
-            install_mcp_json "$MCP_SRC" "$MCP_DST" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
-        fi
-        if [ "$HAS_CODEX" = true ]; then
-            # 合并 Codex config.toml MCP 服务器配置
-            CODEX_CONFIG_SRC="$CODEX_SRC/config.toml"
-            CODEX_CONFIG_DST="$CODEX_DST/config.toml"
-            if [ -f "$CODEX_CONFIG_SRC" ]; then
-                config_content=$(cat "$CODEX_CONFIG_SRC")
-                config_content="${config_content//__UV_PATH__/$UV_PATH}"
-                config_content="${config_content//__FEEDBACK_MCP_PYTHON__/$FEEDBACK_PYTHON}"
-                config_content="${config_content//__FEEDBACK_SERVER_PATH__/$FEEDBACK_MCP_DIR/server.py}"
-                mkdir -p "$CODEX_DST"
-                if [ -f "$CODEX_CONFIG_DST" ] && [ "$FORCE" = false ]; then
-                    cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-                    # 增量模式：追加缺失的 MCP 服务器
-                    existing=$(cat "$CODEX_CONFIG_DST")
-                    added=false
-                    if ! echo "$existing" | grep -q '\[mcp_servers\.interactiveFeedback\]'; then
-                        echo "" >> "$CODEX_CONFIG_DST"
-                        echo "$config_content" | sed -n '/\[mcp_servers\.interactiveFeedback\]/,/^$/p' >> "$CODEX_CONFIG_DST"
-                        echo "$config_content" | sed -n '/\[mcp_servers\.interactiveFeedback\.env\]/,/^$/p' >> "$CODEX_CONFIG_DST"
-                        added=true
-                    fi
-                    if ! echo "$existing" | grep -q '\[mcp_servers\.markitdown\]'; then
-                        echo "" >> "$CODEX_CONFIG_DST"
-                        echo "$config_content" | sed -n '/\[mcp_servers\.markitdown\]/,/^$/p' >> "$CODEX_CONFIG_DST"
-                        added=true
-                    fi
-                    if [ "$added" = true ]; then
-                        echo "  + config.toml (增量合并，追加 MCP 服务器)"
-                    else
-                        echo "  + config.toml (MCP 服务器已存在，无需修改)"
-                    fi
-                else
-                    [ -f "$CODEX_CONFIG_DST" ] && cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-                    echo "$config_content" > "$CODEX_CONFIG_DST"
-                    echo "  + config.toml (已替换路径)"
-                fi
-            fi
-        fi
+        echo "  + Interactive-Feedback-MCP 已就绪"
     else
         echo "  警告：找不到反馈服务虚拟环境 Python: $FEEDBACK_PYTHON" >&2
         echo "  请确认 uv sync 是否成功完成" >&2
@@ -330,6 +286,56 @@ if [ -n "$UV_PATH" ]; then
 else
     echo "  警告：未找到 uv，请先安装: https://docs.astral.sh/uv/"
     echo "  然后手动执行: cd $FEEDBACK_MCP_DIR && uv sync"
+    FEEDBACK_PYTHON=""
+fi
+
+# 始终生成 mcp.json（即使 MCP 安装失败，也用预期路径生成配置）
+[ -z "$UV_PATH" ] && UV_PATH="$HOME/.local/bin/uv"
+[ -z "$FEEDBACK_PYTHON" ] && FEEDBACK_PYTHON="$FEEDBACK_MCP_DIR/.venv/bin/python"
+
+if [ "$HAS_CURSOR" = true ]; then
+    install_mcp_json "$CURSOR_SRC/mcp.json" "$CURSOR_DST/mcp.json" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
+fi
+if [ "$HAS_VSCODE" = true ]; then
+    install_mcp_json "$MCP_SRC" "$MCP_DST" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
+fi
+if [ "$HAS_CODEX" = true ]; then
+    # 合并 Codex config.toml MCP 服务器配置
+    CODEX_CONFIG_SRC="$CODEX_SRC/config.toml"
+    CODEX_CONFIG_DST="$CODEX_DST/config.toml"
+    if [ -f "$CODEX_CONFIG_SRC" ]; then
+        config_content=$(cat "$CODEX_CONFIG_SRC")
+        config_content="${config_content//__UV_PATH__/$UV_PATH}"
+        config_content="${config_content//__FEEDBACK_MCP_PYTHON__/$FEEDBACK_PYTHON}"
+        config_content="${config_content//__FEEDBACK_SERVER_PATH__/$FEEDBACK_MCP_DIR/server.py}"
+        mkdir -p "$CODEX_DST"
+        if [ -f "$CODEX_CONFIG_DST" ] && [ "$FORCE" = false ]; then
+            cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+            # 增量模式：追加缺失的 MCP 服务器
+            existing=$(cat "$CODEX_CONFIG_DST")
+            added=false
+            if ! echo "$existing" | grep -q '\[mcp_servers\.interactiveFeedback\]'; then
+                echo "" >> "$CODEX_CONFIG_DST"
+                echo "$config_content" | sed -n '/\[mcp_servers\.interactiveFeedback\]/,/^$/p' >> "$CODEX_CONFIG_DST"
+                echo "$config_content" | sed -n '/\[mcp_servers\.interactiveFeedback\.env\]/,/^$/p' >> "$CODEX_CONFIG_DST"
+                added=true
+            fi
+            if ! echo "$existing" | grep -q '\[mcp_servers\.markitdown\]'; then
+                echo "" >> "$CODEX_CONFIG_DST"
+                echo "$config_content" | sed -n '/\[mcp_servers\.markitdown\]/,/^$/p' >> "$CODEX_CONFIG_DST"
+                added=true
+            fi
+            if [ "$added" = true ]; then
+                echo "  + config.toml (增量合并，追加 MCP 服务器)"
+            else
+                echo "  + config.toml (MCP 服务器已存在，无需修改)"
+            fi
+        else
+            [ -f "$CODEX_CONFIG_DST" ] && cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+            echo "$config_content" > "$CODEX_CONFIG_DST"
+            echo "  + config.toml (已替换路径)"
+        fi
+    fi
 fi
 
 # --- 验证 ---
