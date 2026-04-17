@@ -129,6 +129,32 @@
 
 或直接对 AI 说：_"帮我更新 copilot 全局配置"_
 
+### 极简指令（适用于免费/基础模型）
+
+> **如果你使用的 AI 模型能力较弱（如免费 Auto 模式），直接复制以下命令到终端执行即可，不需要 AI 做任何判断。**
+
+**Windows（按 Ctrl+` 打开终端）：**
+```powershell
+# 首次安装（一键完成克隆 + 配置所有 IDE）
+git clone https://github.com/yinheljl/vscode-copilot-config.git "$env:USERPROFILE\.copilot-config"; & "$env:USERPROFILE\.copilot-config\restore.ps1"
+
+# 后续更新（一键拉取 + 重新配置）
+& "$env:USERPROFILE\.copilot-config\update.ps1"
+```
+
+**Linux / macOS：**
+```bash
+# 首次安装
+git clone https://github.com/yinheljl/vscode-copilot-config.git ~/.copilot-config && bash ~/.copilot-config/restore.sh
+
+# 后续更新
+bash ~/.copilot-config/update.sh
+```
+
+> 前提：需已安装 Git 和 uv。未安装 uv 请先执行：
+> - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+> - Linux/macOS: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
 ---
 
 ## 📦 仓库结构
