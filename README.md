@@ -20,19 +20,7 @@
 
 **操作步骤（按顺序执行，不可跳过）**：
 
-1. **安装 uv**（如已安装则跳过）
-   ```powershell
-   # Windows — 检查是否已安装
-   uv --version
-   # 未安装则执行：
-   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-   ```
-   ```bash
-   # Linux / macOS
-   uv --version || curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
-
-2. **克隆仓库**（如 `~/.copilot-config` 已存在则跳过）
+1. **克隆仓库**（如 `~/.copilot-config` 已存在则跳过）
    ```powershell
    # Windows
    git clone https://github.com/yinheljl/vscode-copilot-config.git "$env:USERPROFILE\.copilot-config"
@@ -42,7 +30,7 @@
    git clone https://github.com/yinheljl/vscode-copilot-config.git ~/.copilot-config
    ```
 
-3. **运行还原脚本**
+2. **运行还原脚本**（脚本会自动安装 uv、克隆 MCP 项目、生成配置，无需手动安装任何依赖）
    ```powershell
    # Windows
    & "$env:USERPROFILE\.copilot-config\restore.ps1"
@@ -52,7 +40,7 @@
    bash ~/.copilot-config/restore.sh
    ```
 
-4. **提示用户重启所有已安装的 IDE**（VS Code、Cursor 等）
+3. **提示用户重启所有已安装的 IDE**（VS Code、Cursor 等）
 
 > **脚本会自动检测并配置所有已安装的 IDE**（VS Code / Cursor / Codex），无需手动指定。
 >
