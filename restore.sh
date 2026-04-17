@@ -272,6 +272,22 @@ else
 fi
 
 UV_PATH=$(resolve_uv_path || true)
+if [ -z "$UV_PATH" ]; then
+    echo "  未找到 uv，正在自动安装..."
+    if curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null; then
+        # 刷新 PATH
+        export PATH="$HOME/.local/bin:$PATH"
+        UV_PATH=$(resolve_uv_path || true)
+        if [ -n "$UV_PATH" ]; then
+            echo "  + uv 安装成功: $UV_PATH"
+        else
+            echo "  警告：uv 安装后仍未找到，请手动检查" >&2
+        fi
+    else
+        echo "  警告：uv 自动安装失败" >&2
+        echo "  请手动安装: https://docs.astral.sh/uv/" >&2
+    fi
+fi
 if [ -n "$UV_PATH" ]; then
     echo "  正在运行 uv sync..."
     (cd "$FEEDBACK_MCP_DIR" && "$UV_PATH" sync)

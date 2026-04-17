@@ -467,6 +467,24 @@ if (-not $SkipFeedbackMCP) {
         }
 
         $uvPath = Resolve-UvPath
+        if (-not $uvPath) {
+            Write-Host "  未找到 uv，正在自动安装..." -ForegroundColor Yellow
+            try {
+                $installScript = Invoke-RestMethod https://astral.sh/uv/install.ps1
+                $installScript | Invoke-Expression
+                # 刷新 PATH
+                $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "User") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
+                $uvPath = Resolve-UvPath
+                if ($uvPath) {
+                    Write-Host "  + uv 安装成功: $uvPath"
+                } else {
+                    Write-Warning "  uv 安装后仍未找到，请手动检查"
+                }
+            } catch {
+                Write-Warning "  uv 自动安装失败: $_"
+                Write-Warning "  请手动安装: https://docs.astral.sh/uv/"
+            }
+        }
         if ($uvPath) {
             Write-Host "  正在运行 uv sync..."
             Push-Location $feedbackMcpDir
