@@ -91,10 +91,10 @@ function Write-Utf8NoBomFile($path, $content) {
 
 function Merge-JsonSettings($srcPath, $dstPath) {
     if (-not (Test-Path $srcPath)) { return }
-    $srcObj = Get-Content $srcPath -Raw | ConvertFrom-Json
+    $srcObj = Get-Content $srcPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if (Test-Path $dstPath) {
         Backup-File $dstPath
-        $dstObj = Get-Content $dstPath -Raw | ConvertFrom-Json
+        $dstObj = Get-Content $dstPath -Raw -Encoding UTF8 | ConvertFrom-Json
     } else {
         $dstObj = [PSCustomObject]@{}
     }
@@ -108,7 +108,7 @@ function Merge-JsonSettings($srcPath, $dstPath) {
 
 function Merge-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir, $serverKey) {
     if (-not (Test-Path $srcPath)) { return }
-    $content = Get-Content $srcPath -Raw
+    $content = Get-Content $srcPath -Raw -Encoding UTF8
     $serverPath = Join-Path $mcpDir "server.py"
     $content = $content.Replace('__UV_PATH__', (Escape-JsonString $uvPath))
     $content = $content.Replace('__FEEDBACK_MCP_PYTHON__', (Escape-JsonString $feedbackPythonPath))
@@ -127,7 +127,7 @@ function Merge-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir
         # 增量模式：合并 MCP 服务器配置
         Backup-File $dstPath
         try {
-            $dstObj = Get-Content $dstPath -Raw | ConvertFrom-Json
+            $dstObj = Get-Content $dstPath -Raw -Encoding UTF8 | ConvertFrom-Json
         } catch {
             Write-Warning "  现有 mcp.json 格式错误，将使用新配置覆盖"
             $dstObj = $null
@@ -195,7 +195,7 @@ function Copy-DirReplace($src, $dst) {
 
 function Merge-CodexConfig($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir) {
     if (-not (Test-Path $srcPath)) { return }
-    $content = Get-Content $srcPath -Raw
+    $content = Get-Content $srcPath -Raw -Encoding UTF8
     $serverPath = Join-Path $mcpDir "server.py"
     $content = $content.Replace('__UV_PATH__', (Escape-JsonString $uvPath))
     $content = $content.Replace('__FEEDBACK_MCP_PYTHON__', (Escape-JsonString $feedbackPythonPath))
@@ -209,7 +209,7 @@ function Merge-CodexConfig($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mc
     if ((Test-Path $dstPath) -and -not $Force) {
         # 增量模式：检查已有配置，追加缺失的 MCP 服务器
         Backup-File $dstPath
-        $existing = Get-Content $dstPath -Raw
+        $existing = Get-Content $dstPath -Raw -Encoding UTF8
         $serversToAdd = @()
 
         # 提取模板中的 MCP 服务器段落
