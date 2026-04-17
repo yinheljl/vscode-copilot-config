@@ -14,11 +14,16 @@
     .\update.ps1 -DryRun            # 预览模式
     .\update.ps1 -CheckOnly         # 仅检查更新，不执行
     .\update.ps1 -SkipFeedbackMCP   # 跳过反馈 MCP 更新
+    .\update.ps1 -Target Codex      # 仅更新 Codex 配置
+    .\update.ps1 -Target Codex -Force  # 仅覆盖 Codex 配置
 #>
 param(
     [switch]$DryRun,
     [switch]$CheckOnly,
-    [switch]$SkipFeedbackMCP
+    [switch]$SkipFeedbackMCP,
+    [switch]$Force,
+    [ValidateSet("All", "VSCode", "Cursor", "Codex")]
+    [string[]]$Target = @("All")
 )
 
 Set-StrictMode -Version Latest
@@ -147,9 +152,11 @@ if (Test-Path (Join-Path $repoDir ".git")) {
 Write-Host "[2/2] 执行配置还原..." -ForegroundColor Green
 $restoreScript = Join-Path $repoDir "restore.ps1"
 if (Test-Path $restoreScript) {
-    $restoreArgs = @()
-    if ($DryRun) { $restoreArgs += "-DryRun" }
-    if ($SkipFeedbackMCP) { $restoreArgs += "-SkipFeedbackMCP" }
+    $restoreArgs = @{}
+    if ($DryRun) { $restoreArgs["DryRun"] = $true }
+    if ($Force) { $restoreArgs["Force"] = $true }
+    if ($SkipFeedbackMCP) { $restoreArgs["SkipFeedbackMCP"] = $true }
+    if ($Target -notcontains "All") { $restoreArgs["Target"] = $Target }
     & $restoreScript @restoreArgs
 } else {
     Write-Warning "找不到 restore.ps1: $restoreScript"

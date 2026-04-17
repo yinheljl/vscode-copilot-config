@@ -7,9 +7,25 @@ set -euo pipefail
 
 # 参数解析
 FORCE=false
+TARGET_ALL=true
+TARGET_VSCODE=false
+TARGET_CURSOR=false
+TARGET_CODEX=false
 for arg in "$@"; do
     case "$arg" in
         --force|-f) FORCE=true ;;
+        --target=*)
+            TARGET_ALL=false
+            IFS=',' read -ra TARGETS <<< "${arg#--target=}"
+            for t in "${TARGETS[@]}"; do
+                case "$(echo "$t" | tr '[:upper:]' '[:lower:]')" in
+                    vscode) TARGET_VSCODE=true ;;
+                    cursor) TARGET_CURSOR=true ;;
+                    codex)  TARGET_CODEX=true ;;
+                    all)    TARGET_ALL=true ;;
+                esac
+            done
+            ;;
     esac
 done
 
@@ -49,6 +65,15 @@ fi
 
 if [ -d "$CODEX_DST" ] || command -v codex &>/dev/null; then
     HAS_CODEX=true
+fi
+
+# ============================
+# --target 参数过滤
+# ============================
+if [ "$TARGET_ALL" = false ]; then
+    [ "$TARGET_VSCODE" = false ] && HAS_VSCODE=false
+    [ "$TARGET_CURSOR" = false ] && HAS_CURSOR=false
+    [ "$TARGET_CODEX"  = false ] && HAS_CODEX=false
 fi
 
 resolve_uv_path() {
@@ -123,6 +148,13 @@ if [ "$FORCE" = true ]; then
 else
     echo "[模式] 增量合并（保留用户已有配置）"
 fi
+if [ "$TARGET_ALL" = false ]; then
+    active_targets=()
+    [ "$TARGET_VSCODE" = true ] && active_targets+=("VSCode")
+    [ "$TARGET_CURSOR" = true ] && active_targets+=("Cursor")
+    [ "$TARGET_CODEX"  = true ] && active_targets+=("Codex")
+    echo "[目标] 仅配置: $(IFS=', '; echo "${active_targets[*]}")"
+fi
 
 # 显示检测结果
 echo "[IDE 检测]"
@@ -130,10 +162,17 @@ if [ "$HAS_VSCODE" = true ]; then echo "  + VS Code"; fi
 if [ "$HAS_CURSOR" = true ]; then echo "  + Cursor"; fi
 if [ "$HAS_CODEX" = true ]; then echo "  + Codex"; fi
 if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ] && [ "$HAS_CODEX" = false ]; then
-    echo "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。"
-    HAS_VSCODE=true
-    HAS_CURSOR=true
-    HAS_CODEX=true
+    if [ "$TARGET_ALL" = false ]; then
+        echo "  指定的 IDE 未安装，仍将安装配置（IDE 安装后即可使用）。"
+        [ "$TARGET_VSCODE" = true ] && HAS_VSCODE=true
+        [ "$TARGET_CURSOR" = true ] && HAS_CURSOR=true
+        [ "$TARGET_CODEX"  = true ] && HAS_CODEX=true
+    else
+        echo "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。"
+        HAS_VSCODE=true
+        HAS_CURSOR=true
+        HAS_CODEX=true
+    fi
 fi
 echo ""
 

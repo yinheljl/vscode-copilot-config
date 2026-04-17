@@ -87,7 +87,8 @@ echo "[2/2] 执行配置还原..."
 RESTORE_SCRIPT="$REPO_DIR/restore.sh"
 if [ -f "$RESTORE_SCRIPT" ]; then
     chmod +x "$RESTORE_SCRIPT"
-    bash "$RESTORE_SCRIPT"
+    # 透传所有参数给 restore.sh
+    bash "$RESTORE_SCRIPT" "$@"
 else
     echo "  警告：找不到 restore.sh: $RESTORE_SCRIPT" >&2
     echo "  请确认仓库完整性" >&2

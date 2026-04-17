@@ -16,6 +16,14 @@
 
 **触发条件**：用户说 _"请按照 https://github.com/yinheljl/vscode-copilot-config 帮我配置"_ 或类似表述。
 
+**IDE 识别规则**：AI Agent 应根据用户措辞判断要配置的 IDE：
+- 用户提到 "Copilot" / "VS Code" / "VSCode" → `-Target VSCode`
+- 用户提到 "Cursor" → `-Target Cursor`
+- 用户提到 "Codex" → `-Target Codex`
+- 用户提到多个 IDE → `-Target VSCode,Cursor` 等组合
+- 用户未指定或说"全部配置" → 不传 `-Target`（默认配置所有已安装的 IDE）
+- 用户提到"覆盖" / "覆盖模式" / "干净安装" → 加 `-Force`
+
 **操作步骤**：
 
 1. **检查前置依赖**
@@ -39,14 +47,22 @@
    git clone https://github.com/yinheljl/vscode-copilot-config.git ~/.copilot-config
    ```
 
-3. **执行还原脚本**（默认增量模式，不覆盖用户已有配置）
+3. **执行还原脚本**（根据用户意图选择参数）
    ```powershell
-   # Windows
+   # Windows — 全部配置（默认）
    & "$env:USERPROFILE\.copilot-config\restore.ps1"
+   # Windows — 仅配置指定 IDE
+   & "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex
+   # Windows — 覆盖模式 + 指定 IDE
+   & "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex -Force
    ```
    ```bash
-   # Linux / macOS
+   # Linux / macOS — 全部配置（默认）
    bash ~/.copilot-config/restore.sh
+   # Linux / macOS — 仅配置指定 IDE
+   bash ~/.copilot-config/restore.sh --target=codex
+   # Linux / macOS — 覆盖模式 + 指定 IDE
+   bash ~/.copilot-config/restore.sh --force --target=codex
    ```
 
 4. **验证**
@@ -58,11 +74,18 @@
 
 > **自动检测**：还原脚本会自动检测电脑上安装了哪些 IDE（VS Code / Cursor / Codex），仅配置已安装的环境。
 >
+> **按 IDE 配置**：使用 `-Target` 参数可仅配置指定的 IDE，不影响其他 IDE 的配置：
+> ```powershell
+> & "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex          # 仅 Codex
+> & "$env:USERPROFILE\.copilot-config\restore.ps1" -Target VSCode,Cursor  # 仅 VS Code 和 Cursor
+> ```
+>
 > **增量模式**（默认）：只添加/更新配置文件，不删除用户已有的自定义 Rules、Skills、MCP 服务器。`mcp.json` 中已有的服务器配置会被保留。
 >
 > **覆盖模式**：如果用户希望完全覆盖（例如干净安装），使用 `-Force` 参数：
 > ```powershell
 > & "$env:USERPROFILE\.copilot-config\restore.ps1" -Force
+> & "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex -Force   # 仅覆盖 Codex
 > ```
 
 ### 场景二：更新配置
@@ -73,12 +96,16 @@
 
 1. **运行更新脚本**（自动完成 git pull + 重新还原）
    ```powershell
-   # Windows — 使用持久目录
+   # Windows — 全部更新
    & "$env:USERPROFILE\.copilot-config\update.ps1"
+   # Windows — 仅更新指定 IDE
+   & "$env:USERPROFILE\.copilot-config\update.ps1" -Target Codex
    ```
    ```bash
    # Linux / macOS
    bash ~/.copilot-config/update.sh
+   # Linux / macOS — 仅更新指定 IDE
+   bash ~/.copilot-config/update.sh --target=codex
    ```
    > 如果持久目录不存在，update 脚本会自动克隆仓库到 `~/.copilot-config`。
 
@@ -197,16 +224,22 @@ uv sync
 ### 可选参数（脚本安装）
 
 ```powershell
-.\restore.ps1                   # 增量模式（默认，保留用户已有配置）
-.\restore.ps1 -Force            # 完全覆盖模式
-.\restore.ps1 -DryRun           # 预览模式，不实际修改
-.\restore.ps1 -SkipFeedbackMCP  # 跳过 Interactive-Feedback-MCP
+.\restore.ps1                        # 增量模式（默认，保留用户已有配置）
+.\restore.ps1 -Force                 # 完全覆盖模式
+.\restore.ps1 -DryRun                # 预览模式，不实际修改
+.\restore.ps1 -SkipFeedbackMCP       # 跳过 Interactive-Feedback-MCP
+.\restore.ps1 -Target Codex          # 仅配置 Codex
+.\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
+.\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
 ```
 
 ```bash
 # Linux / macOS
-bash restore.sh                 # 增量模式（默认）
-bash restore.sh --force         # 完全覆盖模式
+bash restore.sh                      # 增量模式（默认）
+bash restore.sh --force              # 完全覆盖模式
+bash restore.sh --target=codex       # 仅配置 Codex
+bash restore.sh --target=vscode,cursor  # 仅配置 VS Code 和 Cursor
+bash restore.sh --force --target=codex  # 仅覆盖 Codex 配置
 ```
 
 ## ❓ 常见问题

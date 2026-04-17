@@ -20,15 +20,20 @@
     - 克隆/下载 qt-interactive-feedback-mcp 到用户级共享 MCP 目录
 
 .EXAMPLE
-    .\restore.ps1                   # 增量模式（默认，不覆盖用户已有配置）
-    .\restore.ps1 -Force            # 完全覆盖模式
-    .\restore.ps1 -DryRun           # 预览模式
-    .\restore.ps1 -SkipFeedbackMCP  # 跳过 Interactive-Feedback-MCP
+    .\restore.ps1                        # 增量模式（默认，不覆盖用户已有配置）
+    .\restore.ps1 -Force                 # 完全覆盖模式
+    .\restore.ps1 -DryRun                # 预览模式
+    .\restore.ps1 -SkipFeedbackMCP       # 跳过 Interactive-Feedback-MCP
+    .\restore.ps1 -Target Codex          # 仅配置 Codex
+    .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
+    .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
 #>
 param(
     [switch]$DryRun,
     [switch]$Force,
-    [switch]$SkipFeedbackMCP
+    [switch]$SkipFeedbackMCP,
+    [ValidateSet("All", "VSCode", "Cursor", "Codex")]
+    [string[]]$Target = @("All")
 )
 
 Set-StrictMode -Version Latest
@@ -61,6 +66,15 @@ $cursorUserDir = Join-Path $env:APPDATA "Cursor\User"
 $hasVSCode = (Test-Path $vscodeUserDir) -or [bool](Get-Command code -ErrorAction SilentlyContinue)
 $hasCursor = (Test-Path $cursorUserDir) -or (Test-Path $cursorDst) -or [bool](Get-Command cursor -ErrorAction SilentlyContinue)
 $hasCodex  = (Test-Path $codexDst) -or [bool](Get-Command codex -ErrorAction SilentlyContinue)
+
+# ============================
+# -Target 参数过滤
+# ============================
+if ($Target -notcontains "All") {
+    if ($Target -notcontains "VSCode") { $hasVSCode = $false }
+    if ($Target -notcontains "Cursor") { $hasCursor = $false }
+    if ($Target -notcontains "Codex")  { $hasCodex  = $false }
+}
 
 function Backup-File($path) {
     if (Test-Path $path) {
@@ -238,6 +252,9 @@ if ($Force) {
 } else {
     Write-Host "[模式] 增量合并（保留用户已有配置）" -ForegroundColor Green
 }
+if ($Target -notcontains "All") {
+    Write-Host "[目标] 仅配置: $($Target -join ', ')" -ForegroundColor Cyan
+}
 
 # 显示检测结果
 Write-Host "[IDE 检测]" -ForegroundColor Cyan
@@ -245,10 +262,17 @@ if ($hasVSCode) { Write-Host "  + VS Code" -ForegroundColor Green }
 if ($hasCursor) { Write-Host "  + Cursor" -ForegroundColor Green }
 if ($hasCodex)  { Write-Host "  + Codex" -ForegroundColor Green }
 if (-not $hasVSCode -and -not $hasCursor -and -not $hasCodex) {
-    Write-Host "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
-    $hasVSCode = $true
-    $hasCursor = $true
-    $hasCodex  = $true
+    if ($Target -notcontains "All") {
+        Write-Host "  指定的 IDE 未安装，仍将安装配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
+        if ($Target -contains "VSCode") { $hasVSCode = $true }
+        if ($Target -contains "Cursor") { $hasCursor = $true }
+        if ($Target -contains "Codex")  { $hasCodex  = $true }
+    } else {
+        Write-Host "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
+        $hasVSCode = $true
+        $hasCursor = $true
+        $hasCodex  = $true
+    }
 }
 Write-Host ""
 
