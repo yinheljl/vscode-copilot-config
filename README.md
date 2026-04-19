@@ -191,6 +191,24 @@
 
 详见 [`codex/hooks/README.md`](codex/hooks/README.md)。
 
+### 企业级可信任性（Why this is safe to ship）
+
+本仓库**不引入任何第三方 npm 包、第三方 Python 包、二进制下载或网络副作用**。完整的供应链与审计能力如下：
+
+| 维度 | 说明 |
+|------|------|
+| 🔐 供应链 | 硬层 hook 全部源码（`codex/hooks/pre_tool_use_guard.py`，约 200 行）在本仓库内，**仅依赖 Python 标准库**（`json`、`re`、`sys`、`subprocess`、`pathlib`、`datetime`），不通过 npm / pip / curl 拉取任何外部代码。安装过程不联网。 |
+| 👀 可审计 | 拦截规则（DENY / ASK 正则表）在脚本头部集中声明，企业 security team 可在合并前 diff review 全部规则。 |
+| 🤝 接口契约 | 使用 OpenAI Codex CLI 官方 [`PreToolUse` Hook](https://developers.openai.com/codex/hooks) 协议（公开文档，长期维护），不绑定任何第三方维护者。 |
+| ✅ CI 质量门禁 | 每次 PR 在 GitHub Actions 自动运行 `codex/hooks/test_pre_tool_use_guard.py`（17 deny + 9 allow，共 26 个用例），任何规则改动必须先通过自检。 |
+| 📜 完整审计日志 | 所有命中拦截/审计的命令以单行 JSON 写入 `~/.codex/hooks/logs/guard-YYYYMM.log`，含时间戳、cwd、命中模式、原始命令，可直接对接企业 SIEM / ELK。 |
+| 🚪 可控豁免 | 仅当 cwd 显式存在 `.codex-allow-destructive` 文件时才放行，避免环境变量或全局开关被误开。 |
+| 🧯 失败安全 | 任何 hook 内部异常都默认放行（fail-open）+ 写入告警日志，**绝不会**因为 hook 自身 bug 阻塞用户的正常开发。 |
+| ♻️ 可回滚 | 删除 `~/.codex/hooks.json` 或将 `~/.codex/config.toml` 里 `codex_hooks` 设为 `false`，立即回到原生 Codex 行为，无残留。 |
+| 🚫 不替代沙箱 | 本 hook 是**额外**的一层防线，不取代 Codex `approval_policy` / `sandbox_mode`。企业部署仍应保持 Codex 默认沙箱并禁用 `--full-auto` / `--yolo`。 |
+
+> 早期文档曾出现过 `codex-safeguard` 等第三方 npm 包的"参考链接"，已在 v1.4.0 之后**全部移除**。本仓库的硬层防护**没有任何运行时第三方依赖**。
+
 ## 🔧 手动安装
 
 如果不想使用 AI Agent 或脚本，可以手动操作：

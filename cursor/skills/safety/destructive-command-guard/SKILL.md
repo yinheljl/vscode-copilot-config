@@ -7,7 +7,7 @@ description: "破坏性命令安全护栏。当将要执行可能导致数据丢
 
 > 本 skill 是**软兜底**，必须配合下列**硬兜底**才能可靠工作：
 >
-> - Codex：`codex-safeguard` PreToolUse hook（已由 `restore` 脚本自动安装）
+> - Codex：本仓库自研 `codex/hooks/pre_tool_use_guard.py` PreToolUse 钩子（仅 Python 标准库，无任何第三方依赖；由 `restore` 脚本自动安装到 `~/.codex/hooks/`，并随安装运行 26 项 self-test）
 > - 始终保持 Codex 默认沙箱（`approval_policy != "never"` 或 `sandbox_mode != "danger-full-access"`）
 > - 始终保持 Cursor / VS Code 的工作区写入限制
 > - 频繁 `git commit` + 启用 Windows 卷影副本 / 第三方实时备份
@@ -200,17 +200,23 @@ git push --force origin main
 
 ## Related Hard Layer（硬兜底）
 
-本 skill 是软层。硬层由 `restore` 脚本自动配置：
+本 skill 是软层。硬层由本仓库自研、`restore` 脚本自动配置：
 
-- **Codex**：[`zhexulong/codex-safeguard`](https://github.com/zhexulong/codex-safeguard) — `~/.codex/hooks.json` PreToolUse Bash 拦截
-- 同类参考（仅 Claude Code / OpenCode 可用）：[`kenryu42/claude-code-safety-net`](https://github.com/kenryu42/claude-code-safety-net)、[`elertan/claude-code-rm-guard`](https://github.com/elertan/claude-code-rm-guard)
+- **代码位置**：`codex/hooks/pre_tool_use_guard.py`（约 200 行 Python，**仅依赖标准库**，零 npm / 零 pip）
+- **接口契约**：使用 OpenAI Codex CLI 官方 [`PreToolUse` Hook](https://developers.openai.com/codex/hooks)，匹配 `Bash` 工具调用，命中危险模式时返回 `permissionDecision: "deny"` 拦截
+- **CI 保障**：随仓库附带 `codex/hooks/test_pre_tool_use_guard.py`，26 个 case（17 deny + 9 allow），由 `.github/workflows/validate.yml` 在每次 PR 强制运行
+- **审计日志**：每次拦截/审计自动写入 `~/.codex/hooks/logs/`
+- **可临时绕过**：仓库根目录放置 `.codex-allow-destructive` 即可豁免（仅限当前 cwd）
 
-如果硬层因任何原因未启用（npm 不可用、feature flag 未开等），请用户在终端执行：
+如果硬层因任何原因未启用（Python 缺失、feature flag 未开等），请用户在终端执行：
 
 ```bash
-# 检查 codex-safeguard 是否可用
-npx codex-safeguard doctor
-
-# 检查 hook 是否生效
+# 检查 hook 配置是否生效
 cat ~/.codex/hooks.json
+
+# 检查 feature flag 是否开启（必须有 [features] codex_hooks = true）
+cat ~/.codex/config.toml
+
+# 重新跑一次自检（应输出 26 passed）
+python ~/.codex/hooks/test_pre_tool_use_guard.py
 ```
