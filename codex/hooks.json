@@ -1,5 +1,5 @@
 {
-  "_comment": "Codex Hooks 模板：使用社区方案 dcg（Destructive Command Guard）作为硬层防护。由 restore.ps1 / restore.sh 部署到 ~/.codex/hooks.json。重要限制：Codex 官方文档明确说明 'Hooks are currently disabled on Windows'（见 https://developers.openai.com/codex/hooks），因此本 hook 仅在 macOS / Linux / WSL2 下生效。要启用，~/.codex/config.toml 中必须存在 [features] codex_hooks = true（restore 脚本会自动追加）。dcg 安装方式见 https://github.com/Dicklesworthstone/destructive_command_guard 或运行 'curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh | bash -s -- --easy-mode'。",
+  "_comment": "Codex Hooks 模板：使用社区方案 dcg（Destructive Command Guard）作为硬层防护。由 restore.sh 部署到 ~/.codex/hooks.json（仅 macOS/Linux/WSL2；Windows 上 Codex hook 引擎被官方禁用，restore.ps1 会跳过部署）。restore 脚本默认会交互询问用户是否调用 dcg 官方 install.ps1/install.sh 完成自动安装（含 SHA256 校验）。要无询问安装，加 -AutoInstallDcg / --auto-install-dcg。要启用 hook，~/.codex/config.toml 中必须存在 [features] codex_hooks = true（restore 自动追加）。",
   "_doc": "https://developers.openai.com/codex/hooks",
   "_dcg": "https://github.com/Dicklesworthstone/destructive_command_guard",
   "hooks": {

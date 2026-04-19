@@ -11,9 +11,13 @@ TARGET_ALL=true
 TARGET_VSCODE=false
 TARGET_CURSOR=false
 TARGET_CODEX=false
+AUTO_INSTALL_DCG=false
+SKIP_DCG=false
 for arg in "$@"; do
     case "$arg" in
         --force|-f) FORCE=true ;;
+        --auto-install-dcg) AUTO_INSTALL_DCG=true ;;
+        --skip-dcg) SKIP_DCG=true ;;
         --target=*)
             TARGET_ALL=false
             IFS=',' read -ra TARGETS <<< "${arg#--target=}"
@@ -108,45 +112,113 @@ copy_dir_replace() {
     cp -rf "$src" "$dst"
 }
 
+test_dcg_installed() {
+    command -v dcg >/dev/null 2>&1 && return 0
+    [ -x "$HOME/.local/bin/dcg" ] && return 0
+    return 1
+}
+
+invoke_dcg_installer() {
+    # 调用 dcg 官方 install.sh：自动选择平台二进制，强制 SHA256 校验，可选 cosign 签名验证。
+    # 我们只是"代理调用官方安装器"，不重写下载/校验逻辑（出问题归上游 dcg 维护者）。
+    local installer_url="https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
+    echo "    → 拉取并执行: curl -fsSL $installer_url | bash -s -- --easy-mode"
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "    ✗ 未安装 curl，无法运行官方安装器" >&2
+        return 1
+    fi
+    if curl -fsSL "$installer_url" | bash -s -- --easy-mode; then
+        # install.sh --easy-mode 把 ~/.local/bin 加到了 PATH（写入 ~/.bashrc / ~/.zshrc），但当前 shell 还没刷新
+        export PATH="$HOME/.local/bin:$PATH"
+        return 0
+    fi
+    return 1
+}
+
 install_codex_hooks() {
     # 硬层防护使用社区方案 dcg（Dicklesworthstone/destructive_command_guard）。
-    # 重要事实：Codex 官方文档明确 "Hooks are currently disabled on Windows"
-    # （https://developers.openai.com/codex/hooks）。本脚本只在非 Windows 平台部署 hooks.json。
+    # 设计原则：
+    #   1) 调用官方 install.sh，不自己实现下载/SHA256/cosign 校验逻辑
+    #   2) 不默默 curl|bash；首次安装需用户交互式确认（Y/N），或通过 --auto-install-dcg 旗标显式同意
+    #   3) Windows（Git Bash / MSYS / Cygwin / WSL2）下 Codex hook 引擎被官方禁用
+    #      —— WSL2 内的 Linux 命名空间其实是 Linux，但运行的 codex 二进制如果是 Windows 版仍然不调用 hook
+    #      所以这里只把 MINGW/MSYS/CYGWIN 当作 Windows 处理（WSL2 内的 uname -s = Linux，正常走 Linux 路径）
 
-    echo "  Codex Hooks（破坏性命令硬兜底）："
+    echo "  Codex 硬层（破坏性命令防护 dcg）："
 
-    # 检测平台。Linux / macOS / WSL 都视作"hook 引擎可用"。
-    local uname_s
-    uname_s=$(uname -s 2>/dev/null || echo unknown)
-    case "$uname_s" in
-        Linux*|Darwin*) ;;  # OK
-        MINGW*|MSYS*|CYGWIN*)
-            echo "  ⚠ 当前平台 = $uname_s（Git Bash / MSYS / Cygwin 视作 Windows）。" >&2
-            echo "    Codex 官方文档：'Hooks are currently disabled on Windows'。已跳过 hook 部署。" >&2
-            echo "    软层 SKILL（destructive-command-guard）仍生效，是 Windows 上唯一的兜底。" >&2
-            return
-            ;;
-        *) ;;
-    esac
-
-    # 检测 dcg 是否安装；未安装则只打印官方安装命令，不代用户 curl|bash
-    if ! command -v dcg >/dev/null 2>&1; then
-        echo "  ⚠ 未检测到 'dcg' 命令（社区方案 destructive_command_guard）。" >&2
-        echo "    硬层 hook 暂未启用。软层 SKILL 仍生效。" >&2
-        echo ""
-        echo "    要启用硬层，请自行选择以下任一方式安装 dcg："
-        echo "      1) 一键脚本（curl | bash，请自行评估供应链风险）："
-        echo "         curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh | bash -s -- --easy-mode"
-        echo "      2) 源码编译（Rust toolchain 必需）："
-        echo "         cargo install --git https://github.com/Dicklesworthstone/destructive_command_guard"
-        echo ""
-        echo "    安装完成后重跑：./restore.sh --target=codex"
+    if [ "$SKIP_DCG" = true ]; then
+        echo "    → --skip-dcg 已启用，跳过 dcg 全部步骤。软层 SKILL 仍生效。"
         return
     fi
 
-    local dcg_ver
-    dcg_ver=$(dcg --version 2>/dev/null | head -n 1 || echo "unknown")
-    echo "  ✓ 检测到 dcg：$dcg_ver"
+    local uname_s
+    uname_s=$(uname -s 2>/dev/null || echo unknown)
+    local is_windows_host=false
+    case "$uname_s" in
+        MINGW*|MSYS*|CYGWIN*) is_windows_host=true ;;
+    esac
+
+    # Step 1: 检测 dcg
+    local dcg_installed=false
+    if test_dcg_installed; then
+        dcg_installed=true
+        local dcg_ver
+        dcg_ver=$(dcg --version 2>/dev/null | head -n 1 || echo "unknown")
+        echo "    ✓ 已检测到 dcg：$dcg_ver"
+    else
+        echo "    × 未检测到 dcg（社区方案 destructive_command_guard）"
+        local should_install=false
+        if [ "$AUTO_INSTALL_DCG" = true ]; then
+            should_install=true
+            echo "    --auto-install-dcg 已启用，自动安装。"
+        elif [ "$is_windows_host" = true ]; then
+            # Windows / Git Bash 上没有 dcg.sh 安装路径，必须走 PowerShell；这里直接提示
+            echo "    ⚠ 当前是 Git Bash / MSYS / Cygwin。dcg 在 Windows 上需要走 PowerShell install.ps1。"
+            echo "      请在 PowerShell 内运行：./restore.ps1 -Target Codex -AutoInstallDcg"
+        else
+            echo ""
+            echo "    将通过官方 install.sh 安装 dcg："
+            echo "      源:    https://github.com/Dicklesworthstone/destructive_command_guard"
+            echo "      安装到: $HOME/.local/bin/dcg"
+            echo "      校验:   官方安装器内置 SHA256（强制） + cosign（如果你装了）"
+            if [ -t 0 ]; then
+                read -r -p "    是否安装 dcg？[y/N] " resp
+                case "$resp" in
+                    y|Y|yes|YES) should_install=true ;;
+                esac
+            else
+                echo "    （非交互式 stdin，未安装。下次加 --auto-install-dcg 自动安装。）"
+            fi
+        fi
+        if [ "$should_install" = true ]; then
+            if invoke_dcg_installer; then
+                if test_dcg_installed; then
+                    dcg_installed=true
+                    echo "    ✓ dcg 安装成功"
+                else
+                    echo "    ⚠ 安装脚本结束但仍找不到 dcg，请手动确认 PATH 是否包含 $HOME/.local/bin" >&2
+                fi
+            else
+                echo "    ✗ 安装失败，请查看上方输出" >&2
+            fi
+        elif [ "$is_windows_host" = false ]; then
+            echo "    → 跳过 dcg 安装。软层 SKILL 仍生效；如需启用硬层，重跑 --auto-install-dcg。"
+        fi
+    fi
+
+    # Step 2: Windows 上跳过 hooks.json 部署
+    if [ "$is_windows_host" = true ]; then
+        echo "" >&2
+        echo "    ⚠ Codex 官方文档：'Hooks are currently disabled on Windows'（https://developers.openai.com/codex/hooks）" >&2
+        echo "      → 不部署 ~/.codex/hooks.json（避免误导）" >&2
+        return
+    fi
+
+    # Step 3: 非 Windows，需要 dcg 已装才部署 hooks.json
+    if [ "$dcg_installed" = false ]; then
+        echo "    → dcg 未安装，跳过 hooks.json 部署。"
+        return
+    fi
 
     # 部署 hooks.json（直接拷贝模板，因为模板已经引用 dcg 二进制）
     if [ -f "$CODEX_HOOKS_JSON_SRC" ]; then

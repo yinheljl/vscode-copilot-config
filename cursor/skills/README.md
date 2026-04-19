@@ -57,7 +57,7 @@ Cursor 会自动识别该目录下的技能，无需额外配置。
 |------|------|------|
 | destructive-command-guard | 在执行 `rm -rf` / `Remove-Item -Recurse` / `git reset --hard` / `DROP TABLE` 等高危命令前强制二次确认 | 本仓库自研 |
 
-> 该 skill 同时部署在 `cursor/skills/`、`copilot/skills/`、`codex/skills/` 三处。Codex CLI 在 macOS / Linux / WSL2 下还可叠加社区方案 [`dcg`](https://github.com/Dicklesworthstone/destructive_command_guard) 作为 PreToolUse 硬兜底（846 stars / 49+ packs / Rust 二进制；用户自行安装，本仓库 `restore` 脚本只检测并部署 hook 配置）。Windows 上 Codex 引擎层禁用 hooks，硬层不工作，软层 SKILL 是唯一兜底。
+> 该 skill 同时部署在 `cursor/skills/`、`copilot/skills/`、`codex/skills/` 三处。本仓库 `restore.ps1` / `restore.sh` 默认会**询问**是否一并安装社区方案 [`dcg`](https://github.com/Dicklesworthstone/destructive_command_guard) 作为硬兜底（846+ stars / 49+ packs / Rust 二进制 / Windows + macOS + Linux 原生支持；通过代理调用 dcg 官方 install 脚本，含 SHA256 校验）。**Windows 上 Codex 引擎暂禁用 hooks**（OpenAI 标注为 *temporarily*），dcg.exe 仍会被装上以供其他用途，但 Codex 当前不调用——所以 Windows 主机上 Codex 的兜底只有软层 SKILL。
 
 ---
 

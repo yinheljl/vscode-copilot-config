@@ -111,8 +111,8 @@
 | `codex/AGENTS.md` | Codex 全局指令（AGENTS.md 格式，中文规范、交互反馈策略） |
 | `codex/config.toml` | Codex MCP 服务器配置模板（含 `[features] codex_hooks = true`） |
 | `codex/skills/` | **Codex 全局 Skills（9 个，与 Cursor / Copilot 同源）** |
-| `codex/hooks/README.md` | **Codex PreToolUse 硬兜底说明（指向社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)）** |
-| `codex/hooks.json` | Codex Hooks 配置模板（注册 `dcg` 二进制拦截破坏性 Bash 命令；Windows 上 Codex 引擎不调用 hook） |
+| `codex/hooks/README.md` | **Codex PreToolUse 硬兜底说明（restore 脚本自动调用社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard) 的官方安装器）** |
+| `codex/hooks.json` | Codex Hooks 配置模板（注册 `dcg` 二进制拦截破坏性 Bash 命令；macOS/Linux 部署，Windows 上 Codex 引擎暂禁用 hook 故跳过） |
 | `cursor/mcp.json` | Cursor MCP 服务器配置模板（含路径占位符） |
 | `cursor/rules/` | Cursor 全局 Rules（`.mdc` 格式） |
 | `cursor/skills/` | Cursor Skills（9 个，与 Copilot / Codex 共享） |
@@ -168,15 +168,15 @@
 
 ## 🛡️ 安全防护（破坏性命令双层兜底）
 
-**背景**：Codex 等 AI agent 在 Windows 上有过整盘删除事故（典型如 `powershell -c "cmd /c rmdir /s /q F:\foo"` 中 PowerShell × cmd 的转义符冲突，实际执行成 `rmdir /s /q F:\` 整盘清空）。本仓库提供**软 + 硬**双层防护。
+**背景**：Codex 等 AI agent 在 Windows 上有过整盘删除事故（典型如 `powershell -c "cmd /c rmdir /s /q F:\foo"` 中 PowerShell × cmd 的转义符冲突，实际执行成 `rmdir /s /q F:\` 整盘清空）。本仓库提供**软 + 硬**双层防护，**两层都由 restore 脚本自动配置**。
 
-> ### ⚠️ Windows 用户必读
+> ### ⚠️ Windows 用户必读（不影响一键配置，但要知情）
 >
-> OpenAI 官方 [Codex Hooks 文档](https://developers.openai.com/codex/hooks) 第一行明确说明：
+> OpenAI 官方 [Codex Hooks 文档](https://developers.openai.com/codex/hooks) 当前明确：
 >
-> > **"Hooks are currently disabled on Windows."**
+> > **"Hooks are currently disabled on Windows."**（标注为 *temporarily*）
 >
-> 因此**所有 Codex hook 在 Windows 主机上当前不生效**（这是 Codex 引擎层面的限制，与具体 hook 实现无关）。Windows 用户的兜底**只有下方"软层 SKILL"**。等待官方解禁后，硬层会自动可用。
+> **本仓库的处理方式**：在 Windows 上，`restore.ps1` 仍然会**询问并帮你装 dcg.exe**（因为它作为命令行工具、以及被 Cursor / Claude Code / Copilot CLI 等其他 AI agent 调用都仍然有用，且 OpenAI 解禁后会立即生效），但**不会**部署 `~/.codex/hooks.json`——避免误导你以为 Codex 当前已被保护。等官方解禁，重跑 `restore.ps1` 即自动启用。
 
 ### 软层 — `safety/destructive-command-guard` Skill（跨 3 IDE / 跨平台）
 
@@ -189,25 +189,32 @@
 | 💰 成本 | description 约 200 tokens 注入 system prompt，完整 SKILL.md 仅在触发时加载 |
 | ⚠️ 局限 | 属于 prompt 层，模型在极端情况（上下文严重压缩、`--full-auto` / `--yolo` / `danger-full-access`）可能绕过 |
 
-### 硬层 — 社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)（仅 macOS / Linux / WSL2 下的 Codex CLI）
+### 硬层 — 社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)（restore 脚本一键配置）
 
-经过对比 OpenAI 官方文档与社区方案，本仓库**不再自研 hook 脚本**，改为引用社区项目 [`Dicklesworthstone/destructive_command_guard`（dcg）](https://github.com/Dicklesworthstone/destructive_command_guard)：
+经过对比 OpenAI 官方文档与社区方案，本仓库**不自研 hook 脚本**，改为引用社区项目 [`Dicklesworthstone/destructive_command_guard`（dcg）](https://github.com/Dicklesworthstone/destructive_command_guard)：
 
 | 维度 | 详情 |
 |------|------|
-| ⭐ 关注度 | GitHub **846 stars**（截至 2026-04），最近 release `v0.4.0`（2026-02），活跃维护中 |
+| ⭐ 关注度 | GitHub **846+ stars**（截至 2026-04），最近 release `v0.4.0`（2026-04），活跃维护中 |
 | 🛠 实现 | Rust 二进制（SIMD 加速，sub-millisecond latency）+ codecov 覆盖率徽章 |
 | 📦 规则覆盖 | **49+ 安全 packs**：`core.git` / `core.filesystem` 默认开；`database.postgresql` / `kubernetes.kubectl` / `cloud.aws` / `terraform` / `containers.docker` / `secrets.vault` 等可选开 |
 | 🔗 跨 agent | 同一份配置同时支持 Codex CLI / Claude Code / Gemini CLI / Copilot CLI / Cursor / OpenCode / Aider |
+| 🌍 跨平台 | Linux x86_64/aarch64、macOS Intel/Apple Silicon、**Windows x86_64**（原生 .exe） |
+| 🔐 安装校验 | 官方 `install.ps1` / `install.sh` 强制 SHA256；可选 cosign / Sigstore 签名 |
 | 🚪 绕过机制 | `DCG_BYPASS=1`、`dcg allow-once <code>`、`dcg allowlist add` 三档可控豁免 |
 | 🧯 失败模式 | 默认 fail-open（任何超时 / 解析错误都放行，不阻塞开发） |
 | 📜 透明 | 所有规则在 `dcg packs --verbose` 可枚举；自定义 packs 用 YAML 写在 `.dcg/packs/` |
 
-启用流程（`restore.sh` 自动检测，**不会代用户安装** dcg）：
+**restore 脚本的 dcg 自动配置流程**：
 
-1. 用户自行运行 `curl -fsSL .../install.sh | bash -s -- --easy-mode`（请自行评估供应链风险），或 `cargo install --git ...`
-2. 重跑 `bash restore.sh --target=codex`，脚本检测到 `dcg` 命令后自动部署 `~/.codex/hooks.json` + 在 `~/.codex/config.toml` 启用 `codex_hooks` 实验 flag
-3. 重启 Codex 会话
+1. **检测**：`dcg` / `dcg.exe` 是否已在 PATH 或 `~/.local/bin/` 下
+2. **询问** `[y/N]`：未安装时弹出确认（你必须明确同意才会动手；或 `-AutoInstallDcg` / `--auto-install-dcg` 跳过询问；或 `-SkipDcg` / `--skip-dcg` 完全跳过）
+3. **下载并校验**：
+   - **macOS / Linux**：直接代理调用上游官方 `install.sh`（含 SHA256 校验 + 可选 cosign 签名）
+   - **Windows**：因为上游 `install.ps1` 在 Windows PowerShell 5.1（系统默认 shell）下有兼容 bug（`Invoke-WebRequest -UseBasicParsing` 返回 byte[] 而非 string，导致它的 `.Trim()` 抛异常）—— `restore.ps1` 用 PS 5.1 兼容代码**复刻同样的流程**：从 GitHub Releases 拉 `dcg-x86_64-pc-windows-msvc.zip` + 上游 `.sha256` 强制校验 → 解压 → 写 `~/.local/bin/dcg.exe` → 加用户 PATH。**信任锚点不变**（zip 与 .sha256 都是 dcg 上游发布的 GitHub Release artifact）
+4. **macOS / Linux**：自动部署 `~/.codex/hooks.json` + 在 `~/.codex/config.toml` 启用 `[features] codex_hooks = true`
+5. **Windows**：装好 dcg.exe 后跳过 hooks.json 部署（Codex 引擎暂禁用 hook，等官方解禁后重跑即自动启用）
+6. 重启 Codex 会话
 
 详见 [`codex/hooks/README.md`](codex/hooks/README.md)。
 
@@ -218,19 +225,24 @@
 | 维护方 | 本仓库 | [@Dicklesworthstone](https://github.com/Dicklesworthstone)（个人） |
 | 代码量 | 9 个 SKILL.md（其中 1 个 destructive-command-guard） | Rust 二进制（49+ packs） |
 | 测试覆盖 | 由本仓库 CI 校验 description schema | 上游 codecov 覆盖率徽章公开可查 |
-| 供应链 | 仅 Markdown 文本，零运行时依赖 | Rust 二进制由用户自行安装；MIT 协议；源码可审 |
+| 供应链 | 仅 Markdown 文本，零运行时依赖 | Rust 二进制；MIT 协议；源码可审；官方安装器强制 SHA256 |
+| 安装责任 | 本仓库脚本直接复制文件 | macOS/Linux：代理调用上游 `install.sh`（信任完全归上游）。Windows：因上游 `install.ps1` 在 PS 5.1 下有兼容 bug，本仓库用 PS 5.1 兼容代码**复刻**同样流程（信任锚点不变：仍下载上游 zip + 用上游 `.sha256` 校验） |
 | **Bus factor** | 本仓库维护者团队 | **1（作者明确声明不接受外部 PR）** ← 必须了解的风险 |
-| 升级方式 | `git pull` + `restore` | `dcg self-update` 或重新运行 `install.sh` |
-| 影响面 | 跨 IDE 跨平台 | 仅 macOS/Linux/WSL2 上的 Codex / Claude / Gemini / Copilot CLI |
+| 升级方式 | `git pull` + `restore` | `dcg update` 或重跑 `restore -AutoInstallDcg` |
+| 影响面 | 跨 IDE 跨平台 | 全平台 dcg.exe 命令行可用；Codex hook 当前仅 macOS / Linux / WSL2 内 Linux Codex 生效 |
 
 **为什么用 dcg 而不是自研**：
 - 自研 hook 等同重新发明轮子；dcg 已有 49 个 packs 覆盖 git / 数据库 / k8s / 云厂商 / IaC 等，单仓库难以维护到这个广度
 - dcg 上游做了 SIMD 加速、heredoc 扫描、内联脚本扫描（如 `python -c "shutil.rmtree(...)"`），这些复杂场景自研难以做对
 - 标准化协议：dcg 同时跨 7 个 AI agent 兼容，便于团队混用
 
+**为什么不直接 `irm | iex` / `curl | bash` 自动装**：
+- 用户的供应链信任决策必须由用户自己做。restore 默认弹 `[y/N]`；明确同意（或显式 `-AutoInstallDcg` 旗标）后再下载
+- 即使同意，也是**调用上游官方安装器**——SHA256 校验、cosign 验证、PATH 管理 都是 dcg 官方逻辑负责，本仓库不接管这些环节的责任
+
 **为什么仍然保留软层 SKILL**：
-- Windows 上 dcg 不可用（Codex 引擎限制），SKILL 是唯一兜底
-- SKILL 在用户机器上零依赖、零安装，重启 IDE 即生效
+- 万一 dcg 仓库哪天消失（Bus factor 1），软层 SKILL 仍然 100% 可用
+- Windows Codex 当前 hook 不生效，SKILL 是唯一兜底
 - 软+硬双层在 macOS/Linux 上互为冗余，符合 defense-in-depth 原则
 
 ## 🔧 手动安装
@@ -276,6 +288,8 @@ uv sync
 .\restore.ps1 -Target Codex          # 仅配置 Codex
 .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
 .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
+.\restore.ps1 -AutoInstallDcg        # 未装 dcg 时直接调用官方 install.ps1，不再交互询问
+.\restore.ps1 -SkipDcg               # 跳过 dcg 安装与硬层 hook 部署
 ```
 
 ```bash
@@ -285,6 +299,8 @@ bash restore.sh --force              # 完全覆盖模式
 bash restore.sh --target=codex       # 仅配置 Codex
 bash restore.sh --target=vscode,cursor  # 仅配置 VS Code 和 Cursor
 bash restore.sh --force --target=codex  # 仅覆盖 Codex 配置
+bash restore.sh --auto-install-dcg   # 未装 dcg 时直接调用官方 install.sh，不再交互询问
+bash restore.sh --skip-dcg           # 跳过 dcg 安装与硬层 hook 部署
 ```
 
 ## ❓ 常见问题

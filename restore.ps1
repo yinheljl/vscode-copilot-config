@@ -29,11 +29,15 @@
     .\restore.ps1 -Target Codex          # 仅配置 Codex
     .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
     .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
+    .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时直接调用官方 install.ps1，不再交互询问
+    .\restore.ps1 -SkipDcg               # 跳过 dcg 安装与硬层 hook 部署
 #>
 param(
     [switch]$DryRun,
     [switch]$Force,
     [switch]$SkipFeedbackMCP,
+    [switch]$AutoInstallDcg,
+    [switch]$SkipDcg,
     [ValidateSet("All", "VSCode", "Cursor", "Codex")]
     [string[]]$Target = @("All")
 )
@@ -335,23 +339,245 @@ function Copy-DirReplace($src, $dst) {
     Copy-Item $src $dst -Recurse -Force
 }
 
+function Test-DcgInstalled {
+    if (Get-Command dcg -ErrorAction SilentlyContinue) { return $true }
+    if (Get-Command dcg.exe -ErrorAction SilentlyContinue) { return $true }
+    $defaultBin = Join-Path $env:USERPROFILE ".local\bin\dcg.exe"
+    if (Test-Path $defaultBin) { return $true }
+    return $false
+}
+
+function Test-WindowsHost {
+    # 兼容 PS 5.1（无 $IsWindows 自动变量）和 PS 7+
+    if ($env:OS -eq 'Windows_NT') { return $true }
+    $v = Get-Variable -Name IsWindows -ValueOnly -ErrorAction SilentlyContinue
+    if ($null -ne $v -and $v) { return $true }
+    return $false
+}
+
+function Get-WebString([string]$url) {
+    # PS 5.1 与 PS 7 兼容：拉远端文本。-UseBasicParsing 在 PS 5.1 下 .Content 可能是 byte[]。
+    $wr = Invoke-WebRequest -Uri $url -UseBasicParsing -ErrorAction Stop
+    $content = $wr.Content
+    if ($content -is [byte[]]) {
+        return [System.Text.Encoding]::UTF8.GetString($content)
+    }
+    return [string]$content
+}
+
+function Invoke-DcgInstaller {
+    # 复刻 dcg 官方 install.ps1 的核心步骤（PS 5.1 兼容）：
+    #   1. GitHub API 解析最新 release tag
+    #   2. 下载 dcg-x86_64-pc-windows-msvc.zip
+    #   3. 用上游 .sha256 文件校验（信任链与官方一致）
+    #   4. 解压 → 复制到 ~/.local/bin/dcg.exe
+    #   5. 把 ~/.local/bin 加到用户 PATH
+    # 之所以不直接调用上游 install.ps1：在 Windows PowerShell 5.1 下 -UseBasicParsing 返回 byte[]
+    # 导致上游 .Content.Trim() 抛 "Checksum file not found"。本仓库只是"复刻流程"，
+    # 真正的信任锚点（GitHub release zip 与上游 .sha256）完全没变。
+    $owner = "Dicklesworthstone"
+    $repo  = "destructive_command_guard"
+    $target = "x86_64-pc-windows-msvc"
+    $userBin = Join-Path $env:USERPROFILE ".local\bin"
+
+    if (-not [Environment]::Is64BitOperatingSystem) {
+        Write-Warning "    当前不是 64-bit Windows，dcg 不支持。"
+        return $false
+    }
+
+    # Step 1: 解析最新版本
+    Write-Host "    → 查询最新 release..." -ForegroundColor DarkGray
+    $version = $null
+    try {
+        $json = Get-WebString "https://api.github.com/repos/$owner/$repo/releases/latest"
+        $rel = $json | ConvertFrom-Json
+        $version = $rel.tag_name
+    } catch {
+        Write-Warning "    GitHub API 调用失败: $_"
+        return $false
+    }
+    if (-not $version) {
+        Write-Warning "    无法解析最新 release tag。"
+        return $false
+    }
+    Write-Host "    → 最新版本: $version" -ForegroundColor DarkGray
+
+    $zipName = "dcg-$target.zip"
+    $zipUrl  = "https://github.com/$owner/$repo/releases/download/$version/$zipName"
+    $shaUrl  = "$zipUrl.sha256"
+
+    $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dcg_install_$(Get-Random)"
+    New-Item -ItemType Directory -Path $tmpRoot -Force | Out-Null
+    $zipPath = Join-Path $tmpRoot $zipName
+
+    try {
+        # Step 2: 下载 zip
+        Write-Host "    → 下载: $zipUrl" -ForegroundColor DarkGray
+        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop
+
+        # Step 3: 校验 SHA256
+        Write-Host "    → 拉取上游 .sha256 并校验..." -ForegroundColor DarkGray
+        $shaText = Get-WebString $shaUrl
+        $expected = ($shaText -split '\s+')[0].Trim().ToLower()
+        if (-not $expected -or $expected.Length -ne 64) {
+            Write-Warning "    上游 .sha256 内容异常: '$shaText'"
+            return $false
+        }
+        $actual = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
+        if ($actual -ne $expected) {
+            Write-Warning "    SHA256 不匹配！expected=$expected actual=$actual"
+            return $false
+        }
+        Write-Host "    ✓ SHA256 校验通过 ($expected)" -ForegroundColor Green
+
+        # Step 4: 解压并安装
+        Write-Host "    → 解压并复制到 $userBin\dcg.exe" -ForegroundColor DarkGray
+        $extractDir = Join-Path $tmpRoot "extract"
+        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $extractDir)
+        $bin = Get-ChildItem -Path $extractDir -Recurse -Filter "dcg.exe" | Select-Object -First 1
+        if (-not $bin) {
+            Write-Warning "    zip 内未找到 dcg.exe"
+            return $false
+        }
+        if (-not (Test-Path $userBin)) { New-Item -ItemType Directory -Path $userBin -Force | Out-Null }
+        Copy-Item $bin.FullName (Join-Path $userBin "dcg.exe") -Force
+
+        # Step 5: 加 PATH（持久化到 User scope）
+        $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+        if (-not $userPath) { $userPath = "" }
+        if ($userPath -notlike "*$userBin*") {
+            $newPath = if ($userPath) { "$userPath;$userBin" } else { $userBin }
+            [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
+            Write-Host "    ✓ 已把 $userBin 加入用户 PATH" -ForegroundColor Green
+        }
+        # 当前 session 也立即可用
+        if ($env:PATH -notlike "*$userBin*") { $env:PATH = "$env:PATH;$userBin" }
+        return $true
+    } catch {
+        Write-Warning "    安装失败: $_"
+        return $false
+    } finally {
+        Remove-Item $tmpRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
     # 硬层防护使用社区方案 dcg（Dicklesworthstone/destructive_command_guard）。
-    # 重要事实：Codex 官方文档明确说明 "Hooks are currently disabled on Windows"
-    # （https://developers.openai.com/codex/hooks）。本函数在 Windows 上仅打印警告并跳过部署。
+    # 设计原则：
+    #   1) 调用官方 install.ps1，不自己实现下载/SHA256/cosign 校验逻辑（责任清晰：出问题归上游）
+    #   2) 不默默 irm|iex；首次安装需用户交互式确认（Y/N），或通过 -AutoInstallDcg 旗标显式同意
+    #   3) Codex 官方文档当前明确："Hooks are currently disabled on Windows"
+    #      （https://developers.openai.com/codex/hooks）—— 但 dcg.exe 仍然有用：
+    #         · 命令行工具：dcg test "rm -rf /"
+    #         · 同时被 Cursor / Claude Code / Copilot CLI 等其他 agent 调用
+    #         · 未来 Codex 在 Windows 解禁时立即生效
+    #      所以本函数在 Windows 上仍然装 dcg.exe，只跳过 ~/.codex/hooks.json 的部署
 
-    Write-Host "  Codex Hooks（破坏性命令硬兜底）：" -ForegroundColor DarkCyan
+    Write-Host "  Codex 硬层（破坏性命令防护 dcg）：" -ForegroundColor DarkCyan
 
-    # Windows 上 Codex hook 引擎被官方禁用，无论 dcg 是否安装都不会被触发
-    Write-Warning "  ⚠ 当前操作系统 = Windows。Codex 官方文档：'Hooks are currently disabled on Windows'。"
-    Write-Warning "  → 已跳过 hook 部署。软层 SKILL（destructive-command-guard）仍生效，是 Windows 上唯一的兜底。"
-    Write-Warning "  → 在 macOS / Linux / WSL2 上跑 restore.sh 时硬层会自动启用（前提是 dcg 已安装）。"
-    Write-Host ""
-    Write-Host "  若想在 WSL 内启用硬层：" -ForegroundColor DarkGray
-    Write-Host "    1) 进入 WSL，安装 dcg：curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh | bash -s -- --easy-mode" -ForegroundColor DarkGray
-    Write-Host "    2) 在 WSL 内 clone 本仓库并跑 bash restore.sh" -ForegroundColor DarkGray
-    Write-Host "  详情见 codex/hooks/README.md" -ForegroundColor DarkGray
-    return
+    if ($SkipDcg) {
+        Write-Host "    → -SkipDcg 已启用，跳过 dcg 全部步骤。软层 SKILL 仍生效。" -ForegroundColor DarkGray
+        return
+    }
+
+    $isWindowsHost = Test-WindowsHost
+
+    # Step 1: 检测 dcg
+    $alreadyInstalled = Test-DcgInstalled
+    if ($alreadyInstalled) {
+        $verLine = ""
+        $prevPref = $ErrorActionPreference
+        $ErrorActionPreference = "SilentlyContinue"
+        try {
+            $rawOut = (& dcg --version 2>&1 | Out-String)
+            $m = [regex]::Match($rawOut, 'v\d+\.\d+\.\d+(?:[-+][\w\.\-]+)?')
+            if ($m.Success) { $verLine = $m.Value }
+        } catch {} finally {
+            $ErrorActionPreference = $prevPref
+        }
+        if (-not $verLine) { $verLine = "(已安装)" }
+        Write-Host "    ✓ 已检测到 dcg：$verLine" -ForegroundColor Green
+    } else {
+        Write-Host "    × 未检测到 dcg（社区方案 destructive_command_guard）" -ForegroundColor Yellow
+
+        $shouldInstall = $false
+        if ($DryRun) {
+            Write-Host "    [DryRun] 将调用官方 install.ps1 下载 dcg.exe 到 ~/.local/bin/" -ForegroundColor Yellow
+        } elseif ($AutoInstallDcg) {
+            $shouldInstall = $true
+            Write-Host "    -AutoInstallDcg 已启用，自动安装。" -ForegroundColor Cyan
+        } else {
+            Write-Host ""
+            Write-Host "    将通过官方 install.ps1 安装 dcg：" -ForegroundColor Cyan
+            Write-Host "      源:    https://github.com/Dicklesworthstone/destructive_command_guard"
+            Write-Host "      安装到: $env:USERPROFILE\.local\bin\dcg.exe"
+            Write-Host "      校验:   官方安装器内置 SHA256（强制） + cosign（如果你装了）"
+            $resp = Read-Host "    是否安装 dcg？[y/N]"
+            if ($resp -match '^(y|Y|yes|YES)$') { $shouldInstall = $true }
+        }
+
+        if ($shouldInstall) {
+            if (Invoke-DcgInstaller) {
+                Start-Sleep -Milliseconds 200
+                $alreadyInstalled = Test-DcgInstalled
+                if ($alreadyInstalled) {
+                    Write-Host "    ✓ dcg 安装成功" -ForegroundColor Green
+                } else {
+                    Write-Warning "    安装脚本结束但仍找不到 dcg，请手动确认 PATH 是否包含 $env:USERPROFILE\.local\bin"
+                }
+            }
+        } elseif (-not $DryRun) {
+            Write-Host "    → 跳过 dcg 安装。软层 SKILL 仍生效；如需启用硬层，重跑 -AutoInstallDcg。" -ForegroundColor DarkGray
+        }
+    }
+
+    # Step 2: Windows 上跳过 hooks.json 部署
+    if ($isWindowsHost) {
+        Write-Host ""
+        Write-Warning "    ⚠ Codex 官方文档：'Hooks are currently disabled on Windows'（https://developers.openai.com/codex/hooks）"
+        Write-Warning "      → 不部署 ~/.codex/hooks.json（避免误导你以为有保护）。"
+        if ($alreadyInstalled) {
+            Write-Host "      但 dcg.exe 仍可独立使用：" -ForegroundColor DarkGray
+            Write-Host "        · 命令行测试：dcg test ""rm -rf /""" -ForegroundColor DarkGray
+            Write-Host "        · Cursor / Claude Code / Copilot CLI 等其他 agent 仍可调用" -ForegroundColor DarkGray
+            Write-Host "        · OpenAI 解禁 Windows hook 后将自动生效" -ForegroundColor DarkGray
+        }
+        return
+    }
+
+    # Step 3: 非 Windows，部署 hooks.json + config.toml feature flag
+    if (-not $alreadyInstalled) {
+        Write-Host "    → dcg 未安装，跳过 hooks.json 部署。" -ForegroundColor DarkGray
+        return
+    }
+    if ($DryRun) {
+        Write-Host "    [DryRun] $jsonSrcPath -> $jsonDstPath" -ForegroundColor Yellow
+        Write-Host "    [DryRun] 在 $configTomlPath 追加 [features] codex_hooks = true" -ForegroundColor Yellow
+        return
+    }
+    if (Test-Path $jsonSrcPath) {
+        $dstDir = Split-Path $jsonDstPath -Parent
+        if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Path $dstDir -Force | Out-Null }
+        if ((Test-Path $jsonDstPath) -and -not $Force) {
+            Backup-File $jsonDstPath
+        }
+        Copy-Item $jsonSrcPath $jsonDstPath -Force
+        Write-Host "    + ~/.codex/hooks.json（指向 dcg）"
+    }
+    if (Test-Path $configTomlPath) {
+        $cfg = Get-Content $configTomlPath -Raw -Encoding UTF8
+        if ($cfg -notmatch '(?m)^\s*codex_hooks\s*=\s*true\b') {
+            Backup-File $configTomlPath
+            if ($cfg -match '(?m)^\[features\]\s*$') {
+                $cfg = [regex]::Replace($cfg, '(?m)^\[features\]\s*$', "[features]`r`ncodex_hooks = true", 1)
+            } else {
+                $cfg = $cfg.TrimEnd() + "`r`n`r`n[features]`r`ncodex_hooks = true`r`n"
+            }
+            Write-Utf8NoBomFile $configTomlPath $cfg
+            Write-Host "    + config.toml 启用 [features] codex_hooks = true"
+        }
+    }
 }
 
 function Merge-CodexConfig($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir) {
@@ -535,7 +761,8 @@ if ($hasCodex) {
     } elseif ($DryRun) {
         Write-Host "  [DryRun] $codexAgentsSrc -> $codexAgentsDst"
         Write-Host "  [DryRun] $codexSkillsSrc -> $codexSkillsDst"
-        Write-Host "  [DryRun] $codexHooksJsonSrc -> $codexHooksJsonDst (Windows 上跳过部署)"
+        # Install-CodexHooks 在 DryRun 下也会被调用，由它自己打印更精确的预览
+        Install-CodexHooks $codexHooksJsonSrc $codexHooksJsonDst $codexConfigDst
     } else {
         if (-not (Test-Path $codexDst)) {
             New-Item -ItemType Directory -Path $codexDst -Force | Out-Null
@@ -734,6 +961,15 @@ foreach ($c in $checks) {
         Write-Host "  + $($c.Name)" -ForegroundColor Green
     } else {
         Write-Host "  - $($c.Name) (未找到)" -ForegroundColor Red
+    }
+}
+
+# dcg 二进制独立检查（不强制要求；Windows 上 Codex 暂不调用 hook，但 dcg.exe 作为 CLI 工具仍可用）
+if ($hasCodex -and -not $SkipDcg) {
+    if (Test-DcgInstalled) {
+        Write-Host "  + dcg 二进制（社区方案 destructive_command_guard）" -ForegroundColor Green
+    } else {
+        Write-Host "  ~ dcg 未安装（硬层未启用；软层 SKILL 仍生效）" -ForegroundColor Yellow
     }
 }
 

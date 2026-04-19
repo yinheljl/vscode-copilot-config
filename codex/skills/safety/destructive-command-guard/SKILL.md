@@ -5,11 +5,12 @@ description: "破坏性命令安全护栏。当将要执行可能导致数据丢
 
 # Destructive Command Guard（破坏性命令安全护栏）
 
-> 本 skill 是**软兜底**（任何 IDE / 任何平台都生效）。在 macOS / Linux / WSL2 上的 Codex CLI 还可叠加**硬兜底**：
+> 本 skill 是**软兜底**（任何 IDE / 任何平台都生效）。可叠加**硬兜底**：
 >
-> - 硬层使用社区方案 [`Dicklesworthstone/destructive_command_guard`（dcg）](https://github.com/Dicklesworthstone/destructive_command_guard)，846 stars / 49+ packs / Rust 二进制 / sub-millisecond latency
+> - 硬层使用社区方案 [`Dicklesworthstone/destructive_command_guard`（dcg）](https://github.com/Dicklesworthstone/destructive_command_guard)，846+ stars / 49+ packs / Rust 二进制 / sub-millisecond latency / 跨 Linux/macOS/Windows 原生二进制
+> - 本仓库的 `restore.ps1` / `restore.sh` 会**自动询问安装** dcg（调用上游官方 install.ps1/install.sh，含 SHA256 校验）
 > - dcg 与 Codex 沙箱**完全独立**：在 `--full-auto` / `--yolo` / `sandbox_mode = "danger-full-access"` 等"完全开放"模式下仍然生效（命令在进入 shell 前被拦截）
-> - **重要**：OpenAI 官方文档明确"Hooks are currently disabled on Windows"，因此 Windows 上**只有本 skill 这一层兜底**
+> - **Windows 上 Codex hook 暂禁用**（OpenAI 官方文档原话 "temporarily disabled"）。dcg.exe 仍会被 restore 装上，可作命令行工具用 + 被其他 AI agent 调用，但 Codex 当前不会触发——所以**Windows 主机上 Codex 的兜底只有本 skill 这一层**
 > - 通用兜底：频繁 `git commit` + 启用 Windows 卷影副本 / Time Machine / 第三方实时备份
 
 ---
@@ -200,17 +201,18 @@ git push --force origin main
 
 ## Related Hard Layer（硬兜底）
 
-本 skill 是软层。硬层使用社区方案 [`dcg`](https://github.com/Dicklesworthstone/destructive_command_guard)，由 `restore.sh` 在 macOS / Linux / WSL2 上自动检测并配置：
+本 skill 是软层。硬层使用社区方案 [`dcg`](https://github.com/Dicklesworthstone/destructive_command_guard)，由 `restore.ps1` / `restore.sh` 自动配置：
 
-- **实现方**：[@Dicklesworthstone](https://github.com/Dicklesworthstone)（个人维护，846 stars，最新 release 2026-04，活跃中）
+- **实现方**：[@Dicklesworthstone](https://github.com/Dicklesworthstone)（个人维护，846+ stars，最新 release v0.4.0/2026-04，活跃中）
 - **协议**：使用 OpenAI Codex CLI 官方 [`PreToolUse` Hook](https://developers.openai.com/codex/hooks)，匹配 `Bash` 工具调用，命中规则时返回 `permissionDecision: "deny"`
 - **规则覆盖**：49+ packs（git / 文件系统 / databases / k8s / docker / cloud / IaC / secrets 等），上游 codecov 覆盖率徽章公开
+- **跨平台**：Linux x86_64/aarch64、macOS Intel/Apple Silicon、**Windows x86_64**（原生 .exe）
 - **绕过机制**：`DCG_BYPASS=1 <cmd>` / `dcg allow-once <code>` / `dcg allowlist add <rule>`
-- **本仓库的角色**：只提供 `~/.codex/hooks.json` 模板（指向 `dcg` 二进制）和 `~/.codex/config.toml` 的 `codex_hooks = true` flag。dcg 二进制由用户自行 `curl | bash` 或 `cargo install` 安装，本仓库**不代为安装**
+- **本仓库的角色**：restore 脚本检测 dcg 是否安装；未装时弹 `[y/N]` 确认（或显式 `-AutoInstallDcg` / `--auto-install-dcg` 旗标）。macOS/Linux 直接代理调用上游 `install.sh`；Windows 因上游 `install.ps1` 在 PS 5.1 下有兼容 bug，restore.ps1 用 PS 5.1 兼容代码复刻同样流程，**信任锚点不变**（仍下载 dcg 上游发布的 zip + 用上游 `.sha256` 强制校验，本仓库不签名、不 host 二进制）
 
-**Windows 用户**：上述硬层在 Windows 主机的 Codex 桌面端 / CLI 上**当前不被调用**（Codex 引擎层禁用 hooks）。请确保本 SKILL（软层）始终启用，并依赖通用兜底（频繁 commit + 卷影副本）。
+**Windows 用户**：上述硬层在 Windows 主机的 Codex CLI 上**当前不被调用**（Codex 引擎层暂禁用 hooks，OpenAI 标注为 *temporarily*）。restore.ps1 仍会装 dcg.exe 但不会部署 `~/.codex/hooks.json`——dcg.exe 仍可作命令行工具用、被 Cursor / Claude Code / Copilot CLI 等其他 agent 调用，且 OpenAI 解禁后重跑 restore 即生效。Windows 上 Codex 的兜底当前**只有本 SKILL 这一层**，请确保启用，并依赖通用兜底（频繁 commit + 卷影副本）。
 
-**验证 hook 是否生效**（仅 macOS / Linux / WSL2）：
+**验证 hook 是否生效**（macOS / Linux / WSL2 内 Linux Codex）：
 
 ```bash
 which dcg && dcg --version          # 检查 dcg 是否在 PATH
