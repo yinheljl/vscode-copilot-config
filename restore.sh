@@ -108,126 +108,119 @@ copy_dir_replace() {
     cp -rf "$src" "$dst"
 }
 
-resolve_python_for_hooks() {
-    # 寻找一个可被 Codex hook 调用的 Python 解释器（优先 venv，再回落到系统 python3）
-    local candidates=(
-        "$HOME/MCP/Interactive-Feedback-MCP/.venv/bin/python"
-        "$HOME/.local/bin/python3"
-    )
-    for p in "${candidates[@]}"; do
-        [ -x "$p" ] && echo "$p" && return 0
-    done
-    if command -v python3 &>/dev/null; then
-        command -v python3
-        return 0
-    fi
-    return 1
-}
-
 install_codex_hooks() {
-    [ ! -d "$CODEX_HOOKS_SRC" ] && return
+    # 硬层防护使用社区方案 dcg（Dicklesworthstone/destructive_command_guard）。
+    # 重要事实：Codex 官方文档明确 "Hooks are currently disabled on Windows"
+    # （https://developers.openai.com/codex/hooks）。本脚本只在非 Windows 平台部署 hooks.json。
 
-    local hook_python
-    if ! hook_python=$(resolve_python_for_hooks); then
-        echo "  ! 未找到可用的 Python 解释器，跳过 Codex hook 硬兜底（软层 skill 仍有效）" >&2
-        echo "    安装 python3 后重跑 ./restore.sh --target=codex 即可启用硬兜底" >&2
+    echo "  Codex Hooks（破坏性命令硬兜底）："
+
+    # 检测平台。Linux / macOS / WSL 都视作"hook 引擎可用"。
+    local uname_s
+    uname_s=$(uname -s 2>/dev/null || echo unknown)
+    case "$uname_s" in
+        Linux*|Darwin*) ;;  # OK
+        MINGW*|MSYS*|CYGWIN*)
+            echo "  ⚠ 当前平台 = $uname_s（Git Bash / MSYS / Cygwin 视作 Windows）。" >&2
+            echo "    Codex 官方文档：'Hooks are currently disabled on Windows'。已跳过 hook 部署。" >&2
+            echo "    软层 SKILL（destructive-command-guard）仍生效，是 Windows 上唯一的兜底。" >&2
+            return
+            ;;
+        *) ;;
+    esac
+
+    # 检测 dcg 是否安装；未安装则只打印官方安装命令，不代用户 curl|bash
+    if ! command -v dcg >/dev/null 2>&1; then
+        echo "  ⚠ 未检测到 'dcg' 命令（社区方案 destructive_command_guard）。" >&2
+        echo "    硬层 hook 暂未启用。软层 SKILL 仍生效。" >&2
+        echo ""
+        echo "    要启用硬层，请自行选择以下任一方式安装 dcg："
+        echo "      1) 一键脚本（curl | bash，请自行评估供应链风险）："
+        echo "         curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh | bash -s -- --easy-mode"
+        echo "      2) 源码编译（Rust toolchain 必需）："
+        echo "         cargo install --git https://github.com/Dicklesworthstone/destructive_command_guard"
+        echo ""
+        echo "    安装完成后重跑：./restore.sh --target=codex"
         return
     fi
 
-    # 1) 部署 hook 脚本
-    mkdir -p "$CODEX_HOOKS_DST"
-    cp -rf "$CODEX_HOOKS_SRC/"* "$CODEX_HOOKS_DST/"
-    chmod +x "$CODEX_HOOKS_DST"/*.py 2>/dev/null || true
-    echo "  + hooks/ (PreToolUse 守卫脚本)"
+    local dcg_ver
+    dcg_ver=$(dcg --version 2>/dev/null | head -n 1 || echo "unknown")
+    echo "  ✓ 检测到 dcg：$dcg_ver"
 
-    # 2) 自检
-    local test_script="$CODEX_HOOKS_DST/test_pre_tool_use_guard.py"
-    if [ -f "$test_script" ]; then
-        if "$hook_python" "$test_script" >/tmp/codex_hook_test.log 2>&1; then
-            echo "  + hook 自检 26 个用例全部通过"
-        else
-            echo "  ! hook 自检失败，请查看 /tmp/codex_hook_test.log" >&2
-        fi
-    fi
-
-    # 3) 渲染 hooks.json 模板 → 部署 ~/.codex/hooks.json
+    # 部署 hooks.json（直接拷贝模板，因为模板已经引用 dcg 二进制）
     if [ -f "$CODEX_HOOKS_JSON_SRC" ]; then
-        local hook_script="$CODEX_HOOKS_DST/pre_tool_use_guard.py"
-        local rendered
-        if command -v python3 &>/dev/null; then
-            rendered=$(SRC="$CODEX_HOOKS_JSON_SRC" PY="$hook_python" SCR="$hook_script" python3 - <<'PY'
-import os, json
-with open(os.environ['SRC'], 'r', encoding='utf-8') as f:
-    s = f.read()
-def esc(v): return json.dumps(v)[1:-1]
-s = s.replace('__GUARD_PYTHON__', esc(os.environ['PY']))
-s = s.replace('__GUARD_SCRIPT__', esc(os.environ['SCR']))
-print(s)
-PY
-)
-        else
-            rendered=$(cat "$CODEX_HOOKS_JSON_SRC")
-            rendered="${rendered//__GUARD_PYTHON__/$hook_python}"
-            rendered="${rendered//__GUARD_SCRIPT__/$hook_script}"
-        fi
-
-        if [ -f "$CODEX_HOOKS_JSON_DST" ] && [ "$FORCE" = false ] && command -v python3 &>/dev/null; then
+        if [ -f "$CODEX_HOOKS_JSON_DST" ] && [ "$FORCE" = false ]; then
             cp "$CODEX_HOOKS_JSON_DST" "${CODEX_HOOKS_JSON_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-            if NEW_DATA="$rendered" DST="$CODEX_HOOKS_JSON_DST" python3 - <<'PY' 2>/dev/null
-import json, os, sys
-new = json.loads(os.environ['NEW_DATA'])
+            if command -v python3 >/dev/null 2>&1; then
+                # 增量合并：保留用户已有 PreToolUse，去掉旧的 dcg/destructive-command-guard 条目，再追加新的
+                if NEW_SRC="$CODEX_HOOKS_JSON_SRC" DST="$CODEX_HOOKS_JSON_DST" python3 - <<'PY' 2>/dev/null
+import json, os, re
+src = os.environ['NEW_SRC']
 dst = os.environ['DST']
+with open(src, 'r', encoding='utf-8') as f:
+    new = json.load(f)
 with open(dst, 'r', encoding='utf-8') as f:
     existing = json.load(f)
 existing.setdefault('hooks', {})
 existing['hooks'].setdefault('PreToolUse', [])
-marker = '[destructive-command-guard]'
+markers = ('[dcg]', '[destructive-command-guard]')
 kept = []
 for grp in existing['hooks']['PreToolUse']:
     is_guard = False
     for h in grp.get('hooks', []):
-        if marker in str(h.get('statusMessage', '')):
-            is_guard = True; break
+        sm = str(h.get('statusMessage', ''))
+        cmd = str(h.get('command', ''))
+        if any(m in sm for m in markers) or re.search(r'\bdcg\b', cmd) or 'pre_tool_use_guard' in cmd:
+            is_guard = True
+            break
     if not is_guard:
         kept.append(grp)
 existing['hooks']['PreToolUse'] = kept + new['hooks']['PreToolUse']
 with open(dst, 'w', encoding='utf-8') as f:
     json.dump(existing, f, indent=2, ensure_ascii=False)
 PY
-            then
-                echo "  + hooks.json (增量合并 PreToolUse)"
+                then
+                    echo "  + hooks.json（增量合并 PreToolUse → dcg）"
+                else
+                    cp -f "$CODEX_HOOKS_JSON_SRC" "$CODEX_HOOKS_JSON_DST"
+                    echo "  + hooks.json（合并失败，已覆盖）"
+                fi
             else
-                printf '%s\n' "$rendered" > "$CODEX_HOOKS_JSON_DST"
-                echo "  + hooks.json (合并失败，已覆盖)"
+                cp -f "$CODEX_HOOKS_JSON_SRC" "$CODEX_HOOKS_JSON_DST"
+                echo "  + hooks.json（无 python3，已直接覆盖）"
             fi
         else
             [ -f "$CODEX_HOOKS_JSON_DST" ] && cp "$CODEX_HOOKS_JSON_DST" "${CODEX_HOOKS_JSON_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-            printf '%s\n' "$rendered" > "$CODEX_HOOKS_JSON_DST"
-            echo "  + hooks.json $([ -f "$CODEX_HOOKS_JSON_DST" ] && echo "(覆盖)" || echo "(新建)")"
+            cp -f "$CODEX_HOOKS_JSON_SRC" "$CODEX_HOOKS_JSON_DST"
+            echo "  + hooks.json（$([ -f "$CODEX_HOOKS_JSON_DST" ] && echo "覆盖" || echo "新建")）"
         fi
     fi
 
-    # 4) 确保 config.toml 启用 codex_hooks
+    # 确保 config.toml 启用 codex_hooks（实验 feature flag）
     local cfg_dst="$CODEX_DST/config.toml"
     if [ -f "$cfg_dst" ]; then
         if ! grep -qE '^\s*codex_hooks\s*=\s*true\b' "$cfg_dst"; then
             cp "$cfg_dst" "${cfg_dst}.bak_$(date +%Y%m%d_%H%M%S)"
             if grep -qE '^\[features\]' "$cfg_dst"; then
-                # 已有 [features] 段，缺 key
-                # 用临时文件 + sed 兼容 macOS / GNU
-                python3 - <<PY
-import re
-p = r'''$cfg_dst'''
+                if command -v python3 >/dev/null 2>&1; then
+                    CFG="$cfg_dst" python3 - <<'PY'
+import re, os
+p = os.environ['CFG']
 with open(p, 'r', encoding='utf-8') as f:
     s = f.read()
 s = re.sub(r'(?m)^\[features\]\s*$', '[features]\ncodex_hooks = true', s, count=1)
 with open(p, 'w', encoding='utf-8') as f:
     f.write(s)
 PY
+                else
+                    # 没 python3 就直接 append（双栈也行，codex 取最后一个生效）
+                    printf '\ncodex_hooks = true\n' >> "$cfg_dst"
+                fi
             else
                 printf '\n[features]\ncodex_hooks = true\n' >> "$cfg_dst"
             fi
-            echo "  + config.toml (追加 [features] codex_hooks = true)"
+            echo "  + config.toml（追加 [features] codex_hooks = true）"
         fi
     fi
 }
@@ -501,7 +494,7 @@ if [ "$HAS_CODEX" = true ]; then
                 echo "  + skills/ (增量)"
             fi
         fi
-        # hooks/ + hooks.json + config.toml feature flag （硬兜底）
+        # hooks.json + config.toml feature flag（硬兜底，使用社区方案 dcg；Windows / 未装 dcg 自动跳过）
         install_codex_hooks
     fi
 fi
@@ -678,8 +671,7 @@ if [ "$HAS_CODEX" = true ]; then
     CHECKS="$CHECKS ~/.codex/config.toml:$CODEX_DST/config.toml"
     CHECKS="$CHECKS ~/.codex/skills/:$CODEX_SKILLS_DST"
     CHECKS="$CHECKS ~/.codex/skills/safety/destructive-command-guard/:$CODEX_SKILLS_DST/safety/destructive-command-guard"
-    CHECKS="$CHECKS ~/.codex/hooks/pre_tool_use_guard.py:$CODEX_HOOKS_DST/pre_tool_use_guard.py"
-    CHECKS="$CHECKS ~/.codex/hooks.json:$CODEX_HOOKS_JSON_DST"
+    CHECKS="$CHECKS ~/.codex/hooks.json(可选):$CODEX_HOOKS_JSON_DST"
 fi
 CHECKS="$CHECKS Interactive-Feedback-MCP:$FEEDBACK_MCP_DIR"
 

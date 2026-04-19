@@ -5,13 +5,12 @@ description: "破坏性命令安全护栏。当将要执行可能导致数据丢
 
 # Destructive Command Guard（破坏性命令安全护栏）
 
-> 本 skill 是**软兜底**，配合下列**硬兜底**可获得最强保护：
+> 本 skill 是**软兜底**（任何 IDE / 任何平台都生效）。在 macOS / Linux / WSL2 上的 Codex CLI 还可叠加**硬兜底**：
 >
-> - Codex：本仓库自研 `codex/hooks/pre_tool_use_guard.py` PreToolUse 钩子（仅 Python 标准库，无任何第三方依赖；由 `restore` 脚本自动安装到 `~/.codex/hooks/`，并随安装运行 26 项 self-test）
-> - 该 hook 与 Codex 沙箱**完全独立**：在 `--full-auto` / `--yolo` / `sandbox_mode = "danger-full-access"` 等"完全开放"模式下**仍然 100% 生效**（命令在进入 shell 前被拦截）—— 这正是 hook 设计的核心价值
-> - 频繁 `git commit` + 启用 Windows 卷影副本 / 第三方实时备份（适用任何模式）
->
-> 沙箱只是可选的"额外一层"，**本仓库不强制要求开启沙箱**。
+> - 硬层使用社区方案 [`Dicklesworthstone/destructive_command_guard`（dcg）](https://github.com/Dicklesworthstone/destructive_command_guard)，846 stars / 49+ packs / Rust 二进制 / sub-millisecond latency
+> - dcg 与 Codex 沙箱**完全独立**：在 `--full-auto` / `--yolo` / `sandbox_mode = "danger-full-access"` 等"完全开放"模式下仍然生效（命令在进入 shell 前被拦截）
+> - **重要**：OpenAI 官方文档明确"Hooks are currently disabled on Windows"，因此 Windows 上**只有本 skill 这一层兜底**
+> - 通用兜底：频繁 `git commit` + 启用 Windows 卷影副本 / Time Machine / 第三方实时备份
 
 ---
 
@@ -197,39 +196,25 @@ git push --force origin main
 - 重要操作前用 `AskQuestion` 工具二次确认
 - 不知道时**停下来问**，宁可慢一点，绝不删错
 
-## 长任务后的磁盘卫生（防积压）
-
-执行涉及大量构建 / 模型训练 / 包安装的长任务后，主动告诉用户运行 cleanup 脚本：
-
-- Windows：`.\cleanup.ps1`（DryRun，先看）→ `.\cleanup.ps1 -Apply`
-- Linux/macOS：`bash cleanup.sh` → `bash cleanup.sh --apply`
-
-可清理：`node_modules` / `__pycache__` / `.pytest_cache` / `.next` / `.nuxt` / `dist` / `build` / `target` / `.gradle` 等可重建缓存。
-全局缓存（`~/.cache/huggingface`、`~/.npm/_cacache`、`docker system prune`）由用户决定，脚本只报告大小。
-
-> 这些清理命令本身**不会**被本 skill 或硬层 hook 拦截（已加白名单），可直接放心调用。
-
 ---
 
 ## Related Hard Layer（硬兜底）
 
-本 skill 是软层。硬层由本仓库自研、`restore` 脚本自动配置：
+本 skill 是软层。硬层使用社区方案 [`dcg`](https://github.com/Dicklesworthstone/destructive_command_guard)，由 `restore.sh` 在 macOS / Linux / WSL2 上自动检测并配置：
 
-- **代码位置**：`codex/hooks/pre_tool_use_guard.py`（约 200 行 Python，**仅依赖标准库**，零 npm / 零 pip）
-- **接口契约**：使用 OpenAI Codex CLI 官方 [`PreToolUse` Hook](https://developers.openai.com/codex/hooks)，匹配 `Bash` 工具调用，命中危险模式时返回 `permissionDecision: "deny"` 拦截
-- **CI 保障**：随仓库附带 `codex/hooks/test_pre_tool_use_guard.py`，42 个 case（19 deny + 23 allow，**显式覆盖 `~/.cache/*` / `node_modules` / `pip cache purge` / `docker prune` 等清理命令的白名单**，防止误伤导致磁盘被占满），由 `.github/workflows/validate.yml` 在每次 PR 强制运行
-- **审计日志**：每次拦截/审计自动写入 `~/.codex/hooks/logs/`
-- **可临时绕过**：仓库根目录放置 `.codex-allow-destructive` 即可豁免（仅限当前 cwd）
+- **实现方**：[@Dicklesworthstone](https://github.com/Dicklesworthstone)（个人维护，846 stars，最新 release 2026-04，活跃中）
+- **协议**：使用 OpenAI Codex CLI 官方 [`PreToolUse` Hook](https://developers.openai.com/codex/hooks)，匹配 `Bash` 工具调用，命中规则时返回 `permissionDecision: "deny"`
+- **规则覆盖**：49+ packs（git / 文件系统 / databases / k8s / docker / cloud / IaC / secrets 等），上游 codecov 覆盖率徽章公开
+- **绕过机制**：`DCG_BYPASS=1 <cmd>` / `dcg allow-once <code>` / `dcg allowlist add <rule>`
+- **本仓库的角色**：只提供 `~/.codex/hooks.json` 模板（指向 `dcg` 二进制）和 `~/.codex/config.toml` 的 `codex_hooks = true` flag。dcg 二进制由用户自行 `curl | bash` 或 `cargo install` 安装，本仓库**不代为安装**
 
-如果硬层因任何原因未启用（Python 缺失、feature flag 未开等），请用户在终端执行：
+**Windows 用户**：上述硬层在 Windows 主机的 Codex 桌面端 / CLI 上**当前不被调用**（Codex 引擎层禁用 hooks）。请确保本 SKILL（软层）始终启用，并依赖通用兜底（频繁 commit + 卷影副本）。
+
+**验证 hook 是否生效**（仅 macOS / Linux / WSL2）：
 
 ```bash
-# 检查 hook 配置是否生效
-cat ~/.codex/hooks.json
-
-# 检查 feature flag 是否开启（必须有 [features] codex_hooks = true）
-cat ~/.codex/config.toml
-
-# 重新跑一次自检（应输出 26 passed）
-python ~/.codex/hooks/test_pre_tool_use_guard.py
+which dcg && dcg --version          # 检查 dcg 是否在 PATH
+cat ~/.codex/hooks.json             # 检查 hook 已注册
+cat ~/.codex/config.toml | grep codex_hooks   # 必须存在 codex_hooks = true
+dcg explain "rm -rf /"              # 应输出"会被拦截"的解释
 ```

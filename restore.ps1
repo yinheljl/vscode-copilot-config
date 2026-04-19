@@ -335,128 +335,23 @@ function Copy-DirReplace($src, $dst) {
     Copy-Item $src $dst -Recurse -Force
 }
 
-function Resolve-PythonForHooks {
-    # 寻找一个可被 Codex hook 调用的 Python 解释器（优先 venv）
-    $candidates = @(
-        (Join-Path $env:USERPROFILE "MCP\Interactive-Feedback-MCP\.venv\Scripts\python.exe"),
-        (Join-Path $env:USERPROFILE ".local\bin\python.exe")
-    )
-    foreach ($p in $candidates) {
-        if (Test-Path $p) { return $p }
-    }
-    foreach ($name in @("py", "python3", "python")) {
-        $found = (Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1).Source
-        if ($found) {
-            # 排除 Microsoft Store 假 python
-            if ($found -notmatch "WindowsApps\\python") { return $found }
-        }
-    }
-    return $null
-}
+function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
+    # 硬层防护使用社区方案 dcg（Dicklesworthstone/destructive_command_guard）。
+    # 重要事实：Codex 官方文档明确说明 "Hooks are currently disabled on Windows"
+    # （https://developers.openai.com/codex/hooks）。本函数在 Windows 上仅打印警告并跳过部署。
 
-function Install-CodexHooks($srcDir, $dstDir, $jsonSrcPath, $jsonDstPath, $pythonPath, $configTomlPath) {
-    if (-not (Test-Path $srcDir)) { return }
+    Write-Host "  Codex Hooks（破坏性命令硬兜底）：" -ForegroundColor DarkCyan
 
-    if (-not $pythonPath) {
-        Write-Warning "  未找到可用的 Python 解释器，跳过 Codex hook 硬兜底（软层 skill 仍有效）"
-        Write-Warning "  → 安装 Python 后重跑 .\restore.ps1 -Target Codex 即可启用硬兜底"
-        return
-    }
-
-    # 1) 部署 hook 脚本
-    if (-not (Test-Path $dstDir)) {
-        New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
-    }
-    Copy-Item "$srcDir\*" $dstDir -Recurse -Force
-    Write-Host "  + hooks/ (PreToolUse 守卫脚本)"
-
-    # 2) 跑一次自检
-    $testScript = Join-Path $dstDir "test_pre_tool_use_guard.py"
-    if (Test-Path $testScript) {
-        $prevPref = $ErrorActionPreference
-        $ErrorActionPreference = "Continue"
-        try {
-            $testOutput = & $pythonPath $testScript 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warning "  hook 自检失败！输出："
-                $testOutput | ForEach-Object { Write-Warning "    $_" }
-            } else {
-                Write-Host "  + hook 自检 26 个用例全部通过" -ForegroundColor DarkGreen
-            }
-        } finally {
-            $ErrorActionPreference = $prevPref
-        }
-    }
-
-    # 3) 渲染 hooks.json 模板（替换占位符）→ 部署到 ~/.codex/hooks.json
-    if (Test-Path $jsonSrcPath) {
-        $hookScriptPath = Join-Path $dstDir "pre_tool_use_guard.py"
-        $content = Get-Content $jsonSrcPath -Raw -Encoding UTF8
-        $content = $content.Replace('__GUARD_PYTHON__', (Escape-JsonString $pythonPath))
-        $content = $content.Replace('__GUARD_SCRIPT__', (Escape-JsonString $hookScriptPath))
-
-        if ((Test-Path $jsonDstPath) -and -not $Force) {
-            # 增量：尝试合并 PreToolUse 数组
-            Backup-File $jsonDstPath
-            try {
-                $existing = Get-Content $jsonDstPath -Raw -Encoding UTF8 | ConvertFrom-Json
-                $newObj   = $content | ConvertFrom-Json
-                if (-not ($existing.PSObject.Properties.Name -contains "hooks")) {
-                    $existing | Add-Member -MemberType NoteProperty -Name "hooks" -Value ([PSCustomObject]@{}) -Force
-                }
-                if (-not ($existing.hooks.PSObject.Properties.Name -contains "PreToolUse")) {
-                    $existing.hooks | Add-Member -MemberType NoteProperty -Name "PreToolUse" -Value @() -Force
-                }
-                # 用名字或 statusMessage 去重
-                $newPre  = @($newObj.hooks.PreToolUse)
-                $oldPre  = @($existing.hooks.PreToolUse)
-                $marker  = "[destructive-command-guard]"
-                $kept    = @($oldPre | Where-Object {
-                    $g = $_
-                    $hasGuard = $false
-                    if ($g.PSObject.Properties.Name -contains "hooks") {
-                        foreach ($h in $g.hooks) {
-                            if ($h.PSObject.Properties.Name -contains "statusMessage" `
-                                -and $h.statusMessage -like "*$marker*") {
-                                $hasGuard = $true; break
-                            }
-                        }
-                    }
-                    -not $hasGuard
-                })
-                $existing.hooks.PreToolUse = @($kept + $newPre)
-                $json = $existing | ConvertTo-Json -Depth 20 -Compress
-                $json = Format-Json $json 2
-                Write-Utf8NoBomFile $jsonDstPath $json
-                Write-Host "  + hooks.json (增量合并 PreToolUse)"
-            } catch {
-                Write-Warning "  现有 hooks.json 解析失败，改为覆盖：$($_.Exception.Message)"
-                Write-Utf8NoBomFile $jsonDstPath $content
-                Write-Host "  + hooks.json (已覆盖)"
-            }
-        } else {
-            if (Test-Path $jsonDstPath) { Backup-File $jsonDstPath }
-            Write-Utf8NoBomFile $jsonDstPath $content
-            Write-Host "  + hooks.json (新建)"
-        }
-    }
-
-    # 4) 确保 config.toml 启用 codex_hooks
-    if ($configTomlPath -and (Test-Path $configTomlPath)) {
-        $cfg = Get-Content $configTomlPath -Raw -Encoding UTF8
-        if ($cfg -notmatch '(?m)^\s*codex_hooks\s*=\s*true\b') {
-            Backup-File $configTomlPath
-            if ($cfg -match '(?m)^\[features\]') {
-                # 已有 [features] 段，缺 key
-                $cfg = [regex]::Replace($cfg, '(?m)^\[features\]\s*$', "[features]`r`ncodex_hooks = true")
-            } else {
-                # 追加新段
-                $cfg = $cfg.TrimEnd() + "`r`n`r`n[features]`r`ncodex_hooks = true`r`n"
-            }
-            Write-Utf8NoBomFile $configTomlPath $cfg
-            Write-Host "  + config.toml (追加 [features] codex_hooks = true)"
-        }
-    }
+    # Windows 上 Codex hook 引擎被官方禁用，无论 dcg 是否安装都不会被触发
+    Write-Warning "  ⚠ 当前操作系统 = Windows。Codex 官方文档：'Hooks are currently disabled on Windows'。"
+    Write-Warning "  → 已跳过 hook 部署。软层 SKILL（destructive-command-guard）仍生效，是 Windows 上唯一的兜底。"
+    Write-Warning "  → 在 macOS / Linux / WSL2 上跑 restore.sh 时硬层会自动启用（前提是 dcg 已安装）。"
+    Write-Host ""
+    Write-Host "  若想在 WSL 内启用硬层：" -ForegroundColor DarkGray
+    Write-Host "    1) 进入 WSL，安装 dcg：curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh | bash -s -- --easy-mode" -ForegroundColor DarkGray
+    Write-Host "    2) 在 WSL 内 clone 本仓库并跑 bash restore.sh" -ForegroundColor DarkGray
+    Write-Host "  详情见 codex/hooks/README.md" -ForegroundColor DarkGray
+    return
 }
 
 function Merge-CodexConfig($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir) {
@@ -640,8 +535,7 @@ if ($hasCodex) {
     } elseif ($DryRun) {
         Write-Host "  [DryRun] $codexAgentsSrc -> $codexAgentsDst"
         Write-Host "  [DryRun] $codexSkillsSrc -> $codexSkillsDst"
-        Write-Host "  [DryRun] $codexHooksSrc  -> $codexHooksDst"
-        Write-Host "  [DryRun] $codexHooksJsonSrc -> $codexHooksJsonDst"
+        Write-Host "  [DryRun] $codexHooksJsonSrc -> $codexHooksJsonDst (Windows 上跳过部署)"
     } else {
         if (-not (Test-Path $codexDst)) {
             New-Item -ItemType Directory -Path $codexDst -Force | Out-Null
@@ -662,9 +556,8 @@ if ($hasCodex) {
                 Write-Host "  + skills/ (增量)"
             }
         }
-        # hooks/ + hooks.json + config.toml feature flag （硬兜底）
-        $hookPython = Resolve-PythonForHooks
-        Install-CodexHooks $codexHooksSrc $codexHooksDst $codexHooksJsonSrc $codexHooksJsonDst $hookPython $codexConfigDst
+        # hooks.json（硬兜底，使用社区方案 dcg；Windows 上自动跳过）
+        Install-CodexHooks $codexHooksJsonSrc $codexHooksJsonDst $codexConfigDst
     }
 }
 
@@ -833,9 +726,7 @@ if ($hasCodex) {
         @{ Name = "~/.codex/AGENTS.md"; Path = $codexAgentsDst },
         @{ Name = "~/.codex/config.toml"; Path = $codexConfigDst },
         @{ Name = "~/.codex/skills/"; Path = $codexSkillsDst },
-        @{ Name = "~/.codex/skills/safety/destructive-command-guard/"; Path = (Join-Path $codexSkillsDst "safety\destructive-command-guard") },
-        @{ Name = "~/.codex/hooks/pre_tool_use_guard.py"; Path = (Join-Path $codexHooksDst "pre_tool_use_guard.py") },
-        @{ Name = "~/.codex/hooks.json"; Path = $codexHooksJsonDst }
+        @{ Name = "~/.codex/skills/safety/destructive-command-guard/"; Path = (Join-Path $codexSkillsDst "safety\destructive-command-guard") }
     ) + $checks
 }
 foreach ($c in $checks) {

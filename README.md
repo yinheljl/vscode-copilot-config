@@ -111,8 +111,8 @@
 | `codex/AGENTS.md` | Codex 全局指令（AGENTS.md 格式，中文规范、交互反馈策略） |
 | `codex/config.toml` | Codex MCP 服务器配置模板（含 `[features] codex_hooks = true`） |
 | `codex/skills/` | **Codex 全局 Skills（9 个，与 Cursor / Copilot 同源）** |
-| `codex/hooks/` | **Codex PreToolUse 硬兜底 Python 脚本 + 自检测试** |
-| `codex/hooks.json` | Codex Hooks 配置模板（注册 `pre_tool_use_guard.py` 拦截破坏性 Bash 命令） |
+| `codex/hooks/README.md` | **Codex PreToolUse 硬兜底说明（指向社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)）** |
+| `codex/hooks.json` | Codex Hooks 配置模板（注册 `dcg` 二进制拦截破坏性 Bash 命令；Windows 上 Codex 引擎不调用 hook） |
 | `cursor/mcp.json` | Cursor MCP 服务器配置模板（含路径占位符） |
 | `cursor/rules/` | Cursor 全局 Rules（`.mdc` 格式） |
 | `cursor/skills/` | Cursor Skills（9 个，与 Copilot / Codex 共享） |
@@ -168,75 +168,70 @@
 
 ## 🛡️ 安全防护（破坏性命令双层兜底）
 
-**背景**：Codex 等 AI agent 在 Windows 上有过整盘删除事故（典型如 `powershell -c "cmd /c rmdir /s /q F:\foo"` 中 PowerShell × cmd 的转义符冲突，实际执行成 `rmdir /s /q F:\` 整盘清空）。本仓库提供**软 + 硬**双层防护，由 `restore` 脚本一键部署：
+**背景**：Codex 等 AI agent 在 Windows 上有过整盘删除事故（典型如 `powershell -c "cmd /c rmdir /s /q F:\foo"` 中 PowerShell × cmd 的转义符冲突，实际执行成 `rmdir /s /q F:\` 整盘清空）。本仓库提供**软 + 硬**双层防护。
 
-### 软层 — `safety/destructive-command-guard` Skill（三 IDE 同源）
+> ### ⚠️ Windows 用户必读
+>
+> OpenAI 官方 [Codex Hooks 文档](https://developers.openai.com/codex/hooks) 第一行明确说明：
+>
+> > **"Hooks are currently disabled on Windows."**
+>
+> 因此**所有 Codex hook 在 Windows 主机上当前不生效**（这是 Codex 引擎层面的限制，与具体 hook 实现无关）。Windows 用户的兜底**只有下方"软层 SKILL"**。等待官方解禁后，硬层会自动可用。
+
+### 软层 — `safety/destructive-command-guard` Skill（跨 3 IDE / 跨平台）
 
 通过 `SKILL.md` 的 `description` 中的 trigger 关键词，让 Cursor / Copilot / Codex 在生成 `rm` / `del` / `rmdir` / `Remove-Item` / `git reset --hard` / `DROP TABLE` 等命令前自动加载并强制 `AskQuestion` 二次确认。
 
-特点：跨平台、跨 IDE、零依赖、重启 IDE 即生效。
-局限：属于 prompt 层，模型在极端情况（上下文严重压缩、`--full-auto` / `--yolo`）可能绕过 —— 这正是下方硬层 hook 存在的原因。
-
-### 硬层 — Codex PreToolUse Hook（仅 Codex CLI）
-
-通过 [Codex 原生 hooks](https://developers.openai.com/codex/hooks) 在 Bash 工具调用**进入 shell 之前**同步执行 `~/.codex/hooks/pre_tool_use_guard.py`。命中 deny 规则直接 `permissionDecision: deny`，模型完全无法绕过（除非用户手动卸载或在仓库根放置 `.codex-allow-destructive` 文件）。
-
 | 项 | 详情 |
 |----|------|
-| 实现 | 纯 Python 标准库，零外部依赖 |
-| 已覆盖 | rm -rf / + ~ + $HOME + 系统目录、Windows 删盘根、PowerShell × cmd 嵌套、`git push --force`（无 `--force-with-lease`）、mkfs / dd to /dev、DROP DATABASE / TRUNCATE、terraform destroy、kubectl delete namespace 等 |
-| 自检 | `python codex/hooks/test_pre_tool_use_guard.py` —— 26 个用例，由 `restore` 脚本自动跑一次 |
-| 审计 | 所有触发记录到 `~/.codex/hooks/logs/guard-YYYYMM.log`（每行 JSON） |
-| 启用前提 | Codex feature flag `codex_hooks = true`（restore 脚本自动追加到 `~/.codex/config.toml`） |
+| ✅ 平台 | Windows / macOS / Linux 全部生效 |
+| ✅ IDE | Cursor / VS Code Copilot / Codex 三家同源 |
+| 💰 成本 | description 约 200 tokens 注入 system prompt，完整 SKILL.md 仅在触发时加载 |
+| ⚠️ 局限 | 属于 prompt 层，模型在极端情况（上下文严重压缩、`--full-auto` / `--yolo` / `danger-full-access`）可能绕过 |
+
+### 硬层 — 社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)（仅 macOS / Linux / WSL2 下的 Codex CLI）
+
+经过对比 OpenAI 官方文档与社区方案，本仓库**不再自研 hook 脚本**，改为引用社区项目 [`Dicklesworthstone/destructive_command_guard`（dcg）](https://github.com/Dicklesworthstone/destructive_command_guard)：
+
+| 维度 | 详情 |
+|------|------|
+| ⭐ 关注度 | GitHub **846 stars**（截至 2026-04），最近 release `v0.4.0`（2026-02），活跃维护中 |
+| 🛠 实现 | Rust 二进制（SIMD 加速，sub-millisecond latency）+ codecov 覆盖率徽章 |
+| 📦 规则覆盖 | **49+ 安全 packs**：`core.git` / `core.filesystem` 默认开；`database.postgresql` / `kubernetes.kubectl` / `cloud.aws` / `terraform` / `containers.docker` / `secrets.vault` 等可选开 |
+| 🔗 跨 agent | 同一份配置同时支持 Codex CLI / Claude Code / Gemini CLI / Copilot CLI / Cursor / OpenCode / Aider |
+| 🚪 绕过机制 | `DCG_BYPASS=1`、`dcg allow-once <code>`、`dcg allowlist add` 三档可控豁免 |
+| 🧯 失败模式 | 默认 fail-open（任何超时 / 解析错误都放行，不阻塞开发） |
+| 📜 透明 | 所有规则在 `dcg packs --verbose` 可枚举；自定义 packs 用 YAML 写在 `.dcg/packs/` |
+
+启用流程（`restore.sh` 自动检测，**不会代用户安装** dcg）：
+
+1. 用户自行运行 `curl -fsSL .../install.sh | bash -s -- --easy-mode`（请自行评估供应链风险），或 `cargo install --git ...`
+2. 重跑 `bash restore.sh --target=codex`，脚本检测到 `dcg` 命令后自动部署 `~/.codex/hooks.json` + 在 `~/.codex/config.toml` 启用 `codex_hooks` 实验 flag
+3. 重启 Codex 会话
 
 详见 [`codex/hooks/README.md`](codex/hooks/README.md)。
 
-### 企业级可信任性（Why this is safe to ship）
+### 企业级可信任性（诚实披露）
 
-本仓库**不引入任何第三方 npm 包、第三方 Python 包、二进制下载或网络副作用**。完整的供应链与审计能力如下：
+| 维度 | 软层 SKILL（本仓库自研） | 硬层 dcg（社区方案） |
+|------|--------------------|------------------|
+| 维护方 | 本仓库 | [@Dicklesworthstone](https://github.com/Dicklesworthstone)（个人） |
+| 代码量 | 9 个 SKILL.md（其中 1 个 destructive-command-guard） | Rust 二进制（49+ packs） |
+| 测试覆盖 | 由本仓库 CI 校验 description schema | 上游 codecov 覆盖率徽章公开可查 |
+| 供应链 | 仅 Markdown 文本，零运行时依赖 | Rust 二进制由用户自行安装；MIT 协议；源码可审 |
+| **Bus factor** | 本仓库维护者团队 | **1（作者明确声明不接受外部 PR）** ← 必须了解的风险 |
+| 升级方式 | `git pull` + `restore` | `dcg self-update` 或重新运行 `install.sh` |
+| 影响面 | 跨 IDE 跨平台 | 仅 macOS/Linux/WSL2 上的 Codex / Claude / Gemini / Copilot CLI |
 
-| 维度 | 说明 |
-|------|------|
-| 🔐 供应链 | 硬层 hook 全部源码（`codex/hooks/pre_tool_use_guard.py`，约 200 行）在本仓库内，**仅依赖 Python 标准库**（`json`、`re`、`sys`、`subprocess`、`pathlib`、`datetime`），不通过 npm / pip / curl 拉取任何外部代码。安装过程不联网。 |
-| 👀 可审计 | 拦截规则（DENY / ASK 正则表）在脚本头部集中声明，企业 security team 可在合并前 diff review 全部规则。 |
-| 🤝 接口契约 | 使用 OpenAI Codex CLI 官方 [`PreToolUse` Hook](https://developers.openai.com/codex/hooks) 协议（公开文档，长期维护），不绑定任何第三方维护者。 |
-| ✅ CI 质量门禁 | 每次 PR 在 GitHub Actions 自动运行 `codex/hooks/test_pre_tool_use_guard.py`（19 deny + 23 allow，共 42 个用例，专门覆盖 `~/.cache/*` / `node_modules` / `pip cache purge` / `docker prune` 等清理命令的"白名单"防回归），任何规则改动必须先通过自检。 |
-| 📜 完整审计日志 | 所有命中拦截/审计的命令以单行 JSON 写入 `~/.codex/hooks/logs/guard-YYYYMM.log`，含时间戳、cwd、命中模式、原始命令，可直接对接企业 SIEM / ELK。 |
-| 🚪 可控豁免 | 仅当 cwd 显式存在 `.codex-allow-destructive` 文件时才放行，避免环境变量或全局开关被误开。 |
-| 🧯 失败安全 | 任何 hook 内部异常都默认放行（fail-open）+ 写入告警日志，**绝不会**因为 hook 自身 bug 阻塞用户的正常开发。 |
-| ♻️ 可回滚 | 删除 `~/.codex/hooks.json` 或将 `~/.codex/config.toml` 里 `codex_hooks` 设为 `false`，立即回到原生 Codex 行为，无残留。 |
-| 🛡️ 与沙箱独立 | 本 hook 由 Codex 在进程内、shell 之前同步调用，**与沙箱完全解耦**。在 `--full-auto` / `--yolo` / `sandbox_mode = "danger-full-access"` 等完全开放模式下**仍然 100% 生效**——这正是 hook 相比沙箱的核心优势：沙箱限制了能力，hook 只拦截真正危险的命令，开发体验无损。本仓库**不强制要求保留沙箱**，由用户自行决策。 |
+**为什么用 dcg 而不是自研**：
+- 自研 hook 等同重新发明轮子；dcg 已有 49 个 packs 覆盖 git / 数据库 / k8s / 云厂商 / IaC 等，单仓库难以维护到这个广度
+- dcg 上游做了 SIMD 加速、heredoc 扫描、内联脚本扫描（如 `python -c "shutil.rmtree(...)"`），这些复杂场景自研难以做对
+- 标准化协议：dcg 同时跨 7 个 AI agent 兼容，便于团队混用
 
-> 早期文档曾出现过 `codex-safeguard` 等第三方 npm 包的"参考链接"，已在 v1.4.0 之后**全部移除**。本仓库的硬层防护**没有任何运行时第三方依赖**。
-
-## 💾 磁盘卫生（防 AI 任务把磁盘塞满）
-
-AI Agent 长任务常会留下大量"可重建"缓存：`node_modules` / `__pycache__` / `.next` / `dist` / `target` / `~/.cache/huggingface` / Docker 镜像等。模型未必会主动清理，时间一长真的会把磁盘耗光。
-
-**本仓库提供 `cleanup.ps1` / `cleanup.sh` 一键扫描清理脚本**，关键设计：
-
-- **默认 DryRun**：不加 `-Apply` / `--apply` **绝不删任何文件**，只打印每个缓存目录的大小与合计可释放空间
-- **白名单匹配**：只匹配 16 个明确的可重建缓存目录名（`node_modules`、`__pycache__`、`.pytest_cache`、`.mypy_cache`、`.ruff_cache`、`.next`、`.nuxt`、`.turbo`、`.svelte-kit`、`.parcel-cache`、`dist`、`build`、`out`、`.gradle`、`target`、`.tox`），**绝不会动源码 / 配置 / `.git`**
-- **全局缓存只看不删**：`~/.cache`、`~/.npm/_cacache`、`pip cache`、`cargo registry`、Docker 等只显示大小并打印推荐命令，由用户自己决定是否清理（避免脚本承担不可逆风险）
-- **与 hook 协同**：脚本里的 `Remove-Item -Recurse -Force ./node_modules` 这类命令本身也会经过 Codex hook，已加入 self-test 白名单，不会被误拦
-- **可控深度**：`-MaxDepth 5` 默认，避免在大目录树里扫到天荒地老
-
-```powershell
-# Windows / PowerShell
-.\cleanup.ps1                                     # 当前目录 DryRun
-.\cleanup.ps1 -Apply                              # 真正执行
-.\cleanup.ps1 -Path D:\projects -Apply            # 清理 D:\projects 全树
-.\cleanup.ps1 -Path D:\projects -SkipGlobal       # 不报告全局缓存
-```
-
-```bash
-# Linux / macOS / WSL / Git Bash
-bash cleanup.sh                                   # DryRun
-bash cleanup.sh --apply                           # 真正执行
-bash cleanup.sh --path /home/me/projects --apply
-```
-
-**典型用法**：在每次大型 AI 重构 / 长任务结束后随手跑一次 DryRun（< 5s），看看冒出多少缓存，按需 `-Apply`。也可以加到每周一的 Windows 任务计划 / cron。
+**为什么仍然保留软层 SKILL**：
+- Windows 上 dcg 不可用（Codex 引擎限制），SKILL 是唯一兜底
+- SKILL 在用户机器上零依赖、零安装，重启 IDE 即生效
+- 软+硬双层在 macOS/Linux 上互为冗余，符合 defense-in-depth 原则
 
 ## 🔧 手动安装
 
@@ -258,12 +253,10 @@ foreach ($sub in "rules","skills") {
     Copy-Item -Recurse "C:\Temp\copilot-config\cursor\$sub" "$env:USERPROFILE\.cursor\" -Force
 }
 
-# 4. Codex：AGENTS.md + skills + hooks
+# 4. Codex：AGENTS.md + skills（hooks.json 见下文，Windows 上 hook 不生效可跳过）
 New-Item -ItemType Directory -Path "$env:USERPROFILE\.codex" -Force
 Copy-Item "C:\Temp\copilot-config\codex\AGENTS.md" "$env:USERPROFILE\.codex\AGENTS.md" -Force
 Copy-Item -Recurse "C:\Temp\copilot-config\codex\skills" "$env:USERPROFILE\.codex\" -Force
-Copy-Item -Recurse "C:\Temp\copilot-config\codex\hooks"  "$env:USERPROFILE\.codex\" -Force
-# 注：hooks.json 与 config.toml 含路径占位符，建议改用 restore.ps1 自动渲染
 
 # 5. 安装 Interactive-Feedback-MCP
 git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$env:USERPROFILE\MCP\Interactive-Feedback-MCP"
@@ -326,7 +319,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 - [x] sync.sh（Linux/macOS 双向同步）
 - [x] CI 校验 JSON/TOML 模板与版本号同步
 - [x] Codex 全局 Agent Skills（与 Cursor/Copilot 同源）
-- [x] 破坏性命令双层兜底（软层 SKILL.md + Codex PreToolUse hook）
+- [x] 破坏性命令双层兜底（软层 SKILL.md + 硬层社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)）
 - [ ] 设置页面内一键更新按钮
 - [ ] 更多 MCP 服务器预配置
 

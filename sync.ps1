@@ -11,7 +11,7 @@
     - ~/.codex/AGENTS.md → codex/AGENTS.md
     - ~/.codex/skills/ (排除 .system 与 codex-primary-runtime) → codex/skills/
     注意：mcp.json、config.toml、hooks.json 使用模板（含占位符），不从本机同步。
-    codex/hooks/ 目录是源代码（Python 脚本），同样不从本机回写。
+    codex/hooks/ 目录只保留 README（指向社区方案 dcg），不部署任何脚本。
     然后 git commit 并 push。
 
 .EXAMPLE
@@ -234,7 +234,7 @@ if (Test-Path $codexSkillsSrcLocal) {
 } else {
     Write-Host "  未找到 ~/.codex/skills/，跳过" -ForegroundColor Yellow
 }
-Write-Host "  * config.toml / hooks.json / hooks/ 使用模板，不从本机同步" -ForegroundColor DarkGray
+Write-Host "  * config.toml / hooks.json 使用模板，不从本机同步（hooks.json 引用社区方案 dcg）" -ForegroundColor DarkGray
 
 # ============================
 # 4. 同步 VS Code 配置（不含 mcp.json，使用模板）

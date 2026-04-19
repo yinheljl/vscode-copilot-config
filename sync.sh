@@ -182,7 +182,7 @@ if [ -d "$CODEX_SRC/skills" ]; then
 else
     echo "  未找到 ~/.codex/skills/，跳过"
 fi
-echo "  * config.toml / hooks.json / hooks/ 使用模板，不从本机同步"
+echo "  * config.toml / hooks.json 使用模板，不从本机同步（hooks.json 引用社区方案 dcg）"
 
 # --- 4. VS Code ---
 echo "[4/5] 同步 VS Code..."

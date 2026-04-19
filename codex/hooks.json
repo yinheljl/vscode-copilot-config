@@ -1,6 +1,7 @@
 {
-  "_comment": "Codex Hooks 配置模板。由 restore.ps1 / restore.sh 部署到 ~/.codex/hooks.json，并将 codex/hooks/pre_tool_use_guard.py 部署到 ~/.codex/hooks/。修改后需重启 Codex 会话才会生效。要启用，~/.codex/config.toml 中必须存在 [features] codex_hooks = true（restore 脚本会自动追加）。",
+  "_comment": "Codex Hooks 模板：使用社区方案 dcg（Destructive Command Guard）作为硬层防护。由 restore.ps1 / restore.sh 部署到 ~/.codex/hooks.json。重要限制：Codex 官方文档明确说明 'Hooks are currently disabled on Windows'（见 https://developers.openai.com/codex/hooks），因此本 hook 仅在 macOS / Linux / WSL2 下生效。要启用，~/.codex/config.toml 中必须存在 [features] codex_hooks = true（restore 脚本会自动追加）。dcg 安装方式见 https://github.com/Dicklesworthstone/destructive_command_guard 或运行 'curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh | bash -s -- --easy-mode'。",
   "_doc": "https://developers.openai.com/codex/hooks",
+  "_dcg": "https://github.com/Dicklesworthstone/destructive_command_guard",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,8 +9,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__GUARD_PYTHON__ __GUARD_SCRIPT__",
-            "statusMessage": "[destructive-command-guard] 校验 Bash 命令",
+            "command": "dcg",
+            "statusMessage": "[dcg] 校验 Bash 命令",
             "timeout": 10
           }
         ]
