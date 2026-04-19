@@ -64,16 +64,6 @@ if [ -d "$REPO_DIR/.git" ]; then
     echo "  仓库已存在: $REPO_DIR"
     cd "$REPO_DIR"
     if ! git pull --ff-only; then
-        # git pull --ff-only 失败说明本地与 origin/main 已分叉，或有阻塞 ff 的本地修改。
-        # 仅在「自管理目录 + 工作区干净」时才允许强制同步，避免覆盖用户本地工作。
-        MANAGED_DIR="$HOME/.copilot-config"
-        REPO_DIR_NORM="${REPO_DIR%/}"
-        MANAGED_DIR_NORM="${MANAGED_DIR%/}"
-        IS_MANAGED_DIR=false
-        if [ "$REPO_DIR_NORM" = "$MANAGED_DIR_NORM" ]; then
-            IS_MANAGED_DIR=true
-        fi
-
         IS_DIRTY=false
         if ! STATUS_OUT=$(git status --porcelain 2>&1); then
             IS_DIRTY=true
@@ -81,24 +71,18 @@ if [ -d "$REPO_DIR/.git" ]; then
             IS_DIRTY=true
         fi
 
-        if [ "$IS_MANAGED_DIR" = true ] && [ "$IS_DIRTY" = false ]; then
-            echo "  git pull 失败，自管理目录无本地改动，强制同步到 origin/main..."
-            git fetch origin
-            git reset --hard origin/main
+        echo "  git pull --ff-only 失败。为避免覆盖你的本地工作，update 不再自动执行 git reset --hard。" >&2
+        if [ "$IS_DIRTY" = true ]; then
+            echo "  检测到当前仓库存在未提交修改。" >&2
         else
-            echo "  git pull --ff-only 失败。" >&2
-            if [ "$IS_DIRTY" = true ]; then
-                echo "  当前仓库存在未提交修改或本地提交，已停止以避免覆盖你的本地工作。" >&2
-            else
-                echo "  当前仓库与 origin/main 已分叉。" >&2
-            fi
-            echo "  请手动处理本地状态后重试，例如：" >&2
-            echo "    git status                # 查看本地修改" >&2
-            echo "    git stash                 # 暂存本地修改" >&2
-            echo "    git pull --rebase         # 在本地提交之上变基" >&2
-            echo "  确认要丢弃所有本地改动时，可手动执行：git fetch origin && git reset --hard origin/main" >&2
-            exit 1
+            echo "  当前仓库可能存在本地分叉、非跟踪分支状态，或远程访问异常。" >&2
         fi
+        echo "  请手动处理本地状态后重试，例如：" >&2
+        echo "    git status                # 查看本地修改" >&2
+        echo "    git stash                 # 暂存本地修改" >&2
+        echo "    git pull --rebase         # 在本地提交之上变基" >&2
+        echo "  确认要丢弃所有本地改动时，可手动执行：git fetch origin && git reset --hard origin/main" >&2
+        exit 1
     fi
 else
     if command -v git &>/dev/null; then
