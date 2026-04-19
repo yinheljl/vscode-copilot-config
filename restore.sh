@@ -581,9 +581,12 @@ if [ -d "$FEEDBACK_MCP_DIR" ]; then
         echo "  未安装 git，跳过更新"
     fi
 else
+    mkdir -p "$(dirname "$FEEDBACK_MCP_DIR")"
     if command -v git &>/dev/null; then
         echo "  正在克隆（使用 git）..."
-        git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$FEEDBACK_MCP_DIR"
+        if ! git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$FEEDBACK_MCP_DIR"; then
+            echo "  警告：git clone 失败，请检查网络后手动克隆" >&2
+        fi
     else
         echo "  未安装 git，使用 ZIP 下载..."
         ZIP_URL="https://github.com/rooney2020/qt-interactive-feedback-mcp/archive/refs/heads/main.zip"
@@ -608,6 +611,14 @@ else
     fi
 fi
 
+FEEDBACK_REPO_READY=false
+FEEDBACK_PYTHON=""
+if [ -d "$FEEDBACK_MCP_DIR" ]; then
+    FEEDBACK_REPO_READY=true
+else
+    echo "  警告：Interactive-Feedback-MCP 目录不存在，跳过 uv sync，后续仅按预期路径生成 MCP 配置。" >&2
+fi
+
 UV_PATH=$(resolve_uv_path || true)
 if [ -z "$UV_PATH" ]; then
     echo "  未找到 uv，正在自动安装..."
@@ -625,9 +636,11 @@ if [ -z "$UV_PATH" ]; then
         echo "  请手动安装: https://docs.astral.sh/uv/" >&2
     fi
 fi
-if [ -n "$UV_PATH" ]; then
+if [ -n "$UV_PATH" ] && [ "$FEEDBACK_REPO_READY" = true ]; then
     echo "  正在运行 uv sync..."
-    (cd "$FEEDBACK_MCP_DIR" && "$UV_PATH" sync)
+    if ! (cd "$FEEDBACK_MCP_DIR" && "$UV_PATH" sync); then
+        echo "  警告：uv sync 失败，mcp.json 仍按预期路径生成" >&2
+    fi
 
     FEEDBACK_PYTHON="$FEEDBACK_MCP_DIR/.venv/bin/python"
     if [ -x "$FEEDBACK_PYTHON" ]; then
@@ -636,6 +649,10 @@ if [ -n "$UV_PATH" ]; then
         echo "  警告：找不到反馈服务虚拟环境 Python: $FEEDBACK_PYTHON" >&2
         echo "  请确认 uv sync 是否成功完成" >&2
     fi
+elif [ -n "$UV_PATH" ]; then
+    echo "  警告：未找到 Interactive-Feedback-MCP 目录，跳过 uv sync。" >&2
+    echo "  请手动准备目录后执行: cd $FEEDBACK_MCP_DIR && uv sync" >&2
+    FEEDBACK_PYTHON=""
 else
     echo "  警告：未找到 uv，请先安装: https://docs.astral.sh/uv/"
     echo "  然后手动执行: cd $FEEDBACK_MCP_DIR && uv sync"

@@ -835,6 +835,10 @@ if (-not $SkipFeedbackMCP) {
                 Write-Host "  未安装 git，跳过更新" -ForegroundColor Yellow
             }
         } else {
+            $feedbackParentDir = Split-Path $feedbackMcpDir -Parent
+            if (-not (Test-Path $feedbackParentDir)) {
+                New-Item -ItemType Directory -Path $feedbackParentDir -Force | Out-Null
+            }
             if (Get-Command git -ErrorAction SilentlyContinue) {
                 Write-Host "  正在克隆（使用 git）..."
                 $prevPref = $ErrorActionPreference
@@ -869,6 +873,12 @@ if (-not $SkipFeedbackMCP) {
             }
         }
 
+        $feedbackRepoReady = Test-Path $feedbackMcpDir
+        if (-not $feedbackRepoReady) {
+            Write-Warning "  Interactive-Feedback-MCP 目录不存在，跳过 uv sync，后续仅按预期路径生成 MCP 配置。"
+        }
+
+        $feedbackPythonPath = $null
         $uvPath = Resolve-UvPath
         if (-not $uvPath) {
             Write-Host "  未找到 uv，正在自动安装..." -ForegroundColor Yellow
@@ -888,7 +898,7 @@ if (-not $SkipFeedbackMCP) {
                 Write-Warning "  请手动安装: https://docs.astral.sh/uv/"
             }
         }
-        if ($uvPath) {
+        if ($uvPath -and $feedbackRepoReady) {
             Write-Host "  正在运行 uv sync..."
             Push-Location $feedbackMcpDir
             $prevPref = $ErrorActionPreference
@@ -909,6 +919,9 @@ if (-not $SkipFeedbackMCP) {
                 Write-Warning "  找不到反馈服务虚拟环境 Python: $feedbackMcpDir\.venv\Scripts\python.exe"
                 Write-Warning "  请确认 uv sync 是否成功完成。"
             }
+        } elseif ($uvPath) {
+            Write-Warning "  未找到 Interactive-Feedback-MCP 目录，跳过 uv sync。"
+            Write-Warning "  请手动准备目录后执行: cd $feedbackMcpDir && uv sync"
         } else {
             Write-Warning "  未找到 uv，请先安装: https://docs.astral.sh/uv/"
             Write-Warning "  然后手动执行: cd $feedbackMcpDir && uv sync"
