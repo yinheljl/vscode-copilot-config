@@ -197,6 +197,18 @@ git push --force origin main
 - 重要操作前用 `AskQuestion` 工具二次确认
 - 不知道时**停下来问**，宁可慢一点，绝不删错
 
+## 长任务后的磁盘卫生（防积压）
+
+执行涉及大量构建 / 模型训练 / 包安装的长任务后，主动告诉用户运行 cleanup 脚本：
+
+- Windows：`.\cleanup.ps1`（DryRun，先看）→ `.\cleanup.ps1 -Apply`
+- Linux/macOS：`bash cleanup.sh` → `bash cleanup.sh --apply`
+
+可清理：`node_modules` / `__pycache__` / `.pytest_cache` / `.next` / `.nuxt` / `dist` / `build` / `target` / `.gradle` 等可重建缓存。
+全局缓存（`~/.cache/huggingface`、`~/.npm/_cacache`、`docker system prune`）由用户决定，脚本只报告大小。
+
+> 这些清理命令本身**不会**被本 skill 或硬层 hook 拦截（已加白名单），可直接放心调用。
+
 ---
 
 ## Related Hard Layer（硬兜底）
@@ -205,7 +217,7 @@ git push --force origin main
 
 - **代码位置**：`codex/hooks/pre_tool_use_guard.py`（约 200 行 Python，**仅依赖标准库**，零 npm / 零 pip）
 - **接口契约**：使用 OpenAI Codex CLI 官方 [`PreToolUse` Hook](https://developers.openai.com/codex/hooks)，匹配 `Bash` 工具调用，命中危险模式时返回 `permissionDecision: "deny"` 拦截
-- **CI 保障**：随仓库附带 `codex/hooks/test_pre_tool_use_guard.py`，26 个 case（17 deny + 9 allow），由 `.github/workflows/validate.yml` 在每次 PR 强制运行
+- **CI 保障**：随仓库附带 `codex/hooks/test_pre_tool_use_guard.py`，42 个 case（19 deny + 23 allow，**显式覆盖 `~/.cache/*` / `node_modules` / `pip cache purge` / `docker prune` 等清理命令的白名单**，防止误伤导致磁盘被占满），由 `.github/workflows/validate.yml` 在每次 PR 强制运行
 - **审计日志**：每次拦截/审计自动写入 `~/.codex/hooks/logs/`
 - **可临时绕过**：仓库根目录放置 `.codex-allow-destructive` 即可豁免（仅限当前 cwd）
 

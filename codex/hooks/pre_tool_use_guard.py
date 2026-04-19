@@ -49,8 +49,11 @@ DENY_PATTERNS: list[tuple[str, str]] = [
     (r"\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*\s+)?(?:-[a-zA-Z]*f[a-zA-Z]*\s+)?(?:--no-preserve-root\s+)?/\s*$",
      "rm 直接指向根目录 /"),
     (r"\brm\s+-[rRf]+\s+--no-preserve-root\b", "rm --no-preserve-root（强制删根）"),
-    (r"\brm\s+-[rRf]+\s+(?:~|\$HOME|\$\{HOME\})(?:\s|/|$)",
-     "rm 删除用户家目录"),
+    # 仅拦"删 home 自身"（rm -rf ~ / rm -rf ~/ / rm -rf $HOME），
+    # 不拦"删 home 下的具体子目录"（rm -rf ~/.cache/foo、$HOME/.npm/_cacache 等
+    # 是常见的缓存清理，必须放行，否则会导致 Codex 长任务后磁盘被占满）。
+    (r"\brm\s+-[rRf]+\s+(?:~|\$HOME|\$\{HOME\})/?(?=\s|;|&|\||$)",
+     "rm 删除用户家目录（仅 ~ / ~/ / $HOME 本身，不含 ~/xxx 子目录）"),
     (r"\brm\s+-[rRf]+\s+/\*", "rm 删除根目录所有文件"),
     (r"\brm\s+-[rRf]+\s+/(?:bin|boot|dev|etc|home|lib|opt|root|sbin|srv|sys|usr|var)(?:/?\s|$)",
      "rm 删除系统关键目录"),

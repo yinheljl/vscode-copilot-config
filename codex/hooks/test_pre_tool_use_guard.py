@@ -22,7 +22,9 @@ CASES: list[tuple[str, str, str]] = [
     # -------- DENY (硬拦截) --------
     ("rm -rf /",                        "rm -rf /",                                          "deny"),
     ("rm -rf ~",                        "rm -rf ~",                                          "deny"),
+    ("rm -rf ~/",                       "rm -rf ~/",                                         "deny"),
     ("rm -rf $HOME",                    "rm -rf $HOME",                                      "deny"),
+    ("rm -rf ${HOME}",                  "rm -rf ${HOME}",                                    "deny"),
     ("rm -rf /etc",                     "rm -rf /etc",                                       "deny"),
     ("rm --no-preserve-root",           "rm -rf --no-preserve-root /",                       "deny"),
     ("rmdir F:\\",                      "rmdir /s /q F:\\",                                  "deny"),
@@ -48,6 +50,22 @@ CASES: list[tuple[str, str, str]] = [
     ("docker compose down",             "docker compose down",                               "allow"),
     ("npm install",                     "npm install",                                       "allow"),
     ("Remove-Item single file",         "Remove-Item ./tmp.log",                             "allow"),
+
+    # -------- ALLOW: 缓存 / 临时文件清理（防止 Codex 长任务后磁盘被占满）--------
+    ("rm -rf ~/.cache/huggingface",     "rm -rf ~/.cache/huggingface",                       "allow"),
+    ("rm -rf $HOME/.cache/pip",         "rm -rf $HOME/.cache/pip",                           "allow"),
+    ("rm -rf ${HOME}/.npm/_cacache",    "rm -rf ${HOME}/.npm/_cacache",                      "allow"),
+    ("rm -rf ./dist",                   "rm -rf ./dist",                                     "allow"),
+    ("rm -rf .next",                    "rm -rf .next",                                      "allow"),
+    ("rm -rf __pycache__",              "rm -rf __pycache__",                                "allow"),
+    ("rm -rf /tmp/codex-xxx",           "rm -rf /tmp/codex-build-12345",                     "allow"),
+    ("rm -rf /var/log/myapp/old.log",   "rm -rf /var/log/myapp/old.log",                     "allow"),
+    ("rm -rf .pytest_cache",            "rm -rf .pytest_cache .mypy_cache .ruff_cache",      "allow"),
+    ("npm cache clean --force",         "npm cache clean --force",                           "allow"),
+    ("yarn cache clean",                "yarn cache clean",                                  "allow"),
+    ("pip cache purge",                 "pip cache purge",                                   "allow"),
+    ("docker system prune -af",         "docker system prune -af --volumes",                 "allow"),
+    ("Remove-Item node_modules",        "Remove-Item -Recurse -Force ./node_modules",        "allow"),
 ]
 
 
