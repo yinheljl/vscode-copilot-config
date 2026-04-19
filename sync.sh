@@ -13,11 +13,34 @@ set -euo pipefail
 
 MESSAGE="chore: sync config from $(hostname)"
 NO_PUSH=false
-for arg in "$@"; do
-    case "$arg" in
-        --no-push) NO_PUSH=true ;;
-        -m|--message) shift; MESSAGE="$1" ;;
-        --message=*) MESSAGE="${arg#*=}" ;;
+# 用标准 while 循环解析参数：for + shift 在 bash 里行为不一致（for 已快照 $@），
+# 会导致 `--no-push -m "msg"` 这种顺序下 MESSAGE 取错值，且 -m 末尾缺值时会触发 set -u 报错。
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --no-push)
+            NO_PUSH=true
+            shift
+            ;;
+        -m|--message)
+            if [ $# -lt 2 ]; then
+                echo "错误：$1 需要一个参数（提交信息）" >&2
+                exit 2
+            fi
+            MESSAGE="$2"
+            shift 2
+            ;;
+        --message=*)
+            MESSAGE="${1#*=}"
+            shift
+            ;;
+        -h|--help)
+            echo "用法: $0 [--no-push] [-m <message> | --message=<message>]"
+            exit 0
+            ;;
+        *)
+            echo "未知参数：$1" >&2
+            exit 2
+            ;;
     esac
 done
 

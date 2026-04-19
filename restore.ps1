@@ -507,6 +507,10 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
         } elseif ($AutoInstallDcg) {
             $shouldInstall = $true
             Write-Host "    -AutoInstallDcg 已启用，自动安装。" -ForegroundColor Cyan
+        } elseif ([Console]::IsInputRedirected) {
+            # 与 restore.sh 的 `[ -t 0 ]` 检测对齐：非交互式 stdin（CI / 管道）下默认不安装。
+            # 同时兑现 codex/hooks/README.md 的承诺："非交互式 stdin（CI、管道）默认不会安装 dcg"。
+            Write-Host "    （非交互式 stdin，未安装 dcg。下次加 -AutoInstallDcg 自动安装。）" -ForegroundColor DarkGray
         } else {
             Write-Host ""
             Write-Host "    将通过官方 install.ps1 安装 dcg：" -ForegroundColor Cyan

@@ -120,18 +120,41 @@ if (Test-Path (Join-Path $repoDir ".git")) {
             $pullOutput = & git pull --ff-only 2>&1
             Write-Host "  $pullOutput"
             if ($LASTEXITCODE -ne 0) {
-                Write-Warning "  git pull 退出码 $LASTEXITCODE，尝试强制同步..."
-                & git fetch origin 2>&1 | ForEach-Object { Write-Host "    $_" }
-                if ($LASTEXITCODE -ne 0) { throw "git fetch 失败" }
-                & git reset --hard origin/main 2>&1 | ForEach-Object { Write-Host "    $_" }
-                if ($LASTEXITCODE -ne 0) { throw "git reset 失败" }
+                # git pull --ff-only 失败说明本地与 origin/main 已分叉，或有阻塞 ff 的本地修改。
+                # 仅在「自管理目录 + 工作区干净」时才允许强制同步，避免覆盖用户本地工作。
+                $managedDir   = Join-Path $env:USERPROFILE ".copilot-config"
+                $isManagedDir = ($repoDir.TrimEnd('\','/') -eq $managedDir.TrimEnd('\','/'))
+
+                $statusOut = & git status --porcelain 2>&1
+                $isDirty   = ($LASTEXITCODE -ne 0) -or [bool]($statusOut)
+
+                if ($isManagedDir -and -not $isDirty) {
+                    Write-Warning "  git pull 退出码 $LASTEXITCODE，自管理目录无本地改动，强制同步到 origin/main..."
+                    & git fetch origin 2>&1 | ForEach-Object { Write-Host "    $_" }
+                    if ($LASTEXITCODE -ne 0) { throw "git fetch 失败" }
+                    & git reset --hard origin/main 2>&1 | ForEach-Object { Write-Host "    $_" }
+                    if ($LASTEXITCODE -ne 0) { throw "git reset 失败" }
+                } else {
+                    Write-Warning "  git pull --ff-only 失败（退出码 $LASTEXITCODE）。"
+                    if ($isDirty) {
+                        Write-Warning "  当前仓库存在未提交修改或本地提交，已停止以避免覆盖你的本地工作。"
+                    } else {
+                        Write-Warning "  当前仓库与 origin/main 已分叉。"
+                    }
+                    Write-Warning "  请手动处理本地状态后重试，例如："
+                    Write-Warning "    git status                # 查看本地修改"
+                    Write-Warning "    git stash                 # 暂存本地修改"
+                    Write-Warning "    git pull --rebase         # 在本地提交之上变基"
+                    Write-Warning "  确认要丢弃所有本地改动时，可手动执行：git fetch origin; git reset --hard origin/main"
+                    throw "更新中止：本地分叉或未提交修改需手动处理"
+                }
             }
         } finally {
             $ErrorActionPreference = $prevPref
             Pop-Location
         }
     } else {
-        Write-Host "  [DryRun] 将执行 git pull"
+        Write-Host "  [DryRun] 将执行 git pull --ff-only（失败时仅在自管理目录 ~/.copilot-config 且无本地改动时才会强制同步）"
     }
 } else {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
