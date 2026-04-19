@@ -1,6 +1,6 @@
 ---
 name: "codebase-onboarding"
-description: "Codebase Onboarding — Analyze a codebase and generate onboarding documentation for engineers, tech leads, and contractors. Use when: onboarding new team members, rebuilding stale project docs, preparing internal handoff docs, or understanding an unfamiliar codebase."
+description: "Codebase Onboarding"
 ---
 
 # Codebase Onboarding

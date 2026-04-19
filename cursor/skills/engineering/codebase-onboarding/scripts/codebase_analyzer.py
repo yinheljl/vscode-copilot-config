@@ -96,6 +96,7 @@ def top_level_structure(root: Path, max_depth: int) -> List[str]:
         if depth > max_depth:
             dirnames[:] = []
             continue
+
         if any(part in IGNORED_DIRS for part in rel.parts):
             dirnames[:] = []
             continue
@@ -179,14 +180,9 @@ def print_text(report: Dict[str, object]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Scan a repository and generate onboarding summary facts."
-    )
+    parser = argparse.ArgumentParser(description="Scan a repository and generate onboarding summary facts.")
     parser.add_argument("path", help="Path to project directory")
-    parser.add_argument(
-        "--max-depth", type=int, default=2,
-        help="Max depth for structure output (default: 2)"
-    )
+    parser.add_argument("--max-depth", type=int, default=2, help="Max depth for structure output (default: 2)")
     parser.add_argument("--json", action="store_true", help="Print JSON output")
     return parser.parse_args()
 
