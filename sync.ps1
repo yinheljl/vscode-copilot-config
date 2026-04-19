@@ -60,6 +60,45 @@ function Assert-GitReady($repoPath) {
     }
 }
 
+# 把 PowerShell ConvertTo-Json 的"对齐式缩进"输出重新格式化为标准 2 空格缩进
+function Format-Json([string]$json, [int]$indent = 2) {
+    if ([string]::IsNullOrWhiteSpace($json)) { return $json }
+    $indentStr = ' ' * $indent
+    $sb = New-Object System.Text.StringBuilder
+    $level = 0
+    $inString = $false
+    $escaped = $false
+    for ($i = 0; $i -lt $json.Length; $i++) {
+        $c = $json[$i]
+        if ($inString) {
+            [void]$sb.Append($c)
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($c -eq '\') {
+                $escaped = $true
+            } elseif ($c -eq '"') {
+                $inString = $false
+            }
+            continue
+        }
+        switch ($c) {
+            '"' { $inString = $true; [void]$sb.Append($c); break }
+            '{' { [void]$sb.Append($c); $level++; [void]$sb.Append("`r`n" + ($indentStr * $level)); break }
+            '[' { [void]$sb.Append($c); $level++; [void]$sb.Append("`r`n" + ($indentStr * $level)); break }
+            '}' { $level--; [void]$sb.Append("`r`n" + ($indentStr * $level)); [void]$sb.Append($c); break }
+            ']' { $level--; [void]$sb.Append("`r`n" + ($indentStr * $level)); [void]$sb.Append($c); break }
+            ',' { [void]$sb.Append($c); [void]$sb.Append("`r`n" + ($indentStr * $level)); break }
+            ':' { [void]$sb.Append(': '); break }
+            default {
+                if ($c -ne ' ' -and $c -ne "`n" -and $c -ne "`r" -and $c -ne "`t") {
+                    [void]$sb.Append($c)
+                }
+            }
+        }
+    }
+    return $sb.ToString()
+}
+
 function Extract-CopilotSettings($srcPath, $dstPath) {
     if (-not (Test-Path $srcPath)) { return }
     try {
@@ -93,7 +132,8 @@ function Extract-CopilotSettings($srcPath, $dstPath) {
     }
     if ($filtered.Count -gt 0) {
         $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-        $json = $filtered | ConvertTo-Json -Depth 10
+        $json = $filtered | ConvertTo-Json -Depth 20 -Compress
+        $json = Format-Json $json 2
         [System.IO.File]::WriteAllText($dstPath, $json, $utf8NoBom)
     }
 }

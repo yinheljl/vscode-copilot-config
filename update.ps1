@@ -114,17 +114,20 @@ if (Test-Path (Join-Path $repoDir ".git")) {
     Write-Host "  仓库已存在: $repoDir"
     if (-not $DryRun) {
         Push-Location $repoDir
+        $prevPref = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
         try {
-            $pullOutput = git pull --ff-only 2>&1
+            $pullOutput = & git pull --ff-only 2>&1
             Write-Host "  $pullOutput"
             if ($LASTEXITCODE -ne 0) {
                 Write-Warning "  git pull 退出码 $LASTEXITCODE，尝试强制同步..."
-                git fetch origin
+                & git fetch origin 2>&1 | ForEach-Object { Write-Host "    $_" }
                 if ($LASTEXITCODE -ne 0) { throw "git fetch 失败" }
-                git reset --hard origin/main
+                & git reset --hard origin/main 2>&1 | ForEach-Object { Write-Host "    $_" }
                 if ($LASTEXITCODE -ne 0) { throw "git reset 失败" }
             }
         } finally {
+            $ErrorActionPreference = $prevPref
             Pop-Location
         }
     } else {
@@ -152,8 +155,15 @@ if (Test-Path (Join-Path $repoDir ".git")) {
     } else {
         Write-Host "  正在克隆仓库..."
         if (-not $DryRun) {
-            git clone $repoUrl $repoDir
-            Write-Host "  + 已克隆到 $repoDir"
+            $prevPref = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                & git clone $repoUrl $repoDir 2>&1 | ForEach-Object { Write-Host "    $_" }
+                if ($LASTEXITCODE -ne 0) { throw "git clone 失败（退出码 $LASTEXITCODE）" }
+                Write-Host "  + 已克隆到 $repoDir"
+            } finally {
+                $ErrorActionPreference = $prevPref
+            }
         } else {
             Write-Host "  [DryRun] 将克隆到 $repoDir"
         }

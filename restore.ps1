@@ -75,17 +75,71 @@ if ($Target -notcontains "All") {
     if ($Target -notcontains "Codex")  { $hasCodex  = $false }
 }
 
+# 同名文件保留最近 N 份备份，避免无限累积
+$BackupKeepCount = 5
+
 function Backup-File($path) {
     if (Test-Path $path) {
         $backup = $path + ".bak_" + (Get-Date -Format "yyyyMMdd_HHmmss")
         Copy-Item $path $backup
         Write-Host "  已备份: $backup" -ForegroundColor DarkGray
+        # 轮转：仅保留最新 $BackupKeepCount 份
+        $dir = Split-Path $path -Parent
+        $name = Split-Path $path -Leaf
+        $old = Get-ChildItem -Path $dir -Filter ($name + ".bak_*") -File -ErrorAction SilentlyContinue |
+               Sort-Object LastWriteTime -Descending |
+               Select-Object -Skip $BackupKeepCount
+        foreach ($f in $old) {
+            try {
+                Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
+                Write-Host "  已清理旧备份: $($f.Name)" -ForegroundColor DarkGray
+            } catch {}
+        }
     }
 }
 
 function Write-Utf8NoBomFile($path, $content) {
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($path, $content, $utf8NoBom)
+}
+
+# 把 PowerShell ConvertTo-Json 的"对齐式缩进"输出重新格式化为标准 2 空格缩进
+function Format-Json([string]$json, [int]$indent = 2) {
+    if ([string]::IsNullOrWhiteSpace($json)) { return $json }
+    $indentStr = ' ' * $indent
+    $sb = New-Object System.Text.StringBuilder
+    $level = 0
+    $inString = $false
+    $escaped = $false
+    for ($i = 0; $i -lt $json.Length; $i++) {
+        $c = $json[$i]
+        if ($inString) {
+            [void]$sb.Append($c)
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($c -eq '\') {
+                $escaped = $true
+            } elseif ($c -eq '"') {
+                $inString = $false
+            }
+            continue
+        }
+        switch ($c) {
+            '"' { $inString = $true; [void]$sb.Append($c); break }
+            '{' { [void]$sb.Append($c); $level++; [void]$sb.Append("`r`n" + ($indentStr * $level)); break }
+            '[' { [void]$sb.Append($c); $level++; [void]$sb.Append("`r`n" + ($indentStr * $level)); break }
+            '}' { $level--; [void]$sb.Append("`r`n" + ($indentStr * $level)); [void]$sb.Append($c); break }
+            ']' { $level--; [void]$sb.Append("`r`n" + ($indentStr * $level)); [void]$sb.Append($c); break }
+            ',' { [void]$sb.Append($c); [void]$sb.Append("`r`n" + ($indentStr * $level)); break }
+            ':' { [void]$sb.Append(': '); break }
+            default {
+                if ($c -ne ' ' -and $c -ne "`n" -and $c -ne "`r" -and $c -ne "`t") {
+                    [void]$sb.Append($c)
+                }
+            }
+        }
+    }
+    return $sb.ToString()
 }
 
 function ConvertFrom-Jsonc([string]$raw) {
@@ -219,7 +273,8 @@ function Merge-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir
                     $dstObj.$serverKey | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value -Force
                 }
             }
-            $json = $dstObj | ConvertTo-Json -Depth 10
+            $json = $dstObj | ConvertTo-Json -Depth 20 -Compress
+            $json = Format-Json $json 2
             Write-Utf8NoBomFile $dstPath $json
             Write-Host "  + mcp.json (增量合并，保留已有服务器)"
             return
@@ -492,12 +547,15 @@ if (-not $SkipFeedbackMCP) {
             Write-Host "  目录已存在，尝试更新..."
             if (Get-Command git -ErrorAction SilentlyContinue) {
                 Push-Location $feedbackMcpDir
+                $prevPref = $ErrorActionPreference
+                $ErrorActionPreference = "Continue"
                 try {
-                    git pull --ff-only 2>&1 | Out-Null
+                    & git pull --ff-only 2>&1 | Out-Null
                     if ($LASTEXITCODE -ne 0) {
-                        Write-Warning "  git pull 退出码 $LASTEXITCODE，使用本地已有版本"
+                        Write-Warning "  git pull 失败（退出码 $LASTEXITCODE），使用本地已有版本继续"
                     }
                 } finally {
+                    $ErrorActionPreference = $prevPref
                     Pop-Location
                 }
             } else {
@@ -506,7 +564,16 @@ if (-not $SkipFeedbackMCP) {
         } else {
             if (Get-Command git -ErrorAction SilentlyContinue) {
                 Write-Host "  正在克隆（使用 git）..."
-                git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git $feedbackMcpDir
+                $prevPref = $ErrorActionPreference
+                $ErrorActionPreference = "Continue"
+                try {
+                    & git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git $feedbackMcpDir 2>&1 | Out-Null
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Warning "  git clone 失败（退出码 $LASTEXITCODE），请检查网络后手动克隆"
+                    }
+                } finally {
+                    $ErrorActionPreference = $prevPref
+                }
             } else {
                 Write-Host "  未安装 git，使用 ZIP 下载..." -ForegroundColor Yellow
                 $zipUrl = "https://github.com/rooney2020/qt-interactive-feedback-mcp/archive/refs/heads/main.zip"
@@ -551,8 +618,17 @@ if (-not $SkipFeedbackMCP) {
         if ($uvPath) {
             Write-Host "  正在运行 uv sync..."
             Push-Location $feedbackMcpDir
-            & $uvPath sync
-            Pop-Location
+            $prevPref = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                & $uvPath sync 2>&1 | ForEach-Object { Write-Host "    $_" }
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning "  uv sync 失败（退出码 $LASTEXITCODE），mcp.json 仍按预期路径生成"
+                }
+            } finally {
+                $ErrorActionPreference = $prevPref
+                Pop-Location
+            }
             $feedbackPythonPath = Get-FeedbackPythonPath $feedbackMcpDir
             if ($feedbackPythonPath) {
                 Write-Host "  + Interactive-Feedback-MCP 已就绪"
