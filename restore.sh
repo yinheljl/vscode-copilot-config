@@ -108,31 +108,32 @@ install_mcp_json() {
     mkdir -p "$(dirname "$dst")"
 
     if [ -f "$dst" ] && [ "$FORCE" = false ]; then
-        # 增量模式：备份并保留已有内容（简单合并）
+        # 增量模式：备份并通过 Python 进行安全 JSON 合并（不依赖字符串插值）
         cp "$dst" "${dst}.bak_$(date +%Y%m%d_%H%M%S)"
-        # 使用 python 进行 JSON 合并（如果可用）
         if command -v python3 &>/dev/null; then
-            python3 -c "
-import json, sys
-with open('$dst') as f:
+            if NEW_DATA="$content" DST="$dst" python3 - <<'PY' 2>/dev/null
+import json, os
+dst = os.environ['DST']
+new_data = json.loads(os.environ['NEW_DATA'])
+with open(dst, 'r', encoding='utf-8') as f:
     existing = json.load(f)
-new_data = json.loads('''$content''')
-# 合并 servers 或 mcpServers
-for key in ['servers', 'mcpServers']:
+for key in ('servers', 'mcpServers'):
     if key in new_data:
-        if key not in existing:
-            existing[key] = {}
-        existing[key].update(new_data[key])
-with open('$dst', 'w') as f:
-    json.dump(existing, f, indent=2)
-" 2>/dev/null && echo "  + mcp.json (增量合并，保留已有服务器)" && return
+        existing.setdefault(key, {}).update(new_data[key])
+with open(dst, 'w', encoding='utf-8') as f:
+    json.dump(existing, f, indent=2, ensure_ascii=False)
+PY
+            then
+                echo "  + mcp.json (增量合并，保留已有服务器)"
+                return
+            fi
         fi
-        # python 不可用则回退到覆盖
-        echo "$content" > "$dst"
-        echo "  + mcp.json (已替换路径)"
+        # python 不可用或解析失败则回退到覆盖
+        printf '%s\n' "$content" > "$dst"
+        echo "  + mcp.json (已替换路径，Python 合并失败已回退)"
     else
         [ -f "$dst" ] && cp "$dst" "${dst}.bak_$(date +%Y%m%d_%H%M%S)"
-        echo "$content" > "$dst"
+        printf '%s\n' "$content" > "$dst"
         echo "  + mcp.json (已替换路径)"
     fi
 }
@@ -228,13 +229,10 @@ if [ "$HAS_CODEX" = true ]; then
         AGENTS_SRC="$CODEX_SRC/AGENTS.md"
         AGENTS_DST="$CODEX_DST/AGENTS.md"
         if [ -f "$AGENTS_SRC" ]; then
-            if [ "$FORCE" = true ] || [ ! -f "$AGENTS_DST" ]; then
-                [ -f "$AGENTS_DST" ] && cp "$AGENTS_DST" "${AGENTS_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-                cp "$AGENTS_SRC" "$AGENTS_DST"
-                echo "  + AGENTS.md"
-            else
-                echo "  + AGENTS.md (已存在，增量模式跳过。使用 --force 覆盖)"
-            fi
+            # 与 copilot/instructions 行为统一：增量模式下也覆盖（先备份）
+            [ -f "$AGENTS_DST" ] && cp "$AGENTS_DST" "${AGENTS_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+            cp "$AGENTS_SRC" "$AGENTS_DST"
+            echo "  + AGENTS.md"
         fi
     fi
 fi
@@ -260,10 +258,15 @@ else
         if curl -fsSL "$ZIP_URL" -o "$ZIP_PATH"; then
             rm -rf "$EXTRACT_DIR"
             unzip -q "$ZIP_PATH" -d "$EXTRACT_DIR"
-            mv "$EXTRACT_DIR"/qt-interactive-feedback-mcp-main "$FEEDBACK_MCP_DIR"
+            inner_dir=$(find "$EXTRACT_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+            if [ -z "$inner_dir" ]; then
+                echo "  ZIP 解压结构异常，跳过" >&2
+            else
+                mv "$inner_dir" "$FEEDBACK_MCP_DIR"
+                echo "  + 已通过 ZIP 下载完成"
+            fi
             rm -f "$ZIP_PATH"
             rm -rf "$EXTRACT_DIR"
-            echo "  + 已通过 ZIP 下载完成"
         else
             echo "  ZIP 下载失败，请手动下载: $ZIP_URL" >&2
             echo "  解压到: $FEEDBACK_MCP_DIR" >&2

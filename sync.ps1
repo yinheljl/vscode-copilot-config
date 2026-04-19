@@ -38,6 +38,16 @@ $cursorSettSrc   = Join-Path $env:APPDATA "Cursor\User\settings.json"
 $cursorSettDst   = Join-Path $repoDir "cursor\settings.json"
 
 $copilotKeys = @("chat.", "github.copilot")
+# 任何键名（不区分大小写）匹配下列任一片段，将被排除以避免泄露
+$denyKeyParts = @("token", "apikey", "api_key", "secret", "password", "bearer", "credential")
+
+function Test-IsSensitiveKey([string]$keyName) {
+    $low = $keyName.ToLowerInvariant()
+    foreach ($p in $denyKeyParts) {
+        if ($low.Contains($p)) { return $true }
+    }
+    return $false
+}
 
 function Assert-GitReady($repoPath) {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -52,25 +62,39 @@ function Assert-GitReady($repoPath) {
 
 function Extract-CopilotSettings($srcPath, $dstPath) {
     if (-not (Test-Path $srcPath)) { return }
-    $srcObj = Get-Content $srcPath -Raw | ConvertFrom-Json
+    try {
+        $srcObj = Get-Content $srcPath -Raw | ConvertFrom-Json
+    } catch {
+        Write-Warning "  解析失败（可能含 // 注释），跳过: $srcPath"
+        return
+    }
     $filtered = [ordered]@{}
+    $skipped = @()
     foreach ($prop in $srcObj.PSObject.Properties) {
+        $matched = $false
         foreach ($prefix in $copilotKeys) {
-            if ($prop.Name.StartsWith($prefix)) {
-                $filtered[$prop.Name] = $prop.Value
-                break
+            if ($prop.Name.StartsWith($prefix)) { $matched = $true; break }
+        }
+        if (-not $matched -and ($srcPath -like "*Cursor*")) {
+            if ($prop.Name.StartsWith("cursor.") -or $prop.Name.StartsWith("mcp.")) {
+                $matched = $true
             }
+        }
+        if ($matched) {
+            if (Test-IsSensitiveKey $prop.Name) {
+                $skipped += $prop.Name
+                continue
+            }
+            $filtered[$prop.Name] = $prop.Value
         }
     }
-    if ($srcPath -like "*Cursor*") {
-        foreach ($prop in $srcObj.PSObject.Properties) {
-            if ($prop.Name.StartsWith("cursor.") -or $prop.Name.StartsWith("mcp.")) {
-                $filtered[$prop.Name] = $prop.Value
-            }
-        }
+    if ($skipped.Count -gt 0) {
+        Write-Host ("  ! 跳过疑似敏感键: " + ($skipped -join ", ")) -ForegroundColor Yellow
     }
     if ($filtered.Count -gt 0) {
-        $filtered | ConvertTo-Json -Depth 10 | Set-Content $dstPath -Encoding UTF8
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        $json = $filtered | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($dstPath, $json, $utf8NoBom)
     }
 }
 

@@ -2,10 +2,10 @@
 
 ## 安装位置
 
-所有技能已安装至 Cursor 全局目录：
+所有技能由 `restore.ps1` / `restore.sh` 自动安装到 Cursor 全局目录：
 
-- **Windows**：`C:\Users\59977\.cursor\skills\`
-- **macOS/Linux**：`~/.cursor/skills/`
+- **Windows**：`%USERPROFILE%\.cursor\skills\`
+- **macOS / Linux**：`~/.cursor/skills/`
 
 Cursor 会自动识别该目录下的技能，无需额外配置。
 
@@ -15,8 +15,8 @@ Cursor 会自动识别该目录下的技能，无需额外配置。
 
 | 类型 | 说明 |
 |------|------|
-| **Anthropic 官方** | https://github.com/anthropics/skills（109k★, Apache 2.0 / source-available） |
-| **社区成熟仓库** | https://github.com/alirezarezvani/claude-skills（9k★, MIT） |
+| **Anthropic 官方** | https://github.com/anthropics/skills（Apache 2.0 / source-available） |
+| **社区成熟仓库** | https://github.com/alirezarezvani/claude-skills（MIT） |
 
 ---
 
@@ -29,7 +29,7 @@ Cursor 会自动识别该目录下的技能，无需额外配置。
 | docx | Word 文档创建、编辑、批注 | Anthropic 官方 |
 | xlsx | Excel 表格处理、公式、图表 | Anthropic 官方 |
 | pptx | PowerPoint 演示文稿 | Anthropic 官方 |
-| pdf | PDF 提取、合并、标注、填表 | Anthropic 官方 |
+| pdf  | PDF 提取、合并、标注、填表 | Anthropic 官方 |
 
 ### 测试类 (testing)
 
@@ -42,7 +42,7 @@ Cursor 会自动识别该目录下的技能，无需额外配置。
 | 技能 | 用途 | 来源 |
 |------|------|------|
 | code-reviewer | 多语言代码评审（TS/Python/Go/Swift） | alirezarezvani/claude-skills |
-| mcp-builder | MCP 服务器构建 | Anthropic 官方 |
+| mcp-builder   | MCP 服务器构建 | Anthropic 官方 |
 
 ### 工程类 (engineering)
 
@@ -52,17 +52,15 @@ Cursor 会自动识别该目录下的技能，无需额外配置。
 
 ---
 
-## 自编写技能规范说明
+## 自编写技能规范
 
-自编写技能均满足以下规范：
-
-| 规范项 | 要求 | 依据 |
-|--------|------|------|
-| 可追溯性 | 内容可追溯至公开标准或通用工程实践 | 不得加入无依据结论 |
-| Minimum Inputs | 明确执行所需最小输入 | 确保可验证 |
-| Evidence Discipline | 输出包含可验证证据 | 检查清单、日志摘要等 |
-| Constraints | 执行限制条件 | 如仅读、不修改生产配置 |
-| SKILL.md 结构 | 含 name、description（YAML frontmatter） | Cursor create-skill 规范 |
+| 规范项 | 要求 |
+|--------|------|
+| 可追溯性 | 内容可追溯至公开标准或通用工程实践 |
+| Minimum Inputs | 明确执行所需最小输入 |
+| Evidence Discipline | 输出包含可验证证据（检查清单、日志摘要等） |
+| Constraints | 明确执行限制条件（如仅读、不修改生产配置） |
+| SKILL.md 结构 | 含 `name`、`description` 的 YAML frontmatter |
 
 ---
 
@@ -79,6 +77,4 @@ Cursor 会自动识别该目录下的技能，无需额外配置。
 
 ## 迁移到新电脑
 
-1. 将 `C:\Users\59977\.cursor\skills\` 整个目录复制到新电脑相同路径
-2. 复制本 `README.md` 一并携带
-3. 重启 Cursor 即可使用
+直接运行仓库根目录的 `restore.ps1` / `restore.sh` 即可一键还原；或将本目录复制到目标机器的 `~/.cursor/skills/` 后重启 Cursor。

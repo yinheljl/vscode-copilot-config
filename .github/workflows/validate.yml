@@ -1,0 +1,30 @@
+name: validate-config
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate config templates (JSON / TOML / JSONC)
+        run: python scripts/validate_config.py
+
+      - name: Check VERSION matches README header
+        run: python scripts/check_version_sync.py
+
+      - name: Shell syntax check
+        run: |
+          bash -n restore.sh
+          bash -n update.sh
+          bash -n sync.sh

@@ -89,21 +89,97 @@ function Write-Utf8NoBomFile($path, $content) {
     [System.IO.File]::WriteAllText($path, $content, $utf8NoBom)
 }
 
+function ConvertFrom-Jsonc([string]$raw) {
+    if ([string]::IsNullOrWhiteSpace($raw)) { return [PSCustomObject]@{} }
+    # 保护字符串内的 // 和 /*：把所有字符串字面量先替换成占位符
+    $strings = New-Object System.Collections.Generic.List[string]
+    $stripped = [regex]::Replace($raw, '"(\\.|[^"\\])*"', {
+        param($m)
+        $i = $strings.Count
+        [void]$strings.Add($m.Value)
+        return "__JSONC_STR_${i}__"
+    })
+    # 删除单行注释 //...
+    $stripped = [regex]::Replace($stripped, '(?m)//[^\r\n]*', '')
+    # 删除多行注释 /* ... */
+    $stripped = [regex]::Replace($stripped, '(?s)/\*.*?\*/', '')
+    # 删除尾随逗号
+    $stripped = [regex]::Replace($stripped, ',(\s*[}\]])', '$1')
+    # 还原字符串
+    for ($i = 0; $i -lt $strings.Count; $i++) {
+        $stripped = $stripped.Replace("__JSONC_STR_${i}__", $strings[$i])
+    }
+    return $stripped | ConvertFrom-Json
+}
+
 function Merge-JsonSettings($srcPath, $dstPath) {
     if (-not (Test-Path $srcPath)) { return }
-    $srcObj = Get-Content $srcPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if (Test-Path $dstPath) {
-        Backup-File $dstPath
-        $dstObj = Get-Content $dstPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    } else {
-        $dstObj = [PSCustomObject]@{}
+    # 显式 UTF8 读取，避免中文乱码
+    $srcRaw = Get-Content $srcPath -Raw -Encoding UTF8
+    try {
+        $srcObj = ConvertFrom-Jsonc $srcRaw
+    } catch {
+        Write-Warning "  源 settings 解析失败，跳过: $srcPath"
+        return
     }
+
+    if (-not (Test-Path $dstPath)) {
+        # 目标不存在：直接复制源（保留原始格式 + 注释）
+        $dstDir = Split-Path $dstPath -Parent
+        if (-not (Test-Path $dstDir)) {
+            New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
+        }
+        Write-Utf8NoBomFile $dstPath $srcRaw
+        Write-Host "  + 已创建 $dstPath"
+        return
+    }
+
+    # 目标存在：增量只补缺，最大限度保留原始 JSONC 注释和格式
+    $dstRaw = Get-Content $dstPath -Raw -Encoding UTF8
+    try {
+        $dstObj = ConvertFrom-Jsonc $dstRaw
+    } catch {
+        Write-Warning "  现有 settings.json 解析失败（含语法错误），跳过合并: $dstPath"
+        return
+    }
+
+    $existingKeys = @{}
+    foreach ($p in $dstObj.PSObject.Properties) { $existingKeys[$p.Name] = $true }
+
+    $missingProps = @()
     foreach ($prop in $srcObj.PSObject.Properties) {
-        $dstObj | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value -Force
+        if (-not $existingKeys.ContainsKey($prop.Name)) {
+            $missingProps += $prop
+        }
     }
-    $json = $dstObj | ConvertTo-Json -Depth 10
-    Write-Utf8NoBomFile $dstPath $json
-    Write-Host "  + 合并设置到 $dstPath"
+
+    if ($missingProps.Count -eq 0) {
+        Write-Host "  + settings.json (所有键已存在，未修改，注释保留)"
+        return
+    }
+
+    Backup-File $dstPath
+    # 把缺失的键以 JSON 片段形式插入到结尾的 } 之前，原文其他部分保持不动
+    $additions = @()
+    foreach ($p in $missingProps) {
+        $valueJson = ($p.Value | ConvertTo-Json -Depth 20 -Compress:$false)
+        $additions += "  ""$($p.Name)"": $valueJson"
+    }
+    $insertion = ($additions -join ",`r`n")
+
+    $trimmed = $dstRaw.TrimEnd()
+    if ($trimmed.EndsWith('}')) {
+        $body = $trimmed.Substring(0, $trimmed.Length - 1).TrimEnd()
+        if ($body.EndsWith(',') -or $body.EndsWith('{')) {
+            $newRaw = "$body`r`n$insertion`r`n}`r`n"
+        } else {
+            $newRaw = "$body,`r`n$insertion`r`n}`r`n"
+        }
+        Write-Utf8NoBomFile $dstPath $newRaw
+        Write-Host "  + settings.json (追加 $($missingProps.Count) 个缺失键，原注释保留)"
+    } else {
+        Write-Warning "  目标 settings.json 不以 '}' 结尾，跳过追加"
+    }
 }
 
 function Merge-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir, $serverKey) {
@@ -176,7 +252,10 @@ function Get-FeedbackPythonPath($mcpDir) {
 }
 
 function Escape-JsonString($value) {
-    return $value.Replace('\', '\\')
+    if ($null -eq $value) { return '' }
+    # 使用 ConvertTo-Json 做完整转义（处理 \、"、控制字符等），再剥掉外层引号
+    $json = ConvertTo-Json -InputObject ([string]$value) -Compress
+    return $json.Substring(1, $json.Length - 2)
 }
 
 function Copy-DirMerge($src, $dst) {
@@ -391,13 +470,10 @@ if ($hasCodex) {
             New-Item -ItemType Directory -Path $codexDst -Force | Out-Null
         }
         if (Test-Path $codexAgentsSrc) {
-            if ($Force -or -not (Test-Path $codexAgentsDst)) {
-                Backup-File $codexAgentsDst
-                Copy-Item $codexAgentsSrc $codexAgentsDst -Force
-                Write-Host "  + AGENTS.md"
-            } else {
-                Write-Host "  + AGENTS.md (已存在，增量模式跳过。使用 -Force 覆盖)"
-            }
+            # 与 copilot/instructions 行为统一：增量模式下也覆盖（先备份）
+            Backup-File $codexAgentsDst
+            Copy-Item $codexAgentsSrc $codexAgentsDst -Force
+            Write-Host "  + AGENTS.md"
         }
     }
 }
@@ -432,8 +508,9 @@ if (-not $SkipFeedbackMCP) {
                 Push-Location $feedbackMcpDir
                 try {
                     git pull --ff-only 2>&1 | Out-Null
-                } catch {
-                    Write-Warning "  更新反馈服务目录失败，继续使用本地已有版本: $($_.Exception.Message)"
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Warning "  git pull 退出码 $LASTEXITCODE，使用本地已有版本"
+                    }
                 } finally {
                     Pop-Location
                 }

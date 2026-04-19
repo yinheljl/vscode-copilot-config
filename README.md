@@ -3,7 +3,7 @@
 > **一键配置 VS Code GitHub Copilot、Cursor 和 Codex 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
 
-当前版本：`1.2.0`
+当前版本：`1.3.0`
 
 ---
 
@@ -119,8 +119,11 @@
 | `vscode/settings.json` | VS Code 编辑器设置模板 |
 | `restore.ps1` / `restore.sh` | 配置还原脚本（首次安装用） |
 | `update.ps1` / `update.sh` | 远程拉取 + 还原（更新用） |
-| `sync.ps1` | 从本机同步配置到仓库并推送 |
+| `sync.ps1` / `sync.sh` | 从本机同步配置到仓库并推送 |
 | `VERSION` | 当前版本号 |
+| `REPO_URL` | 仓库地址常量（fork 后只改这一处即可） |
+| `scripts/validate_config.py` | 校验所有配置模板（CI 与本地通用） |
+| `.github/workflows/validate.yml` | GitHub Actions：JSON/TOML 语法 + 版本号同步检查 |
 
 ## 🔌 MCP 服务器
 
@@ -172,15 +175,17 @@ babysit、canvas、create-hook、create-rule、create-skill、create-subagent、
 # 1. 克隆仓库
 git clone https://github.com/yinheljl/vscode-copilot-config.git C:\Temp\copilot-config
 
-# 2. 复制 VS Code Copilot 配置
-Copy-Item -Recurse "C:\Temp\copilot-config\copilot\*" "$env:USERPROFILE\.copilot\" -Force
+# 2. VS Code Copilot：仅复制 instructions 与 skills 两个子目录
+foreach ($sub in "instructions","skills") {
+    Copy-Item -Recurse "C:\Temp\copilot-config\copilot\$sub" "$env:USERPROFILE\.copilot\" -Force
+}
 
-# 3. 复制 Cursor 配置
-Copy-Item -Recurse "C:\Temp\copilot-config\cursor\rules" "$env:USERPROFILE\.cursor\" -Force
-Copy-Item -Recurse "C:\Temp\copilot-config\cursor\skills" "$env:USERPROFILE\.cursor\" -Force
-Copy-Item -Recurse "C:\Temp\copilot-config\cursor\skills-cursor" "$env:USERPROFILE\.cursor\" -Force
+# 3. Cursor：rules / skills / skills-cursor
+foreach ($sub in "rules","skills","skills-cursor") {
+    Copy-Item -Recurse "C:\Temp\copilot-config\cursor\$sub" "$env:USERPROFILE\.cursor\" -Force
+}
 
-# 4. 复制 Codex 配置
+# 4. Codex：AGENTS.md
 New-Item -ItemType Directory -Path "$env:USERPROFILE\.codex" -Force
 Copy-Item "C:\Temp\copilot-config\codex\AGENTS.md" "$env:USERPROFILE\.codex\AGENTS.md" -Force
 
@@ -242,6 +247,8 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 - [x] AI Agent 自动配置支持
 - [x] 远程更新 + 版本检查
 - [x] VS Code Codex 自动配置
+- [x] sync.sh（Linux/macOS 双向同步）
+- [x] CI 校验 JSON/TOML 模板与版本号同步
 - [ ] 设置页面内一键更新按钮
 - [ ] 更多 MCP 服务器预配置
 
@@ -252,4 +259,4 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 ## 📄 许可
 
-本仓库为个人配置集，供自由使用和参考。
+[MIT License](LICENSE) — 自由使用、修改、分发，无任何担保。

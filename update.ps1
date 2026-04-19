@@ -29,8 +29,15 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$repoUrl   = "https://github.com/yinheljl/vscode-copilot-config.git"
 $repoName  = "vscode-copilot-config"
+
+# 优先从 REPO_URL 文件读取仓库 URL（便于 fork 后只改一处）
+$repoUrlFileLocal = if ($PSScriptRoot) { Join-Path $PSScriptRoot "REPO_URL" } else { $null }
+if ($repoUrlFileLocal -and (Test-Path $repoUrlFileLocal)) {
+    $repoUrl = (Get-Content $repoUrlFileLocal -Raw).Trim()
+} else {
+    $repoUrl = "https://github.com/yinheljl/vscode-copilot-config.git"
+}
 
 # 确定仓库目录：如果当前目录就是仓库，就用当前目录；否则用临时目录
 $scriptDir = $PSScriptRoot
@@ -52,7 +59,10 @@ function Get-LocalVersion($dir) {
 
 function Get-RemoteVersion {
     try {
-        $url = "https://raw.githubusercontent.com/yinheljl/vscode-copilot-config/main/VERSION"
+        # 从 $repoUrl 推导 raw URL：去掉 .git，把 github.com 换成 raw.githubusercontent.com
+        $base = $repoUrl -replace '\.git$',''
+        $base = $base -replace 'github\.com','raw.githubusercontent.com'
+        $url  = "$base/main/VERSION"
         $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10
         return $response.Content.Trim()
     } catch {
@@ -107,11 +117,13 @@ if (Test-Path (Join-Path $repoDir ".git")) {
         try {
             $pullOutput = git pull --ff-only 2>&1
             Write-Host "  $pullOutput"
-        } catch {
-            Write-Warning "  git pull 失败: $($_.Exception.Message)"
-            Write-Warning "  尝试强制同步..."
-            git fetch origin
-            git reset --hard origin/main
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "  git pull 退出码 $LASTEXITCODE，尝试强制同步..."
+                git fetch origin
+                if ($LASTEXITCODE -ne 0) { throw "git fetch 失败" }
+                git reset --hard origin/main
+                if ($LASTEXITCODE -ne 0) { throw "git reset 失败" }
+            }
         } finally {
             Pop-Location
         }
@@ -122,7 +134,7 @@ if (Test-Path (Join-Path $repoDir ".git")) {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         Write-Host "  未安装 git，使用 ZIP 下载..." -ForegroundColor Yellow
         if (-not $DryRun) {
-            $zipUrl = "https://github.com/yinheljl/vscode-copilot-config/archive/refs/heads/main.zip"
+            $zipUrl = ($repoUrl -replace '\.git$','') + "/archive/refs/heads/main.zip"
             $zipPath = Join-Path $env:TEMP "copilot-config.zip"
             $extractDir = Join-Path $env:TEMP "copilot-config-extract"
             Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing

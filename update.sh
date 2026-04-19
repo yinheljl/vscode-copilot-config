@@ -3,10 +3,14 @@
 
 set -euo pipefail
 
-REPO_URL="https://github.com/yinheljl/vscode-copilot-config.git"
-
-# 确定仓库目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 优先从 REPO_URL 文件读取（便于 fork 后只改一处）
+if [ -f "$SCRIPT_DIR/REPO_URL" ]; then
+    REPO_URL=$(tr -d '[:space:]' < "$SCRIPT_DIR/REPO_URL")
+else
+    REPO_URL="https://github.com/yinheljl/vscode-copilot-config.git"
+fi
+
 if [ -f "$SCRIPT_DIR/VERSION" ]; then
     REPO_DIR="$SCRIPT_DIR"
 elif [ -f "$PWD/VERSION" ]; then
@@ -24,7 +28,10 @@ get_local_version() {
 }
 
 get_remote_version() {
-    curl -fsSL "https://raw.githubusercontent.com/yinheljl/vscode-copilot-config/main/VERSION" 2>/dev/null | tr -d '[:space:]' || echo ""
+    # 从 REPO_URL 推导 raw URL（去掉 .git 后缀，把 github.com 换成 raw.githubusercontent.com）
+    local raw_url="${REPO_URL%.git}"
+    raw_url="${raw_url//github.com/raw.githubusercontent.com}/main/VERSION"
+    curl -fsSL "$raw_url" 2>/dev/null | tr -d '[:space:]' || echo ""
 }
 
 echo "========================================"
@@ -68,14 +75,21 @@ else
         echo "  + 已克隆到 $REPO_DIR"
     else
         echo "  未安装 git，使用 ZIP 下载..."
-        ZIP_URL="https://github.com/yinheljl/vscode-copilot-config/archive/refs/heads/main.zip"
+        ZIP_URL="${REPO_URL%.git}/archive/refs/heads/main.zip"
         ZIP_PATH="/tmp/copilot-config.zip"
         EXTRACT_DIR="/tmp/copilot-config-extract"
         curl -fsSL "$ZIP_URL" -o "$ZIP_PATH"
         rm -rf "$EXTRACT_DIR"
         unzip -q "$ZIP_PATH" -d "$EXTRACT_DIR"
+        inner_dir=$(find "$EXTRACT_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+        if [ -z "$inner_dir" ]; then
+            echo "  ZIP 解压结构异常，终止" >&2
+            rm -f "$ZIP_PATH"
+            rm -rf "$EXTRACT_DIR"
+            exit 1
+        fi
         rm -rf "$REPO_DIR"
-        mv "$EXTRACT_DIR"/vscode-copilot-config-main "$REPO_DIR"
+        mv "$inner_dir" "$REPO_DIR"
         rm -f "$ZIP_PATH"
         rm -rf "$EXTRACT_DIR"
         echo "  + 已通过 ZIP 下载到 $REPO_DIR"
