@@ -3,7 +3,7 @@
 > **一键配置 VS Code GitHub Copilot、Cursor 和 Codex 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
 
-当前版本：`1.3.0`
+当前版本：`1.4.0`
 
 ---
 
@@ -107,12 +107,15 @@
 | 目录/文件 | 说明 |
 |-----------|------|
 | `copilot/instructions/` | VS Code Copilot 全局指令（中文规范、交互反馈策略、防超时等） |
-| `copilot/skills/` | VS Code Copilot 自定义 Skill（8 个） |
+| `copilot/skills/` | VS Code Copilot 自定义 Skill（9 个，含安全护栏） |
 | `codex/AGENTS.md` | Codex 全局指令（AGENTS.md 格式，中文规范、交互反馈策略） |
-| `codex/config.toml` | Codex MCP 服务器配置模板（含路径占位符） |
+| `codex/config.toml` | Codex MCP 服务器配置模板（含 `[features] codex_hooks = true`） |
+| `codex/skills/` | **Codex 全局 Skills（9 个，与 Cursor / Copilot 同源）** |
+| `codex/hooks/` | **Codex PreToolUse 硬兜底 Python 脚本 + 自检测试** |
+| `codex/hooks.json` | Codex Hooks 配置模板（注册 `pre_tool_use_guard.py` 拦截破坏性 Bash 命令） |
 | `cursor/mcp.json` | Cursor MCP 服务器配置模板（含路径占位符） |
 | `cursor/rules/` | Cursor 全局 Rules（`.mdc` 格式） |
-| `cursor/skills/` | Cursor Skills（与 Copilot 共享的 8 个） |
+| `cursor/skills/` | Cursor Skills（9 个，与 Copilot / Codex 共享） |
 | `cursor/settings.json` | Cursor 编辑器设置模板 |
 | `vscode/mcp.json` | VS Code MCP 服务器配置模板（含路径占位符） |
 | `vscode/settings.json` | VS Code 编辑器设置模板 |
@@ -147,7 +150,7 @@
 
 ## 🛠️ Skills 清单
 
-### 共享 Skills（Cursor + VS Code）
+### 共享 Skills（Cursor + VS Code Copilot + Codex 三套同源）
 
 | 分类 | 技能 | 用途 |
 |------|------|------|
@@ -159,8 +162,34 @@
 | 生产力 | code-reviewer | 多语言代码评审 |
 | 生产力 | mcp-builder | MCP 服务器构建指南 |
 | 工程 | codebase-onboarding | 代码库分析与上手文档生成 |
+| 🛡️ 安全 | **destructive-command-guard** | **拦截 `rm -rf` / `Remove-Item -Recurse` / `git reset --hard` / `DROP TABLE` 等高危命令的软兜底** |
 
 > Cursor 自带的官方 Skills（babysit / canvas / create-rule 等）由 Cursor 安装时附带，不在本仓库管理范围内。
+
+## 🛡️ 安全防护（破坏性命令双层兜底）
+
+**背景**：Codex 等 AI agent 在 Windows 上有过整盘删除事故（典型如 `powershell -c "cmd /c rmdir /s /q F:\foo"` 中 PowerShell × cmd 的转义符冲突，实际执行成 `rmdir /s /q F:\` 整盘清空）。本仓库提供**软 + 硬**双层防护，由 `restore` 脚本一键部署：
+
+### 软层 — `safety/destructive-command-guard` Skill（三 IDE 同源）
+
+通过 `SKILL.md` 的 `description` 中的 trigger 关键词，让 Cursor / Copilot / Codex 在生成 `rm` / `del` / `rmdir` / `Remove-Item` / `git reset --hard` / `DROP TABLE` 等命令前自动加载并强制 `AskQuestion` 二次确认。
+
+特点：跨平台、跨 IDE、零依赖、重启 IDE 即生效。
+局限：属于 prompt 层，模型在极端情况（上下文严重压缩、`--full-auto`）可能绕过。
+
+### 硬层 — Codex PreToolUse Hook（仅 Codex CLI）
+
+通过 [Codex 原生 hooks](https://developers.openai.com/codex/hooks) 在 Bash 工具调用**进入 shell 之前**同步执行 `~/.codex/hooks/pre_tool_use_guard.py`。命中 deny 规则直接 `permissionDecision: deny`，模型完全无法绕过（除非用户手动卸载或在仓库根放置 `.codex-allow-destructive` 文件）。
+
+| 项 | 详情 |
+|----|------|
+| 实现 | 纯 Python 标准库，零外部依赖 |
+| 已覆盖 | rm -rf / + ~ + $HOME + 系统目录、Windows 删盘根、PowerShell × cmd 嵌套、`git push --force`（无 `--force-with-lease`）、mkfs / dd to /dev、DROP DATABASE / TRUNCATE、terraform destroy、kubectl delete namespace 等 |
+| 自检 | `python codex/hooks/test_pre_tool_use_guard.py` —— 26 个用例，由 `restore` 脚本自动跑一次 |
+| 审计 | 所有触发记录到 `~/.codex/hooks/logs/guard-YYYYMM.log`（每行 JSON） |
+| 启用前提 | Codex feature flag `codex_hooks = true`（restore 脚本自动追加到 `~/.codex/config.toml`） |
+
+详见 [`codex/hooks/README.md`](codex/hooks/README.md)。
 
 ## 🔧 手动安装
 
@@ -182,9 +211,12 @@ foreach ($sub in "rules","skills") {
     Copy-Item -Recurse "C:\Temp\copilot-config\cursor\$sub" "$env:USERPROFILE\.cursor\" -Force
 }
 
-# 4. Codex：AGENTS.md
+# 4. Codex：AGENTS.md + skills + hooks
 New-Item -ItemType Directory -Path "$env:USERPROFILE\.codex" -Force
 Copy-Item "C:\Temp\copilot-config\codex\AGENTS.md" "$env:USERPROFILE\.codex\AGENTS.md" -Force
+Copy-Item -Recurse "C:\Temp\copilot-config\codex\skills" "$env:USERPROFILE\.codex\" -Force
+Copy-Item -Recurse "C:\Temp\copilot-config\codex\hooks"  "$env:USERPROFILE\.codex\" -Force
+# 注：hooks.json 与 config.toml 含路径占位符，建议改用 restore.ps1 自动渲染
 
 # 5. 安装 Interactive-Feedback-MCP
 git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$env:USERPROFILE\MCP\Interactive-Feedback-MCP"
@@ -246,6 +278,8 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 - [x] VS Code Codex 自动配置
 - [x] sync.sh（Linux/macOS 双向同步）
 - [x] CI 校验 JSON/TOML 模板与版本号同步
+- [x] Codex 全局 Agent Skills（与 Cursor/Copilot 同源）
+- [x] 破坏性命令双层兜底（软层 SKILL.md + Codex PreToolUse hook）
 - [ ] 设置页面内一键更新按钮
 - [ ] 更多 MCP 服务器预配置
 

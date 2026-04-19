@@ -162,7 +162,27 @@ if [ -f "$CODEX_SRC/AGENTS.md" ]; then
 else
     echo "  未找到 ~/.codex/AGENTS.md，跳过"
 fi
-echo "  * config.toml 使用模板，不从本机同步"
+
+# skills/ — 排除 Codex 内置 .system 和 codex-primary-runtime
+if [ -d "$CODEX_SRC/skills" ]; then
+    mkdir -p "$CODEX_DST/skills"
+    synced=0
+    for d in "$CODEX_SRC/skills"/*/; do
+        [ -d "$d" ] || continue
+        name="$(basename "$d")"
+        case "$name" in
+            .system|codex-primary-runtime) continue ;;
+        esac
+        rm -rf "$CODEX_DST/skills/$name"
+        cp -rf "$d" "$CODEX_DST/skills/$name"
+        synced=$((synced+1))
+    done
+    [ -f "$CODEX_SRC/skills/README.md" ] && cp -f "$CODEX_SRC/skills/README.md" "$CODEX_DST/skills/README.md"
+    echo "  + skills/ (同步 $synced 个用户类别，已排除 .system / codex-primary-runtime)"
+else
+    echo "  未找到 ~/.codex/skills/，跳过"
+fi
+echo "  * config.toml / hooks.json / hooks/ 使用模板，不从本机同步"
 
 # --- 4. VS Code ---
 echo "[4/5] 同步 VS Code..."

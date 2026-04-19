@@ -1,0 +1,19 @@
+{
+  "_comment": "Codex Hooks 配置模板。由 restore.ps1 / restore.sh 部署到 ~/.codex/hooks.json，并将 codex/hooks/pre_tool_use_guard.py 部署到 ~/.codex/hooks/。修改后需重启 Codex 会话才会生效。要启用，~/.codex/config.toml 中必须存在 [features] codex_hooks = true（restore 脚本会自动追加）。",
+  "_doc": "https://developers.openai.com/codex/hooks",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__GUARD_PYTHON__ __GUARD_SCRIPT__",
+            "statusMessage": "[destructive-command-guard] 校验 Bash 命令",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

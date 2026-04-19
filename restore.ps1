@@ -16,6 +16,9 @@
     - vscode/settings.json → 合并到 VS Code settings.json（VS Code）
     - codex/AGENTS.md → ~/.codex/AGENTS.md（Codex）
     - codex/config.toml → 合并到 ~/.codex/config.toml（Codex）
+    - codex/skills/ → ~/.codex/skills/（Codex 全局 Agent Skills，含安全护栏 skill）
+    - codex/hooks/ → ~/.codex/hooks/（破坏性命令硬兜底 PreToolUse hook）
+    - codex/hooks.json → 合并到 ~/.codex/hooks.json（注册 hook 到 Codex）
     - 克隆/下载 qt-interactive-feedback-mcp 到用户级共享 MCP 目录
 
 .EXAMPLE
@@ -55,6 +58,12 @@ $codexConfigSrc  = Join-Path $codexSrc "config.toml"
 $codexConfigDst  = Join-Path $codexDst "config.toml"
 $codexAgentsSrc  = Join-Path $codexSrc "AGENTS.md"
 $codexAgentsDst  = Join-Path $codexDst "AGENTS.md"
+$codexSkillsSrc  = Join-Path $codexSrc "skills"
+$codexSkillsDst  = Join-Path $codexDst "skills"
+$codexHooksSrc   = Join-Path $codexSrc "hooks"
+$codexHooksDst   = Join-Path $codexDst "hooks"
+$codexHooksJsonSrc = Join-Path $codexSrc "hooks.json"
+$codexHooksJsonDst = Join-Path $codexDst "hooks.json"
 $feedbackMcpDir  = Join-Path (Join-Path $env:USERPROFILE "MCP") "Interactive-Feedback-MCP"
 
 # ============================
@@ -326,6 +335,130 @@ function Copy-DirReplace($src, $dst) {
     Copy-Item $src $dst -Recurse -Force
 }
 
+function Resolve-PythonForHooks {
+    # 寻找一个可被 Codex hook 调用的 Python 解释器（优先 venv）
+    $candidates = @(
+        (Join-Path $env:USERPROFILE "MCP\Interactive-Feedback-MCP\.venv\Scripts\python.exe"),
+        (Join-Path $env:USERPROFILE ".local\bin\python.exe")
+    )
+    foreach ($p in $candidates) {
+        if (Test-Path $p) { return $p }
+    }
+    foreach ($name in @("py", "python3", "python")) {
+        $found = (Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+        if ($found) {
+            # 排除 Microsoft Store 假 python
+            if ($found -notmatch "WindowsApps\\python") { return $found }
+        }
+    }
+    return $null
+}
+
+function Install-CodexHooks($srcDir, $dstDir, $jsonSrcPath, $jsonDstPath, $pythonPath, $configTomlPath) {
+    if (-not (Test-Path $srcDir)) { return }
+
+    if (-not $pythonPath) {
+        Write-Warning "  未找到可用的 Python 解释器，跳过 Codex hook 硬兜底（软层 skill 仍有效）"
+        Write-Warning "  → 安装 Python 后重跑 .\restore.ps1 -Target Codex 即可启用硬兜底"
+        return
+    }
+
+    # 1) 部署 hook 脚本
+    if (-not (Test-Path $dstDir)) {
+        New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
+    }
+    Copy-Item "$srcDir\*" $dstDir -Recurse -Force
+    Write-Host "  + hooks/ (PreToolUse 守卫脚本)"
+
+    # 2) 跑一次自检
+    $testScript = Join-Path $dstDir "test_pre_tool_use_guard.py"
+    if (Test-Path $testScript) {
+        $prevPref = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            $testOutput = & $pythonPath $testScript 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "  hook 自检失败！输出："
+                $testOutput | ForEach-Object { Write-Warning "    $_" }
+            } else {
+                Write-Host "  + hook 自检 26 个用例全部通过" -ForegroundColor DarkGreen
+            }
+        } finally {
+            $ErrorActionPreference = $prevPref
+        }
+    }
+
+    # 3) 渲染 hooks.json 模板（替换占位符）→ 部署到 ~/.codex/hooks.json
+    if (Test-Path $jsonSrcPath) {
+        $hookScriptPath = Join-Path $dstDir "pre_tool_use_guard.py"
+        $content = Get-Content $jsonSrcPath -Raw -Encoding UTF8
+        $content = $content.Replace('__GUARD_PYTHON__', (Escape-JsonString $pythonPath))
+        $content = $content.Replace('__GUARD_SCRIPT__', (Escape-JsonString $hookScriptPath))
+
+        if ((Test-Path $jsonDstPath) -and -not $Force) {
+            # 增量：尝试合并 PreToolUse 数组
+            Backup-File $jsonDstPath
+            try {
+                $existing = Get-Content $jsonDstPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                $newObj   = $content | ConvertFrom-Json
+                if (-not ($existing.PSObject.Properties.Name -contains "hooks")) {
+                    $existing | Add-Member -MemberType NoteProperty -Name "hooks" -Value ([PSCustomObject]@{}) -Force
+                }
+                if (-not ($existing.hooks.PSObject.Properties.Name -contains "PreToolUse")) {
+                    $existing.hooks | Add-Member -MemberType NoteProperty -Name "PreToolUse" -Value @() -Force
+                }
+                # 用名字或 statusMessage 去重
+                $newPre  = @($newObj.hooks.PreToolUse)
+                $oldPre  = @($existing.hooks.PreToolUse)
+                $marker  = "[destructive-command-guard]"
+                $kept    = @($oldPre | Where-Object {
+                    $g = $_
+                    $hasGuard = $false
+                    if ($g.PSObject.Properties.Name -contains "hooks") {
+                        foreach ($h in $g.hooks) {
+                            if ($h.PSObject.Properties.Name -contains "statusMessage" `
+                                -and $h.statusMessage -like "*$marker*") {
+                                $hasGuard = $true; break
+                            }
+                        }
+                    }
+                    -not $hasGuard
+                })
+                $existing.hooks.PreToolUse = @($kept + $newPre)
+                $json = $existing | ConvertTo-Json -Depth 20 -Compress
+                $json = Format-Json $json 2
+                Write-Utf8NoBomFile $jsonDstPath $json
+                Write-Host "  + hooks.json (增量合并 PreToolUse)"
+            } catch {
+                Write-Warning "  现有 hooks.json 解析失败，改为覆盖：$($_.Exception.Message)"
+                Write-Utf8NoBomFile $jsonDstPath $content
+                Write-Host "  + hooks.json (已覆盖)"
+            }
+        } else {
+            if (Test-Path $jsonDstPath) { Backup-File $jsonDstPath }
+            Write-Utf8NoBomFile $jsonDstPath $content
+            Write-Host "  + hooks.json (新建)"
+        }
+    }
+
+    # 4) 确保 config.toml 启用 codex_hooks
+    if ($configTomlPath -and (Test-Path $configTomlPath)) {
+        $cfg = Get-Content $configTomlPath -Raw -Encoding UTF8
+        if ($cfg -notmatch '(?m)^\s*codex_hooks\s*=\s*true\b') {
+            Backup-File $configTomlPath
+            if ($cfg -match '(?m)^\[features\]') {
+                # 已有 [features] 段，缺 key
+                $cfg = [regex]::Replace($cfg, '(?m)^\[features\]\s*$', "[features]`r`ncodex_hooks = true")
+            } else {
+                # 追加新段
+                $cfg = $cfg.TrimEnd() + "`r`n`r`n[features]`r`ncodex_hooks = true`r`n"
+            }
+            Write-Utf8NoBomFile $configTomlPath $cfg
+            Write-Host "  + config.toml (追加 [features] codex_hooks = true)"
+        }
+    }
+}
+
 function Merge-CodexConfig($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir) {
     if (-not (Test-Path $srcPath)) { return }
     $content = Get-Content $srcPath -Raw -Encoding UTF8
@@ -501,21 +634,37 @@ if ($hasCursor) {
 # ============================
 if ($hasCodex) {
     $step++
-    Write-Host "[$step/$totalSteps] 还原 Codex 配置（AGENTS.md）..." -ForegroundColor Green
+    Write-Host "[$step/$totalSteps] 还原 Codex 配置（AGENTS.md + skills + hooks）..." -ForegroundColor Green
     if (-not (Test-Path $codexSrc)) {
         Write-Warning "找不到源目录: $codexSrc，跳过。"
     } elseif ($DryRun) {
         Write-Host "  [DryRun] $codexAgentsSrc -> $codexAgentsDst"
+        Write-Host "  [DryRun] $codexSkillsSrc -> $codexSkillsDst"
+        Write-Host "  [DryRun] $codexHooksSrc  -> $codexHooksDst"
+        Write-Host "  [DryRun] $codexHooksJsonSrc -> $codexHooksJsonDst"
     } else {
         if (-not (Test-Path $codexDst)) {
             New-Item -ItemType Directory -Path $codexDst -Force | Out-Null
         }
+        # AGENTS.md
         if (Test-Path $codexAgentsSrc) {
-            # 与 copilot/instructions 行为统一：增量模式下也覆盖（先备份）
             Backup-File $codexAgentsDst
             Copy-Item $codexAgentsSrc $codexAgentsDst -Force
             Write-Host "  + AGENTS.md"
         }
+        # skills/  ← 与 cursor/skills、copilot/skills 同源（含安全护栏 skill）
+        if (Test-Path $codexSkillsSrc) {
+            if ($Force) {
+                Copy-DirReplace $codexSkillsSrc $codexSkillsDst
+                Write-Host "  + skills/ (覆盖)"
+            } else {
+                Copy-DirMerge $codexSkillsSrc $codexSkillsDst
+                Write-Host "  + skills/ (增量)"
+            }
+        }
+        # hooks/ + hooks.json + config.toml feature flag （硬兜底）
+        $hookPython = Resolve-PythonForHooks
+        Install-CodexHooks $codexHooksSrc $codexHooksDst $codexHooksJsonSrc $codexHooksJsonDst $hookPython $codexConfigDst
     }
 }
 
@@ -682,7 +831,11 @@ if ($hasCursor) {
 if ($hasCodex) {
     $checks = @(
         @{ Name = "~/.codex/AGENTS.md"; Path = $codexAgentsDst },
-        @{ Name = "~/.codex/config.toml"; Path = $codexConfigDst }
+        @{ Name = "~/.codex/config.toml"; Path = $codexConfigDst },
+        @{ Name = "~/.codex/skills/"; Path = $codexSkillsDst },
+        @{ Name = "~/.codex/skills/safety/destructive-command-guard/"; Path = (Join-Path $codexSkillsDst "safety\destructive-command-guard") },
+        @{ Name = "~/.codex/hooks/pre_tool_use_guard.py"; Path = (Join-Path $codexHooksDst "pre_tool_use_guard.py") },
+        @{ Name = "~/.codex/hooks.json"; Path = $codexHooksJsonDst }
     ) + $checks
 }
 foreach ($c in $checks) {

@@ -28,3 +28,6 @@ jobs:
           bash -n restore.sh
           bash -n update.sh
           bash -n sync.sh
+
+      - name: Codex hook self-test
+        run: python codex/hooks/test_pre_tool_use_guard.py

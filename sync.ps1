@@ -9,7 +9,9 @@
     - Cursor settings.json (Copilot/MCP 相关) → cursor/settings.json
     - VS Code settings.json (Copilot 相关) → vscode/settings.json
     - ~/.codex/AGENTS.md → codex/AGENTS.md
-    注意：mcp.json 和 config.toml 使用模板（含占位符），不从本机同步。
+    - ~/.codex/skills/ (排除 .system 与 codex-primary-runtime) → codex/skills/
+    注意：mcp.json、config.toml、hooks.json 使用模板（含占位符），不从本机同步。
+    codex/hooks/ 目录是源代码（Python 脚本），同样不从本机回写。
     然后 git commit 并 push。
 
 .EXAMPLE
@@ -194,7 +196,7 @@ Write-Host "  + settings.json (Copilot/MCP 相关)"
 Write-Host "  * mcp.json 使用模板，不从本机同步" -ForegroundColor DarkGray
 
 # ============================
-# 3. 同步 Codex 配置（只同步 AGENTS.md，config.toml 使用模板）
+# 3. 同步 Codex 配置（AGENTS.md + skills；config.toml/hooks.json 使用模板）
 # ============================
 Write-Host "[3/5] 同步 Codex 配置..." -ForegroundColor Green
 $codexAgentsSrc = Join-Path $codexSrc "AGENTS.md"
@@ -207,7 +209,32 @@ if (Test-Path $codexAgentsSrc) {
 } else {
     Write-Host "  未找到 ~/.codex/AGENTS.md，跳过" -ForegroundColor Yellow
 }
-Write-Host "  * config.toml 使用模板，不从本机同步" -ForegroundColor DarkGray
+
+# skills/ — 排除 Codex 内置的 .system 和 codex-primary-runtime，只同步用户自有 skills
+$codexSkillsSrcLocal = Join-Path $codexSrc "skills"
+$codexSkillsDstRepo  = Join-Path $codexDst "skills"
+if (Test-Path $codexSkillsSrcLocal) {
+    if (-not (Test-Path $codexSkillsDstRepo)) {
+        New-Item -ItemType Directory -Path $codexSkillsDstRepo -Force | Out-Null
+    }
+    $excludeDirs = @(".system", "codex-primary-runtime")
+    $synced = 0
+    Get-ChildItem $codexSkillsSrcLocal -Directory | Where-Object { $excludeDirs -notcontains $_.Name } | ForEach-Object {
+        $dstDir = Join-Path $codexSkillsDstRepo $_.Name
+        if (Test-Path $dstDir) { Remove-Item $dstDir -Recurse -Force }
+        Copy-Item $_.FullName $dstDir -Recurse -Force
+        $synced++
+    }
+    # 也复制 skills/ 根目录的 README.md（如果用户在本机有改动）
+    $localReadme = Join-Path $codexSkillsSrcLocal "README.md"
+    if (Test-Path $localReadme) {
+        Copy-Item $localReadme (Join-Path $codexSkillsDstRepo "README.md") -Force
+    }
+    Write-Host "  + skills/ (同步 $synced 个用户类别，已排除 .system / codex-primary-runtime)"
+} else {
+    Write-Host "  未找到 ~/.codex/skills/，跳过" -ForegroundColor Yellow
+}
+Write-Host "  * config.toml / hooks.json / hooks/ 使用模板，不从本机同步" -ForegroundColor DarkGray
 
 # ============================
 # 4. 同步 VS Code 配置（不含 mcp.json，使用模板）

@@ -17,10 +17,11 @@ VS Code Copilot 会自动识别该目录下的技能，无需额外配置。
 |------|------|
 | **Anthropic 官方** | https://github.com/anthropics/skills（Apache 2.0 / source-available） |
 | **社区成熟仓库** | https://github.com/alirezarezvani/claude-skills（MIT） |
+| **本仓库自研** | `safety/destructive-command-guard` |
 
 ---
 
-## 已安装技能清单（共 8 个）
+## 已安装技能清单（共 9 个）
 
 ### 文档类 (document)
 
@@ -49,6 +50,14 @@ VS Code Copilot 会自动识别该目录下的技能，无需额外配置。
 | 技能 | 用途 | 来源 |
 |------|------|------|
 | codebase-onboarding | 代码库分析与上手文档生成 | alirezarezvani/claude-skills |
+
+### 🛡️ 安全类 (safety)
+
+| 技能 | 用途 | 来源 |
+|------|------|------|
+| destructive-command-guard | 在执行 `rm -rf` / `Remove-Item -Recurse` / `git reset --hard` / `DROP TABLE` 等高危命令前强制二次确认 | 本仓库自研 |
+
+> 该 skill 同时部署在 `cursor/skills/`、`copilot/skills/`、`codex/skills/` 三处。Codex 端额外配套 `codex-safeguard` PreToolUse hook 作为硬兜底，由 `restore` 脚本自动安装。
 
 ---
 
