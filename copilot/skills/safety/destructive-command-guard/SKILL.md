@@ -5,12 +5,13 @@ description: "破坏性命令安全护栏。当将要执行可能导致数据丢
 
 # Destructive Command Guard（破坏性命令安全护栏）
 
-> 本 skill 是**软兜底**，必须配合下列**硬兜底**才能可靠工作：
+> 本 skill 是**软兜底**，配合下列**硬兜底**可获得最强保护：
 >
 > - Codex：本仓库自研 `codex/hooks/pre_tool_use_guard.py` PreToolUse 钩子（仅 Python 标准库，无任何第三方依赖；由 `restore` 脚本自动安装到 `~/.codex/hooks/`，并随安装运行 26 项 self-test）
-> - 始终保持 Codex 默认沙箱（`approval_policy != "never"` 或 `sandbox_mode != "danger-full-access"`）
-> - 始终保持 Cursor / VS Code 的工作区写入限制
-> - 频繁 `git commit` + 启用 Windows 卷影副本 / 第三方实时备份
+> - 该 hook 与 Codex 沙箱**完全独立**：在 `--full-auto` / `--yolo` / `sandbox_mode = "danger-full-access"` 等"完全开放"模式下**仍然 100% 生效**（命令在进入 shell 前被拦截）—— 这正是 hook 设计的核心价值
+> - 频繁 `git commit` + 启用 Windows 卷影副本 / 第三方实时备份（适用任何模式）
+>
+> 沙箱只是可选的"额外一层"，**本仓库不强制要求开启沙箱**。
 
 ---
 

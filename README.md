@@ -175,7 +175,7 @@
 通过 `SKILL.md` 的 `description` 中的 trigger 关键词，让 Cursor / Copilot / Codex 在生成 `rm` / `del` / `rmdir` / `Remove-Item` / `git reset --hard` / `DROP TABLE` 等命令前自动加载并强制 `AskQuestion` 二次确认。
 
 特点：跨平台、跨 IDE、零依赖、重启 IDE 即生效。
-局限：属于 prompt 层，模型在极端情况（上下文严重压缩、`--full-auto`）可能绕过。
+局限：属于 prompt 层，模型在极端情况（上下文严重压缩、`--full-auto` / `--yolo`）可能绕过 —— 这正是下方硬层 hook 存在的原因。
 
 ### 硬层 — Codex PreToolUse Hook（仅 Codex CLI）
 
@@ -205,7 +205,7 @@
 | 🚪 可控豁免 | 仅当 cwd 显式存在 `.codex-allow-destructive` 文件时才放行，避免环境变量或全局开关被误开。 |
 | 🧯 失败安全 | 任何 hook 内部异常都默认放行（fail-open）+ 写入告警日志，**绝不会**因为 hook 自身 bug 阻塞用户的正常开发。 |
 | ♻️ 可回滚 | 删除 `~/.codex/hooks.json` 或将 `~/.codex/config.toml` 里 `codex_hooks` 设为 `false`，立即回到原生 Codex 行为，无残留。 |
-| 🚫 不替代沙箱 | 本 hook 是**额外**的一层防线，不取代 Codex `approval_policy` / `sandbox_mode`。企业部署仍应保持 Codex 默认沙箱并禁用 `--full-auto` / `--yolo`。 |
+| 🛡️ 与沙箱独立 | 本 hook 由 Codex 在进程内、shell 之前同步调用，**与沙箱完全解耦**。在 `--full-auto` / `--yolo` / `sandbox_mode = "danger-full-access"` 等完全开放模式下**仍然 100% 生效**——这正是 hook 相比沙箱的核心优势：沙箱限制了能力，hook 只拦截真正危险的命令，开发体验无损。本仓库**不强制要求保留沙箱**，由用户自行决策。 |
 
 > 早期文档曾出现过 `codex-safeguard` 等第三方 npm 包的"参考链接"，已在 v1.4.0 之后**全部移除**。本仓库的硬层防护**没有任何运行时第三方依赖**。
 
