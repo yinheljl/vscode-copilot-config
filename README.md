@@ -113,7 +113,6 @@
 | `cursor/mcp.json` | Cursor MCP 服务器配置模板（含路径占位符） |
 | `cursor/rules/` | Cursor 全局 Rules（`.mdc` 格式） |
 | `cursor/skills/` | Cursor Skills（与 Copilot 共享的 8 个） |
-| `cursor/skills-cursor/` | Cursor 专属 Skills（11 个） |
 | `cursor/settings.json` | Cursor 编辑器设置模板 |
 | `vscode/mcp.json` | VS Code MCP 服务器配置模板（含路径占位符） |
 | `vscode/settings.json` | VS Code 编辑器设置模板 |
@@ -143,8 +142,8 @@
 | 规则文件 | 适用于 | 说明 |
 |----------|--------|------|
 | `copilot/instructions/main.instructions.md` | VS Code Copilot | 中文回复、Python 虚拟环境、交互反馈策略、防超时 |
-| `codex/AGENTS.md` | Codex | 中文回复、Python 虚拟环境、交互反馈策略 |
-| `cursor/rules/mcp-feedback.mdc` | Cursor | interactive_feedback 交互反馈机制 |
+| `codex/AGENTS.md` | Codex | 中文回复、Python 虚拟环境、AskQuestion 澄清机制 |
+| `cursor/rules/mcp-feedback.mdc` | Cursor | 中文回复、Python 虚拟环境、AskQuestion 澄清机制 |
 
 ## 🛠️ Skills 清单
 
@@ -161,9 +160,7 @@
 | 生产力 | mcp-builder | MCP 服务器构建指南 |
 | 工程 | codebase-onboarding | 代码库分析与上手文档生成 |
 
-### Cursor 专属 Skills（`cursor/skills-cursor/`）
-
-babysit、canvas、create-hook、create-rule、create-skill、create-subagent、migrate-to-skills、shell、statusline、update-cli-config、update-cursor-settings
+> Cursor 自带的官方 Skills（babysit / canvas / create-rule 等）由 Cursor 安装时附带，不在本仓库管理范围内。
 
 ## 🔧 手动安装
 
@@ -180,8 +177,8 @@ foreach ($sub in "instructions","skills") {
     Copy-Item -Recurse "C:\Temp\copilot-config\copilot\$sub" "$env:USERPROFILE\.copilot\" -Force
 }
 
-# 3. Cursor：rules / skills / skills-cursor
-foreach ($sub in "rules","skills","skills-cursor") {
+# 3. Cursor：rules / skills
+foreach ($sub in "rules","skills") {
     Copy-Item -Recurse "C:\Temp\copilot-config\cursor\$sub" "$env:USERPROFILE\.cursor\" -Force
 }
 

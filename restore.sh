@@ -205,7 +205,7 @@ if [ "$HAS_CURSOR" = true ]; then
     else
         mkdir -p "$CURSOR_DST"
 
-        for subdir in rules skills skills-cursor; do
+        for subdir in rules skills; do
             if [ -d "$CURSOR_SRC/$subdir" ]; then
                 if [ "$FORCE" = true ]; then
                     copy_dir_replace "$CURSOR_SRC/$subdir" "$CURSOR_DST/$subdir"
@@ -369,7 +369,6 @@ if [ "$HAS_CURSOR" = true ]; then
     CHECKS="$CHECKS ~/.cursor/mcp.json:$CURSOR_DST/mcp.json"
     CHECKS="$CHECKS ~/.cursor/rules/:$CURSOR_DST/rules"
     CHECKS="$CHECKS ~/.cursor/skills/:$CURSOR_DST/skills"
-    CHECKS="$CHECKS ~/.cursor/skills-cursor/:$CURSOR_DST/skills-cursor"
 fi
 if [ "$HAS_CODEX" = true ]; then
     CHECKS="$CHECKS ~/.codex/AGENTS.md:$CODEX_DST/AGENTS.md"

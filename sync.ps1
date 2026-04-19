@@ -5,7 +5,7 @@
 .DESCRIPTION
     同步以下配置到本仓库目录：
     - ~/.copilot/instructions/ 和 ~/.copilot/skills/ → copilot/
-    - ~/.cursor/rules/, skills/, skills-cursor/ → cursor/
+    - ~/.cursor/rules/, skills/ → cursor/
     - Cursor settings.json (Copilot/MCP 相关) → cursor/settings.json
     - VS Code settings.json (Copilot 相关) → vscode/settings.json
     - ~/.codex/AGENTS.md → codex/AGENTS.md
@@ -146,15 +146,6 @@ if (Test-Path $skillsSrc) {
     if (Test-Path $skillsDst) { Remove-Item $skillsDst -Recurse -Force }
     Copy-Item $skillsSrc $skillsDst -Recurse -Force
     Write-Host "  + skills/"
-}
-
-# skills-cursor/
-$skillsCursorSrc = Join-Path $cursorSrc "skills-cursor"
-if (Test-Path $skillsCursorSrc) {
-    $skillsCursorDst = Join-Path $cursorDst "skills-cursor"
-    if (Test-Path $skillsCursorDst) { Remove-Item $skillsCursorDst -Recurse -Force }
-    Copy-Item $skillsCursorSrc $skillsCursorDst -Recurse -Force
-    Write-Host "  + skills-cursor/"
 }
 
 # settings.json (提取 Copilot 相关)

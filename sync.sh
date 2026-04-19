@@ -3,7 +3,7 @@
 #
 # 同步内容：
 #   ~/.copilot/{instructions,skills}        → copilot/
-#   ~/.cursor/{rules,skills,skills-cursor}  → cursor/
+#   ~/.cursor/{rules,skills}                → cursor/
 #   Cursor settings.json (Copilot/MCP 相关) → cursor/settings.json
 #   VS Code settings.json (Copilot 相关)    → vscode/settings.json
 #   ~/.codex/AGENTS.md                       → codex/AGENTS.md
@@ -135,7 +135,7 @@ done
 # --- 2. Cursor ---
 echo "[2/5] 同步 Cursor..."
 mkdir -p "$CURSOR_DST"
-for sub in rules skills skills-cursor; do
+for sub in rules skills; do
     src="$CURSOR_SRC/$sub"
     dst="$CURSOR_DST/$sub"
     if [ -d "$src" ]; then

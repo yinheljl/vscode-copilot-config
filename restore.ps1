@@ -11,7 +11,6 @@
     - copilot (instructions, skills) → ~/.copilot/（VS Code）
     - cursor/rules/ → ~/.cursor/rules/（Cursor）
     - cursor/skills/ → ~/.cursor/skills/（Cursor）
-    - cursor/skills-cursor/ → ~/.cursor/skills-cursor/（Cursor）
     - cursor/settings.json → 合并到 Cursor settings.json（Cursor）
     - vscode/mcp.json → 合并到 VS Code mcp.json（VS Code）
     - vscode/settings.json → 合并到 VS Code settings.json（VS Code）
@@ -435,19 +434,6 @@ if ($hasCursor) {
             }
         }
 
-        # skills-cursor/
-        $skillsCursorSrc = Join-Path $cursorSrc "skills-cursor"
-        if (Test-Path $skillsCursorSrc) {
-            $skillsCursorDst = Join-Path $cursorDst "skills-cursor"
-            if ($Force) {
-                Copy-DirReplace $skillsCursorSrc $skillsCursorDst
-                Write-Host "  + skills-cursor/ (覆盖)"
-            } else {
-                Copy-DirMerge $skillsCursorSrc $skillsCursorDst
-                Write-Host "  + skills-cursor/ (增量)"
-            }
-        }
-
         # settings.json (始终合并)
         if (Test-Path $cursorSettSrc) {
             Merge-JsonSettings $cursorSettSrc $cursorSettDst
@@ -614,8 +600,7 @@ if ($hasCursor) {
     $checks = @(
         @{ Name = "~/.cursor/mcp.json"; Path = (Join-Path $cursorDst "mcp.json") },
         @{ Name = "~/.cursor/rules/"; Path = (Join-Path $cursorDst "rules") },
-        @{ Name = "~/.cursor/skills/"; Path = (Join-Path $cursorDst "skills") },
-        @{ Name = "~/.cursor/skills-cursor/"; Path = (Join-Path $cursorDst "skills-cursor") }
+        @{ Name = "~/.cursor/skills/"; Path = (Join-Path $cursorDst "skills") }
     ) + $checks
 }
 if ($hasCodex) {
