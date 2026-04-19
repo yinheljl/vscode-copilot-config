@@ -38,15 +38,21 @@ CODEX_SRC="$SCRIPT_DIR/codex"
 CODEX_DST="$HOME/.codex"
 FEEDBACK_MCP_DIR="$HOME/MCP/Interactive-Feedback-MCP"
 
-# VS Code 用户配置目录（macOS 和 Linux 路径不同）
+# VS Code / Cursor 用户配置目录（macOS 和 Linux 路径不同）
 if [[ "$OSTYPE" == "darwin"* ]]; then
     VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User"
+    CURSOR_USER_DIR="$HOME/Library/Application Support/Cursor/User"
 else
     VSCODE_USER_DIR="$HOME/.config/Code/User"
+    CURSOR_USER_DIR="$HOME/.config/Cursor/User"
 fi
 
 MCP_SRC="$SCRIPT_DIR/vscode/mcp.json"
 MCP_DST="$VSCODE_USER_DIR/mcp.json"
+VSCODE_SETT_SRC="$SCRIPT_DIR/vscode/settings.json"
+VSCODE_SETT_DST="$VSCODE_USER_DIR/settings.json"
+CURSOR_SETT_SRC="$SCRIPT_DIR/cursor/settings.json"
+CURSOR_SETT_DST="$CURSOR_USER_DIR/settings.json"
 
 # ============================
 # IDE 自动检测
@@ -96,15 +102,127 @@ copy_dir_replace() {
     cp -rf "$src" "$dst"
 }
 
+# 将任意字符串安全地编码为 JSON 字符串字面量内部（不含外层引号）
+# 用于把路径替换进 mcp.json 模板时正确转义 \ 和 " 等字符
+json_escape_value() {
+    if command -v python3 &>/dev/null; then
+        python3 -c 'import json,sys; sys.stdout.write(json.dumps(sys.argv[1])[1:-1])' "$1"
+    else
+        # 回退：仅转义最常见的 \ 与 "（控制字符在 macOS/Linux 路径中极罕见）
+        printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+    fi
+}
+
+# 增量合并 JSONC settings：仅追加目标中缺失的顶层键，最大限度保留原文格式与注释
+merge_json_settings() {
+    local src="$1" dst="$2"
+    [ ! -f "$src" ] && return
+    if [ ! -f "$dst" ]; then
+        mkdir -p "$(dirname "$dst")"
+        cp "$src" "$dst"
+        echo "  + 已创建 $(basename "$dst")"
+        return
+    fi
+    if ! command -v python3 &>/dev/null; then
+        echo "  ! 未安装 python3，跳过 settings.json 合并: $dst" >&2
+        return
+    fi
+    cp "$dst" "${dst}.bak_$(date +%Y%m%d_%H%M%S)"
+    SRC="$src" DST="$dst" python3 - <<'PY'
+import json, os, re, sys
+
+src_path = os.environ['SRC']
+dst_path = os.environ['DST']
+
+def strip_jsonc(text):
+    placeholders = []
+    def repl(m):
+        placeholders.append(m.group(0))
+        return f'__JSONC_STR_{len(placeholders)-1}__'
+    s = re.sub(r'"(\\.|[^"\\])*"', repl, text)
+    s = re.sub(r'//[^\r\n]*', '', s)
+    s = re.sub(r'/\*.*?\*/', '', s, flags=re.S)
+    s = re.sub(r',(\s*[}\]])', r'\1', s)
+    for i, p in enumerate(placeholders):
+        s = s.replace(f'__JSONC_STR_{i}__', p)
+    return s
+
+with open(src_path, 'r', encoding='utf-8') as f:
+    src_raw = f.read()
+with open(dst_path, 'r', encoding='utf-8') as f:
+    dst_raw = f.read()
+
+try:
+    src_obj = json.loads(strip_jsonc(src_raw))
+except Exception as e:
+    print(f"  源 settings 解析失败，跳过: {e}", file=sys.stderr)
+    sys.exit(0)
+
+try:
+    dst_obj = json.loads(strip_jsonc(dst_raw))
+except Exception as e:
+    print(f"  现有 settings.json 解析失败（含语法错误），跳过合并: {e}", file=sys.stderr)
+    sys.exit(0)
+
+if not isinstance(src_obj, dict) or not isinstance(dst_obj, dict):
+    print("  settings.json 顶层不是对象，跳过", file=sys.stderr)
+    sys.exit(0)
+
+missing = {k: v for k, v in src_obj.items() if k not in dst_obj}
+if not missing:
+    print("  + settings.json (所有键已存在，未修改，注释保留)")
+    sys.exit(0)
+
+trimmed = dst_raw.rstrip()
+if not trimmed.endswith('}'):
+    print("  目标 settings.json 不以 '}' 结尾，跳过追加", file=sys.stderr)
+    sys.exit(0)
+
+body = trimmed[:-1].rstrip()
+additions = []
+for k, v in missing.items():
+    val = json.dumps(v, ensure_ascii=False, indent=2)
+    val_lines = val.split('\n')
+    val_lines = [val_lines[0]] + ['  ' + ln for ln in val_lines[1:]]
+    additions.append('  ' + json.dumps(k, ensure_ascii=False) + ': ' + '\n'.join(val_lines))
+
+insertion = ',\n'.join(additions)
+sep = '' if (body.endswith(',') or body.endswith('{')) else ','
+new_raw = f"{body}{sep}\n{insertion}\n}}\n"
+
+with open(dst_path, 'w', encoding='utf-8') as f:
+    f.write(new_raw)
+print(f"  + settings.json (追加 {len(missing)} 个缺失键，原注释保留)")
+PY
+}
+
 install_mcp_json() {
     local src="$1" dst="$2" uv_path="$3" feedback_python="$4" mcp_dir="$5"
     [ ! -f "$src" ] && return
     local content
-    content=$(cat "$src")
-    content="${content//__UV_PATH__/$uv_path}"
-    content="${content//__FEEDBACK_MCP_PYTHON__/$feedback_python}"
-    content="${content//__FEEDBACK_MCP_DIR__/$mcp_dir}"
-    content="${content//__FEEDBACK_SERVER_PATH__/$mcp_dir/server.py}"
+    if command -v python3 &>/dev/null; then
+        # 通过 Python 完成"读模板 + JSON 转义 + 占位符替换"
+        # 避免 bash ${var//pat/repl} 把替换串里的 \\ 收缩为 \ 的隐患
+        content=$(SRC="$src" UV="$uv_path" FB="$feedback_python" DIR="$mcp_dir" SRV="$mcp_dir/server.py" python3 - <<'PY'
+import os, json, sys
+with open(os.environ['SRC'], 'r', encoding='utf-8') as f:
+    s = f.read()
+def esc(v): return json.dumps(v)[1:-1]
+s = s.replace('__UV_PATH__', esc(os.environ['UV']))
+s = s.replace('__FEEDBACK_MCP_PYTHON__', esc(os.environ['FB']))
+s = s.replace('__FEEDBACK_MCP_DIR__', esc(os.environ['DIR']))
+s = s.replace('__FEEDBACK_SERVER_PATH__', esc(os.environ['SRV']))
+sys.stdout.write(s)
+PY
+)
+    else
+        # 回退：bash 直接替换（典型 Linux/macOS 路径不含 \ 或 "，足够用）
+        content=$(cat "$src")
+        content="${content//__UV_PATH__/$uv_path}"
+        content="${content//__FEEDBACK_MCP_PYTHON__/$feedback_python}"
+        content="${content//__FEEDBACK_MCP_DIR__/$mcp_dir}"
+        content="${content//__FEEDBACK_SERVER_PATH__/$mcp_dir/server.py}"
+    fi
     mkdir -p "$(dirname "$dst")"
 
     if [ -f "$dst" ] && [ "$FORCE" = false ]; then
@@ -194,6 +312,11 @@ if [ "$HAS_VSCODE" = true ]; then
                 fi
             fi
         done
+
+        # VS Code settings.json 合并（与 PowerShell 版本对齐）
+        if [ -f "$VSCODE_SETT_SRC" ]; then
+            merge_json_settings "$VSCODE_SETT_SRC" "$VSCODE_SETT_DST"
+        fi
     fi
 fi
 
@@ -216,6 +339,11 @@ if [ "$HAS_CURSOR" = true ]; then
                 fi
             fi
         done
+
+        # settings.json 合并（与 PowerShell 版本对齐）
+        if [ -f "$CURSOR_SETT_SRC" ]; then
+            merge_json_settings "$CURSOR_SETT_SRC" "$CURSOR_SETT_DST"
+        fi
     fi
 fi
 
@@ -323,31 +451,65 @@ if [ "$HAS_CODEX" = true ]; then
     CODEX_CONFIG_SRC="$CODEX_SRC/config.toml"
     CODEX_CONFIG_DST="$CODEX_DST/config.toml"
     if [ -f "$CODEX_CONFIG_SRC" ]; then
-        config_content=$(cat "$CODEX_CONFIG_SRC")
-        config_content="${config_content//__UV_PATH__/$UV_PATH}"
-        config_content="${config_content//__FEEDBACK_MCP_PYTHON__/$FEEDBACK_PYTHON}"
-        config_content="${config_content//__FEEDBACK_SERVER_PATH__/$FEEDBACK_MCP_DIR/server.py}"
+        if command -v python3 &>/dev/null; then
+            # TOML 基本字符串与 JSON 字符串转义规则一致：用 Python 一次性读取+转义+替换
+            config_content=$(SRC="$CODEX_CONFIG_SRC" UV="$UV_PATH" FB="$FEEDBACK_PYTHON" SRV="$FEEDBACK_MCP_DIR/server.py" python3 - <<'PY'
+import os, json, sys
+with open(os.environ['SRC'], 'r', encoding='utf-8') as f:
+    s = f.read()
+def esc(v): return json.dumps(v)[1:-1]
+s = s.replace('__UV_PATH__', esc(os.environ['UV']))
+s = s.replace('__FEEDBACK_MCP_PYTHON__', esc(os.environ['FB']))
+s = s.replace('__FEEDBACK_SERVER_PATH__', esc(os.environ['SRV']))
+sys.stdout.write(s)
+PY
+)
+        else
+            config_content=$(cat "$CODEX_CONFIG_SRC")
+            config_content="${config_content//__UV_PATH__/$UV_PATH}"
+            config_content="${config_content//__FEEDBACK_MCP_PYTHON__/$FEEDBACK_PYTHON}"
+            config_content="${config_content//__FEEDBACK_SERVER_PATH__/$FEEDBACK_MCP_DIR/server.py}"
+        fi
         mkdir -p "$CODEX_DST"
         if [ -f "$CODEX_CONFIG_DST" ] && [ "$FORCE" = false ]; then
             cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-            # 增量模式：追加缺失的 MCP 服务器
-            existing=$(cat "$CODEX_CONFIG_DST")
-            added=false
-            if ! echo "$existing" | grep -q '\[mcp_servers\.interactiveFeedback\]'; then
-                echo "" >> "$CODEX_CONFIG_DST"
-                echo "$config_content" | sed -n '/\[mcp_servers\.interactiveFeedback\]/,/^$/p' >> "$CODEX_CONFIG_DST"
-                echo "$config_content" | sed -n '/\[mcp_servers\.interactiveFeedback\.env\]/,/^$/p' >> "$CODEX_CONFIG_DST"
-                added=true
-            fi
-            if ! echo "$existing" | grep -q '\[mcp_servers\.markitdown\]'; then
-                echo "" >> "$CODEX_CONFIG_DST"
-                echo "$config_content" | sed -n '/\[mcp_servers\.markitdown\]/,/^$/p' >> "$CODEX_CONFIG_DST"
-                added=true
-            fi
-            if [ "$added" = true ]; then
-                echo "  + config.toml (增量合并，追加 MCP 服务器)"
+            if command -v python3 &>/dev/null; then
+                merged_ok=false
+                if NEW_CONTENT="$config_content" DST="$CODEX_CONFIG_DST" python3 - <<'PY'
+import os, re, sys
+new_content = os.environ['NEW_CONTENT']
+dst = os.environ['DST']
+with open(dst, 'r', encoding='utf-8') as f:
+    existing = f.read()
+# 仅按"顶层 [mcp_servers.NAME]"切块，子表（如 .env）随父块一同保留
+header_re = re.compile(r'(?m)^\[mcp_servers\.([A-Za-z_][A-Za-z0-9_-]*)\]\s*$')
+matches = list(header_re.finditer(new_content))
+to_add = []
+for i, m in enumerate(matches):
+    name = m.group(1)
+    if f'[mcp_servers.{name}]' in existing:
+        continue
+    start = m.start()
+    end = matches[i+1].start() if i+1 < len(matches) else len(new_content)
+    to_add.append(new_content[start:end].rstrip())
+if not to_add:
+    print('  + config.toml (MCP 服务器已存在，无需修改)')
+    sys.exit(0)
+result = existing.rstrip() + '\n\n' + '\n\n'.join(to_add) + '\n'
+with open(dst, 'w', encoding='utf-8') as f:
+    f.write(result)
+print(f'  + config.toml (增量合并，追加 {len(to_add)} 个 MCP 服务器)')
+PY
+                then
+                    merged_ok=true
+                fi
+                if [ "$merged_ok" = false ]; then
+                    printf '%s\n' "$config_content" > "$CODEX_CONFIG_DST"
+                    echo "  + config.toml (Python 合并失败，已覆盖)"
+                fi
             else
-                echo "  + config.toml (MCP 服务器已存在，无需修改)"
+                echo "  ! 未安装 python3，已直接覆盖 config.toml" >&2
+                printf '%s\n' "$config_content" > "$CODEX_CONFIG_DST"
             fi
         else
             [ -f "$CODEX_CONFIG_DST" ] && cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
