@@ -92,7 +92,7 @@ custom_paths = [".dcg/packs/*.yaml"]
 
 ## 软层兜底（任何平台、任何情况下都生效）
 
-跨 IDE 的 [`destructive-command-guard` SKILL.md](../skills/safety/destructive-command-guard/SKILL.md) 通过 prompt 层面引导 Codex / Cursor / Copilot 在生成危险命令前 `AskQuestion` 二次确认。
+跨 IDE 的 [`destructive-command-guard` SKILL.md](../skills/destructive-command-guard/SKILL.md) 通过 prompt 层面引导 Codex / Cursor / Copilot / Claude 在生成危险命令前 `AskQuestion` 二次确认。
 
 - Windows 上：SKILL 是你**唯一**的 Codex 兜底，请保持启用（restore 默认就装）
 - macOS / Linux 上：SKILL 提供"模型主动避开"，dcg hook 提供"运行时强制阻断"，两层独立

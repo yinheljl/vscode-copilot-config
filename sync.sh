@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sync.sh — 从当前机器同步 Cursor + VS Code Copilot + Codex 配置到本仓库（Linux / macOS）
+# sync.sh — 从当前机器同步 Cursor + VS Code Copilot + Codex + Claude 配置到本仓库（Linux / macOS）
 #
 # 同步内容：
 #   ~/.copilot/{instructions,skills}        → copilot/
@@ -7,6 +7,7 @@
 #   Cursor settings.json (Copilot/MCP 相关) → cursor/settings.json
 #   VS Code settings.json (Copilot 相关)    → vscode/settings.json
 #   ~/.codex/AGENTS.md                       → codex/AGENTS.md
+#   ~/.claude/{CLAUDE.md,skills}             → claude/
 # mcp.json 与 config.toml 使用模板，不从本机同步。
 
 set -euo pipefail
@@ -51,6 +52,8 @@ CURSOR_SRC="$HOME/.cursor"
 CURSOR_DST="$REPO_DIR/cursor"
 CODEX_SRC="$HOME/.codex"
 CODEX_DST="$REPO_DIR/codex"
+CLAUDE_SRC="$HOME/.claude"
+CLAUDE_DST="$REPO_DIR/claude"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User"
@@ -136,7 +139,7 @@ PY
 }
 
 echo "========================================"
-echo "  同步 Cursor + VS Code + Codex 配置到仓库"
+echo "  同步 Cursor + VS Code + Codex + Claude 配置到仓库"
 echo "========================================"
 echo ""
 
@@ -201,21 +204,39 @@ if [ -d "$CODEX_SRC/skills" ]; then
         synced=$((synced+1))
     done
     [ -f "$CODEX_SRC/skills/README.md" ] && cp -f "$CODEX_SRC/skills/README.md" "$CODEX_DST/skills/README.md"
-    echo "  + skills/ (同步 $synced 个用户类别，已排除 .system / codex-primary-runtime)"
+    echo "  + skills/ (同步 $synced 个用户技能，已排除 .system / codex-primary-runtime)"
 else
     echo "  未找到 ~/.codex/skills/，跳过"
 fi
 echo "  * config.toml / hooks.json 使用模板，不从本机同步（hooks.json 引用社区方案 dcg）"
 
-# --- 4. VS Code ---
-echo "[4/5] 同步 VS Code..."
+# --- 4. Claude ---
+echo "[4/6] 同步 Claude..."
+if [ -f "$CLAUDE_SRC/CLAUDE.md" ]; then
+    mkdir -p "$CLAUDE_DST"
+    cp -f "$CLAUDE_SRC/CLAUDE.md" "$CLAUDE_DST/CLAUDE.md"
+    echo "  + CLAUDE.md"
+else
+    echo "  未找到 ~/.claude/CLAUDE.md，跳过"
+fi
+if [ -d "$CLAUDE_SRC/skills" ]; then
+    rm -rf "$CLAUDE_DST/skills"
+    mkdir -p "$CLAUDE_DST"
+    cp -rf "$CLAUDE_SRC/skills" "$CLAUDE_DST/skills"
+    echo "  + skills/"
+else
+    echo "  未找到 ~/.claude/skills/，跳过"
+fi
+
+# --- 5. VS Code ---
+echo "[5/6] 同步 VS Code..."
 mkdir -p "$REPO_DIR/vscode"
 extract_copilot_settings "$VSCODE_SETT_SRC" "$VSCODE_SETT_DST"
 echo "  + settings.json (Copilot 相关)"
 echo "  * mcp.json 使用模板，不从本机同步"
 
-# --- 5. Git commit & push ---
-echo "[5/5] 提交到 Git..."
+# --- 6. Git commit & push ---
+echo "[6/6] 提交到 Git..."
 cd "$REPO_DIR"
 git add -A
 if [ -z "$(git status --porcelain)" ]; then

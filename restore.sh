@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# restore.sh — 还原 Cursor + VS Code GitHub Copilot + Codex 个人配置（Linux / macOS）
+# restore.sh — 还原 Cursor + VS Code GitHub Copilot + Codex + Claude 个人配置（Linux / macOS）
 # 自动检测已安装的 IDE，仅配置已安装的环境。
 # 默认增量模式（不覆盖用户已有配置），使用 --force 切换为覆盖模式。
 
@@ -11,6 +11,7 @@ TARGET_ALL=true
 TARGET_VSCODE=false
 TARGET_CURSOR=false
 TARGET_CODEX=false
+TARGET_CLAUDE=false
 AUTO_INSTALL_DCG=false
 SKIP_DCG=false
 for arg in "$@"; do
@@ -20,12 +21,16 @@ for arg in "$@"; do
         --skip-dcg) SKIP_DCG=true ;;
         --target=*)
             TARGET_ALL=false
-            IFS=',' read -ra TARGETS <<< "${arg#--target=}"
-            for t in "${TARGETS[@]}"; do
+            target_list="${arg#--target=},"
+            while [ -n "$target_list" ]; do
+                t="${target_list%%,*}"
+                target_list="${target_list#*,}"
+                [ -z "$t" ] && continue
                 case "$(echo "$t" | tr '[:upper:]' '[:lower:]')" in
                     vscode) TARGET_VSCODE=true ;;
                     cursor) TARGET_CURSOR=true ;;
                     codex)  TARGET_CODEX=true ;;
+                    claude) TARGET_CLAUDE=true ;;
                     all)    TARGET_ALL=true ;;
                 esac
             done
@@ -38,6 +43,12 @@ COPILOT_SRC="$SCRIPT_DIR/copilot"
 COPILOT_DST="$HOME/.copilot"
 CURSOR_SRC="$SCRIPT_DIR/cursor"
 CURSOR_DST="$HOME/.cursor"
+CLAUDE_SRC="$SCRIPT_DIR/claude"
+CLAUDE_DST="$HOME/.claude"
+CLAUDE_CONFIG_SRC="$CLAUDE_SRC/CLAUDE.md"
+CLAUDE_CONFIG_DST="$CLAUDE_DST/CLAUDE.md"
+CLAUDE_SKILLS_SRC="$CLAUDE_SRC/skills"
+CLAUDE_SKILLS_DST="$CLAUDE_DST/skills"
 CODEX_SRC="$SCRIPT_DIR/codex"
 CODEX_DST="$HOME/.codex"
 CODEX_SKILLS_SRC="$CODEX_SRC/skills"
@@ -70,6 +81,7 @@ CURSOR_SETT_DST="$CURSOR_USER_DIR/settings.json"
 HAS_VSCODE=false
 HAS_CURSOR=false
 HAS_CODEX=false
+HAS_CLAUDE=false
 
 if [ -d "$VSCODE_USER_DIR" ] || command -v code &>/dev/null; then
     HAS_VSCODE=true
@@ -83,6 +95,10 @@ if [ -d "$CODEX_DST" ] || command -v codex &>/dev/null; then
     HAS_CODEX=true
 fi
 
+if [ -d "$CLAUDE_DST" ] || command -v claude &>/dev/null; then
+    HAS_CLAUDE=true
+fi
+
 # ============================
 # --target 参数过滤
 # ============================
@@ -90,6 +106,7 @@ if [ "$TARGET_ALL" = false ]; then
     [ "$TARGET_VSCODE" = false ] && HAS_VSCODE=false
     [ "$TARGET_CURSOR" = false ] && HAS_CURSOR=false
     [ "$TARGET_CODEX"  = false ] && HAS_CODEX=false
+    [ "$TARGET_CLAUDE" = false ] && HAS_CLAUDE=false
 fi
 
 resolve_uv_path() {
@@ -452,7 +469,7 @@ PY
 }
 
 echo "========================================"
-echo "  Cursor + VS Code Copilot + Codex 配置还原"
+echo "  Cursor + VS Code Copilot + Codex + Claude 配置还原"
 echo "========================================"
 echo ""
 
@@ -463,11 +480,12 @@ else
     echo "[模式] 增量合并（保留用户已有配置）"
 fi
 if [ "$TARGET_ALL" = false ]; then
-    active_targets=()
-    [ "$TARGET_VSCODE" = true ] && active_targets+=("VSCode")
-    [ "$TARGET_CURSOR" = true ] && active_targets+=("Cursor")
-    [ "$TARGET_CODEX"  = true ] && active_targets+=("Codex")
-    echo "[目标] 仅配置: $(IFS=', '; echo "${active_targets[*]}")"
+    active_targets=""
+    [ "$TARGET_VSCODE" = true ] && active_targets="${active_targets:+$active_targets, }VSCode"
+    [ "$TARGET_CURSOR" = true ] && active_targets="${active_targets:+$active_targets, }Cursor"
+    [ "$TARGET_CODEX"  = true ] && active_targets="${active_targets:+$active_targets, }Codex"
+    [ "$TARGET_CLAUDE" = true ] && active_targets="${active_targets:+$active_targets, }Claude"
+    echo "[目标] 仅配置: $active_targets"
 fi
 
 # 显示检测结果
@@ -475,17 +493,20 @@ echo "[IDE 检测]"
 if [ "$HAS_VSCODE" = true ]; then echo "  + VS Code"; fi
 if [ "$HAS_CURSOR" = true ]; then echo "  + Cursor"; fi
 if [ "$HAS_CODEX" = true ]; then echo "  + Codex"; fi
-if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ] && [ "$HAS_CODEX" = false ]; then
+if [ "$HAS_CLAUDE" = true ]; then echo "  + Claude"; fi
+if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ] && [ "$HAS_CODEX" = false ] && [ "$HAS_CLAUDE" = false ]; then
     if [ "$TARGET_ALL" = false ]; then
         echo "  指定的 IDE 未安装，仍将安装配置（IDE 安装后即可使用）。"
         [ "$TARGET_VSCODE" = true ] && HAS_VSCODE=true
         [ "$TARGET_CURSOR" = true ] && HAS_CURSOR=true
         [ "$TARGET_CODEX"  = true ] && HAS_CODEX=true
+        [ "$TARGET_CLAUDE" = true ] && HAS_CLAUDE=true
     else
         echo "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。"
         HAS_VSCODE=true
         HAS_CURSOR=true
         HAS_CODEX=true
+        HAS_CLAUDE=true
     fi
 fi
 echo ""
@@ -556,7 +577,7 @@ if [ "$HAS_CODEX" = true ]; then
             cp "$AGENTS_SRC" "$AGENTS_DST"
             echo "  + AGENTS.md"
         fi
-        # skills/  ← 与 cursor/skills、copilot/skills 同源（含安全护栏 skill）
+        # skills/  ← 与 cursor/skills、copilot/skills、claude/skills 技能内容同源（含安全护栏 skill）
         if [ -d "$CODEX_SKILLS_SRC" ]; then
             if [ "$FORCE" = true ]; then
                 copy_dir_replace "$CODEX_SKILLS_SRC" "$CODEX_SKILLS_DST"
@@ -571,8 +592,32 @@ if [ "$HAS_CODEX" = true ]; then
     fi
 fi
 
-# --- 4. 克隆 Interactive-Feedback-MCP + 生成 mcp.json ---
-echo "[4] 配置 Interactive-Feedback-MCP..."
+# --- 4. 还原 Claude 配置 ---
+if [ "$HAS_CLAUDE" = true ]; then
+    echo "[4] 还原 Claude 配置（CLAUDE.md + skills）..."
+    if [ ! -d "$CLAUDE_SRC" ]; then
+        echo "  警告：找不到源目录: $CLAUDE_SRC" >&2
+    else
+        mkdir -p "$CLAUDE_DST"
+        if [ -f "$CLAUDE_CONFIG_SRC" ]; then
+            [ -f "$CLAUDE_CONFIG_DST" ] && cp "$CLAUDE_CONFIG_DST" "${CLAUDE_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+            cp "$CLAUDE_CONFIG_SRC" "$CLAUDE_CONFIG_DST"
+            echo "  + CLAUDE.md"
+        fi
+        if [ -d "$CLAUDE_SKILLS_SRC" ]; then
+            if [ "$FORCE" = true ]; then
+                copy_dir_replace "$CLAUDE_SKILLS_SRC" "$CLAUDE_SKILLS_DST"
+                echo "  + skills/ (覆盖)"
+            else
+                copy_dir_merge "$CLAUDE_SKILLS_SRC" "$CLAUDE_SKILLS_DST"
+                echo "  + skills/ (增量)"
+            fi
+        fi
+    fi
+fi
+
+# --- 5. 克隆 Interactive-Feedback-MCP + 生成 mcp.json ---
+echo "[5] 配置 Interactive-Feedback-MCP..."
 if [ -d "$FEEDBACK_MCP_DIR" ]; then
     echo "  目录已存在，尝试更新..."
     if command -v git &>/dev/null; then
@@ -759,8 +804,13 @@ if [ "$HAS_CODEX" = true ]; then
     CHECKS="$CHECKS ~/.codex/AGENTS.md:$CODEX_DST/AGENTS.md"
     CHECKS="$CHECKS ~/.codex/config.toml:$CODEX_DST/config.toml"
     CHECKS="$CHECKS ~/.codex/skills/:$CODEX_SKILLS_DST"
-    CHECKS="$CHECKS ~/.codex/skills/safety/destructive-command-guard/:$CODEX_SKILLS_DST/safety/destructive-command-guard"
+    CHECKS="$CHECKS ~/.codex/skills/destructive-command-guard/:$CODEX_SKILLS_DST/destructive-command-guard"
     CHECKS="$CHECKS ~/.codex/hooks.json(可选):$CODEX_HOOKS_JSON_DST"
+fi
+if [ "$HAS_CLAUDE" = true ]; then
+    CHECKS="$CHECKS ~/.claude/CLAUDE.md:$CLAUDE_CONFIG_DST"
+    CHECKS="$CHECKS ~/.claude/skills/:$CLAUDE_SKILLS_DST"
+    CHECKS="$CHECKS ~/.claude/skills/destructive-command-guard/:$CLAUDE_SKILLS_DST/destructive-command-guard"
 fi
 CHECKS="$CHECKS Interactive-Feedback-MCP:$FEEDBACK_MCP_DIR"
 
@@ -780,7 +830,8 @@ echo "  还原完成！"
 echo "========================================"
 echo ""
 echo "后续步骤："
-if [ "$HAS_VSCODE" = true ]; then echo "  1. 重启 VS Code"; fi
-if [ "$HAS_CURSOR" = true ]; then echo "  2. 重启 Cursor，验证 MCP Server 是否正常加载"; fi
-if [ "$HAS_CODEX" = true ]; then echo "  3. 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载"; fi
-echo "  4. 如需其他 MCP（GitHub、Context7 等），按需手动安装"
+if [ "$HAS_VSCODE" = true ]; then echo "  - 重启 VS Code"; fi
+if [ "$HAS_CURSOR" = true ]; then echo "  - 重启 Cursor，验证 MCP Server 是否正常加载"; fi
+if [ "$HAS_CODEX" = true ]; then echo "  - 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载"; fi
+if [ "$HAS_CLAUDE" = true ]; then echo "  - 重启 Claude Code"; fi
+echo "  - 如需其他 MCP（GitHub、Context7 等），按需手动安装"

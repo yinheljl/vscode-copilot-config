@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    从当前机器同步最新的 Cursor + VS Code Copilot + Codex 配置到本仓库并推送到 GitHub
+    从当前机器同步最新的 Cursor + VS Code Copilot + Codex + Claude 配置到本仓库并推送到 GitHub
 
 .DESCRIPTION
     同步以下配置到本仓库目录：
@@ -10,6 +10,8 @@
     - VS Code settings.json (Copilot 相关) → vscode/settings.json
     - ~/.codex/AGENTS.md → codex/AGENTS.md
     - ~/.codex/skills/ (排除 .system 与 codex-primary-runtime) → codex/skills/
+    - ~/.claude/CLAUDE.md → claude/CLAUDE.md
+    - ~/.claude/skills/ → claude/skills/
     注意：mcp.json、config.toml、hooks.json 使用模板（含占位符），不从本机同步。
     codex/hooks/ 目录只保留 README（指向社区方案 dcg），不部署任何脚本。
     然后 git commit 并 push。
@@ -34,6 +36,8 @@ $cursorSrc       = Join-Path $env:USERPROFILE ".cursor"
 $cursorDst       = Join-Path $repoDir "cursor"
 $codexSrc        = Join-Path $env:USERPROFILE ".codex"
 $codexDst        = Join-Path $repoDir "codex"
+$claudeSrc       = Join-Path $env:USERPROFILE ".claude"
+$claudeDst       = Join-Path $repoDir "claude"
 $vscodeSettSrc   = Join-Path $env:APPDATA "Code\User\settings.json"
 $vscodeSettDst   = Join-Path $repoDir "vscode\settings.json"
 $cursorSettSrc   = Join-Path $env:APPDATA "Cursor\User\settings.json"
@@ -142,7 +146,7 @@ function Extract-CopilotSettings($srcPath, $dstPath) {
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  同步 Cursor + VS Code + Codex 配置到仓库" -ForegroundColor Cyan
+Write-Host "  同步 Cursor + VS Code + Codex + Claude 配置到仓库" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -230,16 +234,44 @@ if (Test-Path $codexSkillsSrcLocal) {
     if (Test-Path $localReadme) {
         Copy-Item $localReadme (Join-Path $codexSkillsDstRepo "README.md") -Force
     }
-    Write-Host "  + skills/ (同步 $synced 个用户类别，已排除 .system / codex-primary-runtime)"
+    Write-Host "  + skills/ (同步 $synced 个用户技能，已排除 .system / codex-primary-runtime)"
 } else {
     Write-Host "  未找到 ~/.codex/skills/，跳过" -ForegroundColor Yellow
 }
 Write-Host "  * config.toml / hooks.json 使用模板，不从本机同步（hooks.json 引用社区方案 dcg）" -ForegroundColor DarkGray
 
 # ============================
-# 4. 同步 VS Code 配置（不含 mcp.json，使用模板）
+# 4. 同步 Claude 配置
 # ============================
-Write-Host "[4/5] 同步 VS Code 配置..." -ForegroundColor Green
+Write-Host "[4/6] 同步 Claude 配置..." -ForegroundColor Green
+$claudeConfigSrc = Join-Path $claudeSrc "CLAUDE.md"
+if (Test-Path $claudeConfigSrc) {
+    if (-not (Test-Path $claudeDst)) {
+        New-Item -ItemType Directory -Path $claudeDst -Force | Out-Null
+    }
+    Copy-Item $claudeConfigSrc (Join-Path $claudeDst "CLAUDE.md") -Force
+    Write-Host "  + CLAUDE.md"
+} else {
+    Write-Host "  未找到 ~/.claude/CLAUDE.md，跳过" -ForegroundColor Yellow
+}
+
+$claudeSkillsSrcLocal = Join-Path $claudeSrc "skills"
+$claudeSkillsDstRepo  = Join-Path $claudeDst "skills"
+if (Test-Path $claudeSkillsSrcLocal) {
+    if (-not (Test-Path $claudeDst)) {
+        New-Item -ItemType Directory -Path $claudeDst -Force | Out-Null
+    }
+    if (Test-Path $claudeSkillsDstRepo) { Remove-Item $claudeSkillsDstRepo -Recurse -Force }
+    Copy-Item $claudeSkillsSrcLocal $claudeSkillsDstRepo -Recurse -Force
+    Write-Host "  + skills/"
+} else {
+    Write-Host "  未找到 ~/.claude/skills/，跳过" -ForegroundColor Yellow
+}
+
+# ============================
+# 5. 同步 VS Code 配置（不含 mcp.json，使用模板）
+# ============================
+Write-Host "[5/6] 同步 VS Code 配置..." -ForegroundColor Green
 if (-not (Test-Path (Join-Path $repoDir "vscode"))) {
     New-Item -ItemType Directory -Path (Join-Path $repoDir "vscode") -Force | Out-Null
 }
@@ -249,9 +281,9 @@ Write-Host "  + settings.json (Copilot 相关)"
 Write-Host "  * mcp.json 使用模板，不从本机同步" -ForegroundColor DarkGray
 
 # ============================
-# 5. Git commit & push
+# 6. Git commit & push
 # ============================
-Write-Host "[5/5] 提交到 Git..." -ForegroundColor Green
+Write-Host "[6/6] 提交到 Git..." -ForegroundColor Green
 Push-Location $repoDir
 git add -A
 $status = git status --porcelain

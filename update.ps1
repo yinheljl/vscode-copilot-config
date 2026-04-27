@@ -15,6 +15,7 @@
     .\update.ps1 -CheckOnly         # 仅检查更新，不执行
     .\update.ps1 -SkipFeedbackMCP   # 跳过反馈 MCP 更新
     .\update.ps1 -Target Codex      # 仅更新 Codex 配置
+    .\update.ps1 -Target Claude     # 仅更新 Claude 配置
     .\update.ps1 -Target Codex -Force  # 仅覆盖 Codex 配置
 #>
 param(
@@ -22,7 +23,7 @@ param(
     [switch]$CheckOnly,
     [switch]$SkipFeedbackMCP,
     [switch]$Force,
-    [ValidateSet("All", "VSCode", "Cursor", "Codex")]
+    [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude")]
     [string[]]$Target = @("All")
 )
 

@@ -1,6 +1,6 @@
-# VS Code & Cursor & Codex 全局配置中心
+# VS Code & Cursor & Codex & Claude 全局配置中心
 
-> **一键配置 VS Code GitHub Copilot、Cursor 和 Codex 的全局 Rules、Skills、MCP 服务器等。**
+> **一键配置 VS Code GitHub Copilot、Cursor、Codex 和 Claude 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
 
 当前版本：`1.4.2`
@@ -9,7 +9,7 @@
 
 ## 🤖 AI Agent 操作指南
 
-> **本节内容供 AI Agent（GitHub Copilot、Cursor AI、Codex 等）直接解析和执行。**
+> **本节内容供 AI Agent（GitHub Copilot、Cursor AI、Codex、Claude 等）直接解析和执行。**
 > **当用户提到本仓库 URL 或要求配置/更新时，请按以下指令操作。**
 >
 > ⚠️ **重要：必须通过运行 `restore.ps1` / `restore.sh` 脚本来配置，禁止手动复制文件。脚本会自动处理 IDE 检测、路径替换、MCP 安装等所有工作。**
@@ -40,15 +40,15 @@
    bash ~/.copilot-config/restore.sh
    ```
 
-3. **提示用户重启所有已安装的 IDE**（VS Code、Cursor 等）
+3. **提示用户重启所有已安装的 IDE**（VS Code、Cursor、Codex、Claude 等）
 
-> **脚本会自动检测并配置所有已安装的 IDE**（VS Code / Cursor / Codex），无需手动指定。
+> **脚本会自动检测并配置所有已安装的 IDE**（VS Code / Cursor / Codex / Claude），无需手动指定。
 >
 > **可选参数**（仅在用户明确要求时使用）：
 >
 > | 用户意图 | 参数 |
 > |----------|------|
-> | 仅配置指定 IDE | `-Target Codex`、`-Target VSCode,Cursor` |
+> | 仅配置指定 IDE | `-Target Codex`、`-Target VSCode,Cursor`、`-Target Claude` |
 > | 覆盖已有配置 | `-Force` |
 > | 组合使用 | `-Target Codex -Force` |
 >
@@ -56,6 +56,7 @@
 > - "Copilot" / "VS Code" / "VSCode" → `-Target VSCode`
 > - "Cursor" → `-Target Cursor`
 > - "Codex" → `-Target Codex`
+> - "Claude" / "Claude Code" → `-Target Claude`
 > - "覆盖" / "覆盖模式" / "干净安装" → 加 `-Force`
 > - 未指定 → 不传 `-Target`（配置所有 IDE）
 
@@ -71,12 +72,14 @@
    & "$env:USERPROFILE\.copilot-config\update.ps1"
    # Windows — 仅更新指定 IDE
    & "$env:USERPROFILE\.copilot-config\update.ps1" -Target Codex
+   & "$env:USERPROFILE\.copilot-config\update.ps1" -Target Claude
    ```
    ```bash
    # Linux / macOS
    bash ~/.copilot-config/update.sh
    # Linux / macOS — 仅更新指定 IDE
    bash ~/.copilot-config/update.sh --target=codex
+   bash ~/.copilot-config/update.sh --target=claude
    ```
    > 如果持久目录不存在，update 脚本会自动克隆仓库到 `~/.copilot-config`。
 
@@ -107,17 +110,17 @@
 | 目录/文件 | 说明 |
 |-----------|------|
 | `claude/CLAUDE.md` | Claude 全局行为规范（5 条编码准则） |
-| `claude/skills/` | Claude 全局 Skills（9 个，扁平结构，与其他 IDE 同源） |
+| `claude/skills/` | Claude 全局 Skills（9 个，扁平结构，与其他 IDE 技能内容同源） |
 | `copilot/instructions/` | VS Code Copilot 全局指令（中文规范、交互反馈策略、防超时等） |
-| `copilot/skills/` | VS Code Copilot 自定义 Skill（9 个，含安全护栏） |
+| `copilot/skills/` | VS Code Copilot 自定义 Skill（按分类组织的 9 个，含安全护栏） |
 | `codex/AGENTS.md` | Codex 全局指令（AGENTS.md 格式，5 条编码准则） |
 | `codex/config.toml` | Codex MCP 服务器配置模板（含 `[features] codex_hooks = true`） |
-| `codex/skills/` | **Codex 全局 Skills（9 个，扁平结构，与 Cursor / Copilot / Claude 同源）** |
+| `codex/skills/` | **Codex 全局 Skills（9 个，扁平结构，与 Cursor / Copilot / Claude 技能内容同源）** |
 | `codex/hooks/README.md` | **Codex PreToolUse 硬兜底说明（restore 脚本自动调用社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard) 的官方安装器）** |
 | `codex/hooks.json` | Codex Hooks 配置模板（注册 `dcg` 二进制拦截破坏性 Bash 命令；macOS/Linux 部署，Windows 上 Codex 引擎暂禁用 hook 故跳过） |
 | `cursor/mcp.json` | Cursor MCP 服务器配置模板（含路径占位符） |
 | `cursor/rules/` | Cursor 全局 Rules（`.mdc` 格式） |
-| `cursor/skills/` | Cursor Skills（9 个，与 Copilot / Codex 共享） |
+| `cursor/skills/` | Cursor Skills（按分类组织的 9 个，与 Copilot / Codex / Claude 技能内容同源） |
 | `cursor/settings.json` | Cursor 编辑器设置模板 |
 | `vscode/mcp.json` | VS Code MCP 服务器配置模板（含路径占位符） |
 | `vscode/settings.json` | VS Code 编辑器设置模板 |
@@ -181,14 +184,14 @@
 >
 > **本仓库的处理方式**：在 Windows 上，`restore.ps1` 仍然会**询问并帮你装 dcg.exe**（因为它作为命令行工具、以及被 Cursor / Claude Code / Copilot CLI 等其他 AI agent 调用都仍然有用，且 OpenAI 解禁后会立即生效），但**不会**部署 `~/.codex/hooks.json`——避免误导你以为 Codex 当前已被保护。等官方解禁，重跑 `restore.ps1` 即自动启用。
 
-### 软层 — `safety/destructive-command-guard` Skill（跨 3 IDE / 跨平台）
+### 软层 — `destructive-command-guard` Skill（跨 4 IDE / 跨平台）
 
-通过 `SKILL.md` 的 `description` 中的 trigger 关键词，让 Cursor / Copilot / Codex 在生成 `rm` / `del` / `rmdir` / `Remove-Item` / `git reset --hard` / `DROP TABLE` 等命令前自动加载并强制 `AskQuestion` 二次确认。
+通过 `SKILL.md` 的 `description` 中的 trigger 关键词，让 Cursor / Copilot / Codex / Claude 在生成 `rm` / `del` / `rmdir` / `Remove-Item` / `git reset --hard` / `DROP TABLE` 等命令前自动加载并强制 `AskQuestion` 二次确认。
 
 | 项 | 详情 |
 |----|------|
 | ✅ 平台 | Windows / macOS / Linux 全部生效 |
-| ✅ IDE | Cursor / VS Code Copilot / Codex 三家同源 |
+| ✅ IDE | Cursor / VS Code Copilot / Codex / Claude 四家同源 |
 | 💰 成本 | description 约 200 tokens 注入 system prompt，完整 SKILL.md 仅在触发时加载 |
 | ⚠️ 局限 | 属于 prompt 层，模型在极端情况（上下文严重压缩、`--full-auto` / `--yolo` / `danger-full-access`）可能绕过 |
 
@@ -273,7 +276,12 @@ New-Item -ItemType Directory -Path "$env:USERPROFILE\.codex" -Force
 Copy-Item "C:\Temp\copilot-config\codex\AGENTS.md" "$env:USERPROFILE\.codex\AGENTS.md" -Force
 Copy-Item -Recurse "C:\Temp\copilot-config\codex\skills" "$env:USERPROFILE\.codex\" -Force
 
-# 5. 安装 Interactive-Feedback-MCP
+# 5. Claude：CLAUDE.md + skills
+New-Item -ItemType Directory -Path "$env:USERPROFILE\.claude" -Force
+Copy-Item "C:\Temp\copilot-config\claude\CLAUDE.md" "$env:USERPROFILE\.claude\CLAUDE.md" -Force
+Copy-Item -Recurse "C:\Temp\copilot-config\claude\skills" "$env:USERPROFILE\.claude\" -Force
+
+# 6. 安装 Interactive-Feedback-MCP
 git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$env:USERPROFILE\MCP\Interactive-Feedback-MCP"
 cd "$env:USERPROFILE\MCP\Interactive-Feedback-MCP"
 uv sync
@@ -289,6 +297,7 @@ uv sync
 .\restore.ps1 -DryRun                # 预览模式，不实际修改
 .\restore.ps1 -SkipFeedbackMCP       # 跳过 Interactive-Feedback-MCP
 .\restore.ps1 -Target Codex          # 仅配置 Codex
+.\restore.ps1 -Target Claude         # 仅配置 Claude
 .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
 .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
 .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时直接调用官方 install.ps1，不再交互询问
@@ -300,6 +309,7 @@ uv sync
 bash restore.sh                      # 增量模式（默认）
 bash restore.sh --force              # 完全覆盖模式
 bash restore.sh --target=codex       # 仅配置 Codex
+bash restore.sh --target=claude      # 仅配置 Claude
 bash restore.sh --target=vscode,cursor  # 仅配置 VS Code 和 Cursor
 bash restore.sh --force --target=codex  # 仅覆盖 Codex 配置
 bash restore.sh --auto-install-dcg   # 未装 dcg 时直接调用官方 install.sh，不再交互询问
@@ -324,11 +334,11 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 ### 格式差异说明
 
-| 特性 | Cursor | VS Code | Codex |
-|------|--------|---------|-------|
-| MCP 配置格式 | `mcp.json` (`mcpServers`) | `mcp.json` (`servers`) | `config.toml` (`[mcp_servers]`) |
-| MCP 条目格式 | 无需 `type` 字段 | 需要 `type: "stdio"` | TOML 表格式 |
-| 规则格式 | `.mdc` + YAML frontmatter | `.instructions.md` + YAML frontmatter | `AGENTS.md`（纯 Markdown） |
+| 特性 | Cursor | VS Code | Codex | Claude |
+|------|--------|---------|-------|--------|
+| MCP 配置格式 | `mcp.json` (`mcpServers`) | `mcp.json` (`servers`) | `config.toml` (`[mcp_servers]`) | 不由本仓库配置 |
+| MCP 条目格式 | 无需 `type` 字段 | 需要 `type: "stdio"` | TOML 表格式 | 不适用 |
+| 规则格式 | `.mdc` + YAML frontmatter | `.instructions.md` + YAML frontmatter | `AGENTS.md`（纯 Markdown） | `CLAUDE.md`（纯 Markdown） |
 
 ## 🗺️ 路线图
 
@@ -337,7 +347,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 - [x] VS Code Codex 自动配置
 - [x] sync.sh（Linux/macOS 双向同步）
 - [x] CI 校验 JSON/TOML 模板与版本号同步
-- [x] Codex 全局 Agent Skills（与 Cursor/Copilot 同源）
+- [x] Codex 全局 Agent Skills（与 Cursor/Copilot/Claude 技能内容同源）
 - [x] 破坏性命令双层兜底（软层 SKILL.md + 硬层社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)）
 - [ ] 设置页面内一键更新按钮
 - [ ] 更多 MCP 服务器预配置

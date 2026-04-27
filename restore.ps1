@@ -1,9 +1,9 @@
 ﻿<#
 .SYNOPSIS
-    还原 Cursor + VS Code GitHub Copilot + Codex 个人配置到当前机器
+    还原 Cursor + VS Code GitHub Copilot + Codex + Claude 个人配置到当前机器
 
 .DESCRIPTION
-    自动检测已安装的 IDE（VS Code、Cursor、Codex），仅配置已安装的环境。
+    自动检测已安装的 IDE（VS Code、Cursor、Codex、Claude），仅配置已安装的环境。
     默认使用增量模式：仅添加/更新配置，不删除用户已有的自定义内容。
     使用 -Force 参数可切换为完全覆盖模式。
 
@@ -19,6 +19,8 @@
     - codex/skills/ → ~/.codex/skills/（Codex 全局 Agent Skills，含安全护栏 skill）
     - codex/hooks/ → ~/.codex/hooks/（破坏性命令硬兜底 PreToolUse hook）
     - codex/hooks.json → 合并到 ~/.codex/hooks.json（注册 hook 到 Codex）
+    - claude/CLAUDE.md → ~/.claude/CLAUDE.md（Claude）
+    - claude/skills/ → ~/.claude/skills/（Claude Skills，含安全护栏 skill）
     - 克隆/下载 qt-interactive-feedback-mcp 到用户级共享 MCP 目录
 
 .EXAMPLE
@@ -27,6 +29,7 @@
     .\restore.ps1 -DryRun                # 预览模式
     .\restore.ps1 -SkipFeedbackMCP       # 跳过 Interactive-Feedback-MCP
     .\restore.ps1 -Target Codex          # 仅配置 Codex
+    .\restore.ps1 -Target Claude         # 仅配置 Claude
     .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
     .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
     .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时直接调用官方 install.ps1，不再交互询问
@@ -38,7 +41,7 @@ param(
     [switch]$SkipFeedbackMCP,
     [switch]$AutoInstallDcg,
     [switch]$SkipDcg,
-    [ValidateSet("All", "VSCode", "Cursor", "Codex")]
+    [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude")]
     [string[]]$Target = @("All")
 )
 
@@ -50,6 +53,12 @@ $copilotSrc      = Join-Path $scriptDir "copilot"
 $copilotDst      = Join-Path $env:USERPROFILE ".copilot"
 $cursorSrc       = Join-Path $scriptDir "cursor"
 $cursorDst       = Join-Path $env:USERPROFILE ".cursor"
+$claudeSrc       = Join-Path $scriptDir "claude"
+$claudeDst       = Join-Path $env:USERPROFILE ".claude"
+$claudeConfigSrc = Join-Path $claudeSrc "CLAUDE.md"
+$claudeConfigDst = Join-Path $claudeDst "CLAUDE.md"
+$claudeSkillsSrc = Join-Path $claudeSrc "skills"
+$claudeSkillsDst = Join-Path $claudeDst "skills"
 $vscodeMcpSrc    = Join-Path $scriptDir "vscode\mcp.json"
 $vscodeMcpDst    = Join-Path $env:APPDATA "Code\User\mcp.json"
 $vscodeSettSrc   = Join-Path $scriptDir "vscode\settings.json"
@@ -78,6 +87,7 @@ $cursorUserDir = Join-Path $env:APPDATA "Cursor\User"
 $hasVSCode = (Test-Path $vscodeUserDir) -or [bool](Get-Command code -ErrorAction SilentlyContinue)
 $hasCursor = (Test-Path $cursorUserDir) -or (Test-Path $cursorDst) -or [bool](Get-Command cursor -ErrorAction SilentlyContinue)
 $hasCodex  = (Test-Path $codexDst) -or [bool](Get-Command codex -ErrorAction SilentlyContinue)
+$hasClaude = (Test-Path $claudeDst) -or [bool](Get-Command claude -ErrorAction SilentlyContinue)
 
 # ============================
 # -Target 参数过滤
@@ -86,6 +96,7 @@ if ($Target -notcontains "All") {
     if ($Target -notcontains "VSCode") { $hasVSCode = $false }
     if ($Target -notcontains "Cursor") { $hasCursor = $false }
     if ($Target -notcontains "Codex")  { $hasCodex  = $false }
+    if ($Target -notcontains "Claude") { $hasClaude = $false }
 }
 
 # 同名文件保留最近 N 份备份，避免无限累积
@@ -633,7 +644,7 @@ function Merge-CodexConfig($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mc
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  Cursor + VS Code Copilot + Codex 配置还原" -ForegroundColor Cyan
+Write-Host "  Cursor + VS Code Copilot + Codex + Claude 配置还原" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -652,17 +663,20 @@ Write-Host "[IDE 检测]" -ForegroundColor Cyan
 if ($hasVSCode) { Write-Host "  + VS Code" -ForegroundColor Green }
 if ($hasCursor) { Write-Host "  + Cursor" -ForegroundColor Green }
 if ($hasCodex)  { Write-Host "  + Codex" -ForegroundColor Green }
-if (-not $hasVSCode -and -not $hasCursor -and -not $hasCodex) {
+if ($hasClaude) { Write-Host "  + Claude" -ForegroundColor Green }
+if (-not $hasVSCode -and -not $hasCursor -and -not $hasCodex -and -not $hasClaude) {
     if ($Target -notcontains "All") {
         Write-Host "  指定的 IDE 未安装，仍将安装配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
         if ($Target -contains "VSCode") { $hasVSCode = $true }
         if ($Target -contains "Cursor") { $hasCursor = $true }
         if ($Target -contains "Codex")  { $hasCodex  = $true }
+        if ($Target -contains "Claude") { $hasClaude = $true }
     } else {
         Write-Host "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
         $hasVSCode = $true
         $hasCursor = $true
         $hasCodex  = $true
+        $hasClaude = $true
     }
 }
 Write-Host ""
@@ -677,6 +691,7 @@ $totalSteps = 1  # 验证
 if ($hasVSCode) { $totalSteps += 2 }
 if ($hasCursor) { $totalSteps++ }
 if ($hasCodex)  { $totalSteps++ }
+if ($hasClaude) { $totalSteps++ }
 if (-not $SkipFeedbackMCP) { $totalSteps++ }
 $step = 0
 
@@ -777,7 +792,7 @@ if ($hasCodex) {
             Copy-Item $codexAgentsSrc $codexAgentsDst -Force
             Write-Host "  + AGENTS.md"
         }
-        # skills/  ← 与 cursor/skills、copilot/skills 同源（含安全护栏 skill）
+        # skills/  ← 与 cursor/skills、copilot/skills、claude/skills 技能内容同源（含安全护栏 skill）
         if (Test-Path $codexSkillsSrc) {
             if ($Force) {
                 Copy-DirReplace $codexSkillsSrc $codexSkillsDst
@@ -789,6 +804,38 @@ if ($hasCodex) {
         }
         # hooks.json（硬兜底，使用社区方案 dcg；Windows 上自动跳过）
         Install-CodexHooks $codexHooksJsonSrc $codexHooksJsonDst $codexConfigDst
+    }
+}
+
+# ============================
+# 还原 Claude 配置
+# ============================
+if ($hasClaude) {
+    $step++
+    Write-Host "[$step/$totalSteps] 还原 Claude 配置（CLAUDE.md + skills）..." -ForegroundColor Green
+    if (-not (Test-Path $claudeSrc)) {
+        Write-Warning "找不到源目录: $claudeSrc，跳过。"
+    } elseif ($DryRun) {
+        Write-Host "  [DryRun] $claudeConfigSrc -> $claudeConfigDst"
+        Write-Host "  [DryRun] $claudeSkillsSrc -> $claudeSkillsDst"
+    } else {
+        if (-not (Test-Path $claudeDst)) {
+            New-Item -ItemType Directory -Path $claudeDst -Force | Out-Null
+        }
+        if (Test-Path $claudeConfigSrc) {
+            Backup-File $claudeConfigDst
+            Copy-Item $claudeConfigSrc $claudeConfigDst -Force
+            Write-Host "  + CLAUDE.md"
+        }
+        if (Test-Path $claudeSkillsSrc) {
+            if ($Force) {
+                Copy-DirReplace $claudeSkillsSrc $claudeSkillsDst
+                Write-Host "  + skills/ (覆盖)"
+            } else {
+                Copy-DirMerge $claudeSkillsSrc $claudeSkillsDst
+                Write-Host "  + skills/ (增量)"
+            }
+        }
     }
 }
 
@@ -970,7 +1017,14 @@ if ($hasCodex) {
         @{ Name = "~/.codex/AGENTS.md"; Path = $codexAgentsDst },
         @{ Name = "~/.codex/config.toml"; Path = $codexConfigDst },
         @{ Name = "~/.codex/skills/"; Path = $codexSkillsDst },
-        @{ Name = "~/.codex/skills/safety/destructive-command-guard/"; Path = (Join-Path $codexSkillsDst "safety\destructive-command-guard") }
+        @{ Name = "~/.codex/skills/destructive-command-guard/"; Path = (Join-Path $codexSkillsDst "destructive-command-guard") }
+    ) + $checks
+}
+if ($hasClaude) {
+    $checks = @(
+        @{ Name = "~/.claude/CLAUDE.md"; Path = $claudeConfigDst },
+        @{ Name = "~/.claude/skills/"; Path = $claudeSkillsDst },
+        @{ Name = "~/.claude/skills/destructive-command-guard/"; Path = (Join-Path $claudeSkillsDst "destructive-command-guard") }
     ) + $checks
 }
 foreach ($c in $checks) {
@@ -996,7 +1050,8 @@ Write-Host "  还原完成！" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "后续步骤：" -ForegroundColor Yellow
-if ($hasVSCode) { Write-Host "  1. 重启 VS Code" }
-if ($hasCursor) { Write-Host "  2. 重启 Cursor，验证 MCP Server 是否正常加载" }
-if ($hasCodex)  { Write-Host "  3. 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载" }
-Write-Host "  4. 如需其他 MCP（GitHub、Context7 等），在扩展商城中安装"
+if ($hasVSCode) { Write-Host "  - 重启 VS Code" }
+if ($hasCursor) { Write-Host "  - 重启 Cursor，验证 MCP Server 是否正常加载" }
+if ($hasCodex)  { Write-Host "  - 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载" }
+if ($hasClaude) { Write-Host "  - 重启 Claude Code" }
+Write-Host "  - 如需其他 MCP（GitHub、Context7 等），在扩展商城中安装"

@@ -13,11 +13,11 @@
 
 ## 与本仓库内 `cursor/skills/`、`copilot/skills/`、`claude/skills/` 的关系
 
-四套目录内容**完全一致**，由 `sync.ps1` / `sync.sh` 双向同步保证。本目录额外存在的原因：
+四套目录的**技能内容同源**，但按 IDE 约定使用不同目录结构：Codex / Claude 使用扁平结构，Cursor / Copilot 仍按分类组织。本目录额外存在的原因：
 
 - **Cursor / VS Code Copilot / Claude 与 Codex 是不同的 agent 进程**，各自只读自己的全局技能目录
 - Codex CLI 默认根本不读取 `~/.cursor/skills` 或 `~/.copilot/skills` 或 `~/.claude/skills`
-- 因此必须为 Codex 单独维护一份饕像
+- 因此必须为 Codex 单独维护一份镜像
 
 如果你只用 Cursor + Copilot + Claude，本目录可以不部署（`restore` 在未检测到 Codex 时会自动跳过）。
 
@@ -29,7 +29,7 @@
 |------|------|
 | **Anthropic 官方** | https://github.com/anthropics/skills（Apache 2.0 / source-available） |
 | **社区成熟仓库** | https://github.com/alirezarezvani/claude-skills（MIT） |
-| **本仓库自研** | `safety/destructive-command-guard` SKILL.md（破坏性命令软兜底，硬层使用社区方案 dcg，详见下文安全章节） |
+| **本仓库自研** | `destructive-command-guard` SKILL.md（破坏性命令软兜底，硬层使用社区方案 dcg，详见下文安全章节） |
 
 ---
 
