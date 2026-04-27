@@ -106,11 +106,13 @@
 
 | 目录/文件 | 说明 |
 |-----------|------|
+| `claude/CLAUDE.md` | Claude 全局行为规范（5 条编码准则） |
+| `claude/skills/` | Claude 全局 Skills（9 个，扁平结构，与其他 IDE 同源） |
 | `copilot/instructions/` | VS Code Copilot 全局指令（中文规范、交互反馈策略、防超时等） |
 | `copilot/skills/` | VS Code Copilot 自定义 Skill（9 个，含安全护栏） |
-| `codex/AGENTS.md` | Codex 全局指令（AGENTS.md 格式，中文规范、交互反馈策略） |
+| `codex/AGENTS.md` | Codex 全局指令（AGENTS.md 格式，5 条编码准则） |
 | `codex/config.toml` | Codex MCP 服务器配置模板（含 `[features] codex_hooks = true`） |
-| `codex/skills/` | **Codex 全局 Skills（9 个，与 Cursor / Copilot 同源）** |
+| `codex/skills/` | **Codex 全局 Skills（9 个，扁平结构，与 Cursor / Copilot / Claude 同源）** |
 | `codex/hooks/README.md` | **Codex PreToolUse 硬兜底说明（restore 脚本自动调用社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard) 的官方安装器）** |
 | `codex/hooks.json` | Codex Hooks 配置模板（注册 `dcg` 二进制拦截破坏性 Bash 命令；macOS/Linux 部署，Windows 上 Codex 引擎暂禁用 hook 故跳过） |
 | `cursor/mcp.json` | Cursor MCP 服务器配置模板（含路径占位符） |
@@ -144,13 +146,14 @@
 
 | 规则文件 | 适用于 | 说明 |
 |----------|--------|------|
-| `copilot/instructions/main.instructions.md` | VS Code Copilot | 中文回复、Python 虚拟环境、交互反馈策略、防超时 |
-| `codex/AGENTS.md` | Codex | 中文回复、Python 虚拟环境、AskQuestion 澄清机制 |
-| `cursor/rules/mcp-feedback.mdc` | Cursor | 中文回复、Python 虚拟环境、AskQuestion 澄清机制 |
+| `claude/CLAUDE.md` | Claude | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
+| `copilot/instructions/copilot-instructions.md` | VS Code Copilot | 中文回复、Python 虚拟环境、交互反馈策略、防超时 |
+| `codex/AGENTS.md` | Codex | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
+| `cursor/rules/mcp-feedback.mdc` | Cursor | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
 
 ## 🛠️ Skills 清单
 
-### 共享 Skills（Cursor + VS Code Copilot + Codex 三套同源）
+### 共享 Skills（Cursor + VS Code Copilot + Codex + Claude 四套同源）
 
 | 分类 | 技能 | 用途 |
 |------|------|------|
