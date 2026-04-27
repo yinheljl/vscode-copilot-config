@@ -38,6 +38,24 @@ THRESHOLDS = {
     "max_imports": 15
 }
 
+# Directory names that should not be treated as project source.
+EXCLUDED_DIRECTORIES = {
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "env",
+    "node_modules",
+    "venv",
+}
+
 
 def get_file_extension(filepath: Path) -> str:
     """Get file extension."""
@@ -60,6 +78,11 @@ def read_file_content(filepath: Path) -> str:
             return f.read()
     except Exception:
         return ""
+
+
+def should_skip_path(filepath: Path) -> bool:
+    """Return True for dependency, cache, and VCS paths."""
+    return any(part in EXCLUDED_DIRECTORIES for part in filepath.parts)
 
 
 def calculate_cyclomatic_complexity(content: str) -> int:
@@ -433,7 +456,7 @@ def analyze_directory(
 
     for ext in extensions:
         for filepath in dir_path.glob(f"{pattern}{ext}"):
-            if "node_modules" in str(filepath) or ".git" in str(filepath):
+            if should_skip_path(filepath):
                 continue
             result = analyze_file(filepath)
             if "error" not in result:

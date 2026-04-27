@@ -111,6 +111,8 @@ def run_git_command(cmd: List[str], cwd: Path) -> Tuple[bool, str]:
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30
         )
         return result.returncode == 0, result.stdout.strip()

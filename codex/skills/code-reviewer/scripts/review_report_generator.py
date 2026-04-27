@@ -21,6 +21,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+
 # Severity weights for prioritization
 SEVERITY_WEIGHTS = {
     "critical": 100,
@@ -42,7 +47,7 @@ VERDICT_THRESHOLDS = {
 def load_json_file(filepath: str) -> Optional[Dict]:
     """Load JSON file if it exists."""
     try:
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return None
@@ -59,6 +64,8 @@ def run_pr_analyzer(repo_path: Path) -> Dict:
             [sys.executable, str(script_path), str(repo_path), "--json"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=120
         )
         if result.returncode == 0:
@@ -79,6 +86,8 @@ def run_quality_checker(repo_path: Path) -> Dict:
             [sys.executable, str(script_path), str(repo_path), "--json"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=300
         )
         if result.returncode == 0:
@@ -494,7 +503,7 @@ def main():
 
     # Write or print output
     if args.output:
-        with open(args.output, "w") as f:
+        with open(args.output, "w", encoding="utf-8") as f:
             f.write(output)
         print(f"Report written to {args.output}")
     else:
