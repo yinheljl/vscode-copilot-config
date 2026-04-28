@@ -189,7 +189,44 @@ PY
             echo "    + config.toml 设置 [features] codex_hooks = $enabled"
         fi
     else
-        echo "    ⚠ 未安装 python3，无法可靠更新 codex_hooks，请手动设置为 $enabled" >&2
+        local tmp
+        tmp=$(mktemp)
+        trap 'rm -f "$tmp"' RETURN
+        if grep -qE '^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$' "$cfg_dst"; then
+            awk -v value="$enabled" '
+                BEGIN { updated = 0 }
+                {
+                    if (!updated && $0 ~ /^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$/) {
+                        sub(/true|false/, value)
+                        updated = 1
+                    }
+                    print
+                }
+            ' "$cfg_dst" > "$tmp"
+        elif grep -qE '^\[features\][[:space:]]*$' "$cfg_dst"; then
+            awk -v value="$enabled" '
+                BEGIN { inserted = 0 }
+                {
+                    print
+                    if (!inserted && $0 ~ /^\[features\][[:space:]]*$/) {
+                        print "codex_hooks = " value
+                        inserted = 1
+                    }
+                }
+            ' "$cfg_dst" > "$tmp"
+        else
+            cat "$cfg_dst" > "$tmp"
+            printf '\n[features]\ncodex_hooks = %s\n' "$enabled" >> "$tmp"
+        fi
+        if ! cmp -s "$cfg_dst" "$tmp"; then
+            cp "$cfg_dst" "${cfg_dst}.bak_$(date +%Y%m%d_%H%M%S)"
+            trap - RETURN
+            mv "$tmp" "$cfg_dst"
+            echo "    + config.toml 设置 [features] codex_hooks = $enabled"
+        else
+            rm -f "$tmp"
+            trap - RETURN
+        fi
     fi
 }
 
