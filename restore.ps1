@@ -50,8 +50,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $scriptDir       = $PSScriptRoot
-$copilotSrc      = Join-Path $scriptDir "copilot"
-$copilotDst      = Join-Path $env:USERPROFILE ".copilot"
+$copilotSrc        = Join-Path $scriptDir "copilot"
+$copilotDst        = Join-Path $env:USERPROFILE ".copilot"
+$copilotHooksSrc   = Join-Path $copilotSrc "hooks"
+$copilotHooksDst   = Join-Path $copilotDst "hooks"
 $cursorSrc       = Join-Path $scriptDir "cursor"
 $cursorDst       = Join-Path $env:USERPROFILE ".cursor"
 $claudeSrc       = Join-Path $scriptDir "claude"
@@ -69,6 +71,10 @@ $vscodeSettSrc   = Join-Path $scriptDir "vscode\settings.json"
 $vscodeSettDst   = Join-Path $env:APPDATA "Code\User\settings.json"
 $cursorSettSrc   = Join-Path $scriptDir "cursor\settings.json"
 $cursorSettDst   = Join-Path $env:APPDATA "Cursor\User\settings.json"
+$cursorHooksSrc  = Join-Path $cursorSrc "hooks.json"
+$cursorHooksDst  = Join-Path $cursorDst "hooks.json"
+$cursorHooksDirSrc = Join-Path $cursorSrc "hooks"
+$cursorHooksDirDst = Join-Path $cursorDst "hooks"
 $codexSrc        = Join-Path $scriptDir "codex"
 $codexDst        = Join-Path $env:USERPROFILE ".codex"
 $codexConfigSrc  = Join-Path $codexSrc "config.toml"
@@ -781,6 +787,80 @@ function Install-ClaudeHooks($settingsDstPath) {
     Write-Host "    + ~/.claude/settings.json（已写入 dcg PreToolUse hook）"
 }
 
+function Install-CursorHooks($hooksJsonDstPath, $hooksDirDstPath) {
+    if (-not (Test-DcgInstalled)) {
+        Write-Host "    → dcg 未安装，跳过 Cursor beforeShellExecution hook。" -ForegroundColor DarkGray
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host "    [DryRun] $cursorHooksDirSrc -> $hooksDirDstPath" -ForegroundColor Yellow
+        Write-Host "    [DryRun] $cursorHooksSrc -> $hooksJsonDstPath (注册 beforeShellExecution hook)" -ForegroundColor Yellow
+        return
+    }
+
+    # 1. 部署 cursor/hooks/ → ~/.cursor/hooks/
+    if (Test-Path $cursorHooksDirSrc) {
+        if ($Force) {
+            Copy-DirReplace $cursorHooksDirSrc $hooksDirDstPath
+            Write-Host "    + ~/.cursor/hooks/（覆盖，dcg 过滤器）"
+        } else {
+            Copy-DirMerge $cursorHooksDirSrc $hooksDirDstPath
+            Write-Host "    + ~/.cursor/hooks/（增量，dcg 过滤器）"
+        }
+    }
+
+    # 2. 部署 cursor/hooks.json → ~/.cursor/hooks.json
+    if (-not (Test-Path $cursorHooksSrc)) { return }
+
+    $dcgScriptPath = Join-Path $hooksDirDstPath "dcg_filter.ps1"
+    $hookCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$dcgScriptPath`""
+
+    if ((Test-Path $hooksJsonDstPath) -and -not $Force) {
+        Backup-File $hooksJsonDstPath
+    }
+
+    $hookJson = Get-Content $cursorHooksSrc -Raw -Encoding UTF8
+    $hookJson = $hookJson.Replace('__CURSOR_DCG_HOOK_COMMAND__', (Escape-JsonString $hookCmd))
+    Write-Utf8NoBomFile $hooksJsonDstPath $hookJson
+    Write-Host "    + ~/.cursor/hooks.json（beforeShellExecution → dcg 过滤器）"
+}
+
+function Install-CopilotHooks($hooksDirDstPath) {
+    if (-not (Test-DcgInstalled)) {
+        Write-Host "    → dcg 未安装，跳过 Copilot preToolUse hook。" -ForegroundColor DarkGray
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host "    [DryRun] $copilotHooksSrc -> $hooksDirDstPath" -ForegroundColor Yellow
+        return
+    }
+
+    # 部署 copilot/hooks/ → ~/.copilot/hooks/
+    if (Test-Path $copilotHooksSrc) {
+        if ($Force) {
+            Copy-DirReplace $copilotHooksSrc $hooksDirDstPath
+            Write-Host "    + ~/.copilot/hooks/（覆盖，dcg 过滤器）"
+        } else {
+            Copy-DirMerge $copilotHooksSrc $hooksDirDstPath
+            Write-Host "    + ~/.copilot/hooks/（增量，dcg 过滤器）"
+        }
+    }
+
+    # 替换 dcg-guard.json 中的占位符为实际路径
+    $guardJson = Join-Path $hooksDirDstPath "dcg-guard.json"
+    if (Test-Path $guardJson) {
+        $ps1Path = Join-Path $hooksDirDstPath "dcg_filter.ps1"
+        $pyPath = Join-Path $hooksDirDstPath "dcg_filter.py"
+        $content = Get-Content $guardJson -Raw -Encoding UTF8
+        $content = $content.Replace('__COPILOT_DCG_HOOK_POWERSHELL__', (Escape-JsonString "powershell -NoProfile -ExecutionPolicy Bypass -File `"$ps1Path`""))
+        $content = $content.Replace('__COPILOT_DCG_HOOK_BASH__', (Escape-JsonString "python3 `"$pyPath`""))
+        Write-Utf8NoBomFile $guardJson $content
+        Write-Host "    + ~/.copilot/hooks/dcg-guard.json（preToolUse → dcg 过滤器）"
+    }
+}
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Cursor + VS Code Copilot + Codex + Claude 配置还原" -ForegroundColor Cyan
@@ -840,11 +920,12 @@ $step = 0
 # ============================
 if ($hasVSCode) {
     $step++
-    Write-Host "[$step/$totalSteps] 还原 VS Code Copilot 配置（instructions + skills）..." -ForegroundColor Green
+    Write-Host "[$step/$totalSteps] 还原 VS Code Copilot 配置（instructions + skills + hooks）..." -ForegroundColor Green
     if (-not (Test-Path $copilotSrc)) {
         Write-Warning "找不到源目录: $copilotSrc，跳过。"
     } elseif ($DryRun) {
         Write-Host "  [DryRun] $copilotSrc -> $copilotDst"
+        Install-CopilotHooks $copilotHooksDst
     } else {
         if (-not (Test-Path $copilotDst)) {
             New-Item -ItemType Directory -Path $copilotDst -Force | Out-Null
@@ -862,6 +943,8 @@ if ($hasVSCode) {
                 }
             }
         }
+        # hooks（preToolUse 硬兜底，使用社区方案 dcg）
+        Install-CopilotHooks $copilotHooksDst
     }
 }
 
@@ -870,11 +953,12 @@ if ($hasVSCode) {
 # ============================
 if ($hasCursor) {
     $step++
-    Write-Host "[$step/$totalSteps] 还原 Cursor 配置..." -ForegroundColor Green
+    Write-Host "[$step/$totalSteps] 还原 Cursor 配置（rules + skills + hooks）..." -ForegroundColor Green
     if (-not (Test-Path $cursorSrc)) {
         Write-Warning "找不到源目录: $cursorSrc，跳过。"
     } elseif ($DryRun) {
         Write-Host "  [DryRun] $cursorSrc -> $cursorDst"
+        Install-CursorHooks $cursorHooksDst $cursorHooksDirDst
     } else {
         # rules/
         $rulesSrc = Join-Path $cursorSrc "rules"
@@ -906,6 +990,9 @@ if ($hasCursor) {
         if (Test-Path $cursorSettSrc) {
             Merge-JsonSettings $cursorSettSrc $cursorSettDst
         }
+
+        # hooks（beforeShellExecution 硬兜底，使用社区方案 dcg）
+        Install-CursorHooks $cursorHooksDst $cursorHooksDirDst
     }
 }
 
@@ -1053,6 +1140,7 @@ if ($hasVSCode) {
     $checks = @(
         @{ Name = "~/.copilot/instructions/"; Path = (Join-Path $copilotDst "instructions") },
         @{ Name = "~/.copilot/skills/"; Path = (Join-Path $copilotDst "skills") },
+        @{ Name = "~/.copilot/hooks/"; Path = $copilotHooksDst },
         @{ Name = "VS Code mcp.json"; Path = $vscodeMcpDst }
     ) + $checks
 }
@@ -1060,7 +1148,9 @@ if ($hasCursor) {
     $checks = @(
         @{ Name = "~/.cursor/mcp.json"; Path = (Join-Path $cursorDst "mcp.json") },
         @{ Name = "~/.cursor/rules/"; Path = (Join-Path $cursorDst "rules") },
-        @{ Name = "~/.cursor/skills/"; Path = (Join-Path $cursorDst "skills") }
+        @{ Name = "~/.cursor/skills/"; Path = (Join-Path $cursorDst "skills") },
+        @{ Name = "~/.cursor/hooks.json"; Path = $cursorHooksDst },
+        @{ Name = "~/.cursor/hooks/"; Path = $cursorHooksDirDst }
     ) + $checks
 }
 if ($hasCodex) {
@@ -1114,6 +1204,20 @@ if ($hasClaude -and -not $SkipDcg) {
         Write-Host "  + Claude Code dcg hook（低噪音过滤器）" -ForegroundColor Green
     } else {
         Write-Host "  ~ Claude Code dcg hook（hooks/ 未找到）" -ForegroundColor Yellow
+    }
+}
+if ($hasCursor -and -not $SkipDcg) {
+    if (Test-Path $cursorHooksDst) {
+        Write-Host "  + Cursor dcg hook（beforeShellExecution）" -ForegroundColor Green
+    } else {
+        Write-Host "  ~ Cursor dcg hook（hooks.json 未找到）" -ForegroundColor Yellow
+    }
+}
+if ($hasVSCode -and -not $SkipDcg) {
+    if (Test-Path $copilotHooksDst) {
+        Write-Host "  + Copilot dcg hook（preToolUse）" -ForegroundColor Green
+    } else {
+        Write-Host "  ~ Copilot dcg hook（hooks/ 未找到）" -ForegroundColor Yellow
     }
 }
 

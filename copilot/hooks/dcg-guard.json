@@ -1,0 +1,17 @@
+{
+  "_comment": "GitHub Copilot preToolUse hook — 使用社区方案 dcg（Destructive Command Guard）拦截破坏性 Bash 命令。软层 destructive-command-guard skill 提供 AI 层面的劝阻；本 hook 提供 OS 进程级的硬阻断。",
+  "_doc": "https://docs.github.com/en/copilot/reference/hooks-configuration",
+  "_dcg": "https://github.com/Dicklesworthstone/destructive_command_guard",
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "comment": "低噪音 dcg 过滤器：仅匹配 Bash 工具，先正则预筛，再调 dcg LLM。",
+        "bash": "__COPILOT_DCG_HOOK_BASH__",
+        "powershell": "__COPILOT_DCG_HOOK_POWERSHELL__",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

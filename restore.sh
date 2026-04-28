@@ -43,8 +43,14 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COPILOT_SRC="$SCRIPT_DIR/copilot"
 COPILOT_DST="$HOME/.copilot"
+COPILOT_HOOKS_SRC="$COPILOT_SRC/hooks"
+COPILOT_HOOKS_DST="$COPILOT_DST/hooks"
 CURSOR_SRC="$SCRIPT_DIR/cursor"
 CURSOR_DST="$HOME/.cursor"
+CURSOR_HOOKS_SRC="$CURSOR_SRC/hooks.json"
+CURSOR_HOOKS_DST="$CURSOR_DST/hooks.json"
+CURSOR_HOOKS_DIR_SRC="$CURSOR_SRC/hooks"
+CURSOR_HOOKS_DIR_DST="$CURSOR_DST/hooks"
 CLAUDE_SRC="$SCRIPT_DIR/claude"
 CLAUDE_DST="$HOME/.claude"
 CLAUDE_CONFIG_SRC="$CLAUDE_SRC/CLAUDE.md"
@@ -474,6 +480,125 @@ print("    + ~/.claude/settings.json（已写入 dcg PreToolUse hook）")
 PY
 }
 
+install_cursor_hooks() {
+    # Cursor 硬层：部署低噪音 dcg beforeShellExecution hook（cursor/hooks.json + cursor/hooks/ → ~/.cursor/）。
+    # Cursor 的 preToolUse deny 有已知 bug，因此使用 beforeShellExecution（仅 Shell 命令触发）。
+
+    echo "  Cursor 硬层（破坏性命令防护 dcg）："
+
+    if [ "$SKIP_DCG" = true ]; then
+        echo "    → --skip-dcg 已启用，跳过 Cursor dcg hook。软层 SKILL 仍生效。"
+        return
+    fi
+
+    if ! test_dcg_installed; then
+        echo "    → dcg 未安装，跳过 Cursor beforeShellExecution hook。软层 SKILL 仍生效。"
+        return
+    fi
+
+    # 1. 部署 cursor/hooks/ → ~/.cursor/hooks/
+    if [ -d "$CURSOR_HOOKS_DIR_SRC" ]; then
+        if [ "$FORCE" = true ]; then
+            copy_dir_replace "$CURSOR_HOOKS_DIR_SRC" "$CURSOR_HOOKS_DIR_DST"
+            echo "    + ~/.cursor/hooks/（覆盖，dcg 过滤器）"
+        else
+            copy_dir_merge "$CURSOR_HOOKS_DIR_SRC" "$CURSOR_HOOKS_DIR_DST"
+            echo "    + ~/.cursor/hooks/（增量，dcg 过滤器）"
+        fi
+    fi
+
+    # 2. 部署 cursor/hooks.json → ~/.cursor/hooks.json
+    if [ ! -f "$CURSOR_HOOKS_SRC" ]; then
+        return
+    fi
+
+    local hook_cmd
+    local dcg_script="$CURSOR_HOOKS_DIR_DST/dcg_filter.ps1"
+    if [ -f "$dcg_script" ]; then
+        hook_cmd="powershell -NoProfile -ExecutionPolicy Bypass -File \"$dcg_script\""
+    elif command -v python3 >/dev/null 2>&1 && [ -f "$CURSOR_HOOKS_DIR_DST/dcg_filter.py" ]; then
+        hook_cmd="python3 \"$CURSOR_HOOKS_DIR_DST/dcg_filter.py\""
+    else
+        hook_cmd="dcg"
+    fi
+
+    if [ -f "$CURSOR_HOOKS_DST" ] && [ "$FORCE" = false ]; then
+        cp "$CURSOR_HOOKS_DST" "${CURSOR_HOOKS_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        SRC="$CURSOR_HOOKS_SRC" DST="$CURSOR_HOOKS_DST" HOOK_COMMAND="$hook_cmd" python3 - <<'PY'
+import json, os
+src = os.environ['SRC']
+dst = os.environ['DST']
+hook_command = os.environ['HOOK_COMMAND']
+with open(src, 'r', encoding='utf-8') as f:
+    s = f.read().replace('__CURSOR_DCG_HOOK_COMMAND__', hook_command.replace('\\', '\\\\').replace('"', '\\"'))
+json.loads(s)
+with open(dst, 'w', encoding='utf-8') as f:
+    f.write(s)
+PY
+        echo "    + ~/.cursor/hooks.json（beforeShellExecution → dcg 过滤器）"
+    else
+        sed "s#__CURSOR_DCG_HOOK_COMMAND__#$hook_cmd#g" "$CURSOR_HOOKS_SRC" > "$CURSOR_HOOKS_DST"
+        echo "    + ~/.cursor/hooks.json（beforeShellExecution → dcg，已替换路径）"
+    fi
+}
+
+install_copilot_hooks() {
+    # Copilot 硬层：部署低噪音 dcg preToolUse hook（copilot/hooks/ → ~/.copilot/hooks/）。
+    # Copilot preToolUse stdin 格式：{"toolName":"bash","toolArgs":"{\"command\":\"...\"}"}
+
+    echo "  Copilot 硬层（破坏性命令防护 dcg）："
+
+    if [ "$SKIP_DCG" = true ]; then
+        echo "    → --skip-dcg 已启用，跳过 Copilot dcg hook。软层 SKILL 仍生效。"
+        return
+    fi
+
+    if ! test_dcg_installed; then
+        echo "    → dcg 未安装，跳过 Copilot preToolUse hook。软层 SKILL 仍生效。"
+        return
+    fi
+
+    # 部署 copilot/hooks/ → ~/.copilot/hooks/
+    if [ -d "$COPILOT_HOOKS_SRC" ]; then
+        if [ "$FORCE" = true ]; then
+            copy_dir_replace "$COPILOT_HOOKS_SRC" "$COPILOT_HOOKS_DST"
+            echo "    + ~/.copilot/hooks/（覆盖，dcg 过滤器）"
+        else
+            copy_dir_merge "$COPILOT_HOOKS_SRC" "$COPILOT_HOOKS_DST"
+            echo "    + ~/.copilot/hooks/（增量，dcg 过滤器）"
+        fi
+        if [ -f "$COPILOT_HOOKS_DST/dcg_filter.py" ]; then
+            chmod +x "$COPILOT_HOOKS_DST/dcg_filter.py" 2>/dev/null || true
+        fi
+    fi
+
+    # 替换 dcg-guard.json 中的占位符为实际路径
+    local guard_json="$COPILOT_HOOKS_DST/dcg-guard.json"
+    if [ -f "$guard_json" ] && command -v python3 >/dev/null 2>&1; then
+        local ps1_path="$COPILOT_HOOKS_DST/dcg_filter.ps1"
+        local py_path="$COPILOT_HOOKS_DST/dcg_filter.py"
+        local ps1_cmd="powershell -NoProfile -ExecutionPolicy Bypass -File \"$ps1_path\""
+        local py_cmd="python3 \"$py_path\""
+        PS1_CMD="$ps1_cmd" PY_CMD="$py_cmd" GUARD="$guard_json" python3 - <<'PY'
+import json, os
+ps1_cmd = os.environ['PS1_CMD']
+py_cmd = os.environ['PY_CMD']
+guard = os.environ['GUARD']
+with open(guard, 'r', encoding='utf-8') as f:
+    s = f.read()
+s = s.replace('__COPILOT_DCG_HOOK_POWERSHELL__', ps1_cmd.replace('\\', '\\\\').replace('"', '\\"'))
+s = s.replace('__COPILOT_DCG_HOOK_BASH__', py_cmd.replace('\\', '\\\\').replace('"', '\\"'))
+json.loads(s)
+with open(guard, 'w', encoding='utf-8') as f:
+    f.write(s)
+PY
+        echo "    + ~/.copilot/hooks/dcg-guard.json（preToolUse → dcg 过滤器）"
+    fi
+}
+
 # 将任意字符串安全地编码为 JSON 字符串字面量内部（不含外层引号）
 # 用于把路径替换进 mcp.json 模板时正确转义 \ 和 " 等字符
 json_escape_value() {
@@ -673,7 +798,7 @@ echo ""
 
 # --- 1. 还原 copilot → ~/.copilot (VS Code) ---
 if [ "$HAS_VSCODE" = true ]; then
-    echo "[1] 还原 VS Code Copilot 配置（instructions + skills）..."
+    echo "[1] 还原 VS Code Copilot 配置（instructions + skills + hooks）..."
     if [ ! -d "$COPILOT_SRC" ]; then
         echo "  警告：找不到源目录: $COPILOT_SRC" >&2
     else
@@ -693,12 +818,15 @@ if [ "$HAS_VSCODE" = true ]; then
         if [ -f "$VSCODE_SETT_SRC" ]; then
             merge_json_settings "$VSCODE_SETT_SRC" "$VSCODE_SETT_DST"
         fi
+
+        # hooks（preToolUse 硬兜底，使用社区方案 dcg）
+        install_copilot_hooks
     fi
 fi
 
 # --- 2. 还原 Cursor 配置 ---
 if [ "$HAS_CURSOR" = true ]; then
-    echo "[2] 还原 Cursor 配置..."
+    echo "[2] 还原 Cursor 配置（rules + skills + hooks）..."
     if [ ! -d "$CURSOR_SRC" ]; then
         echo "  警告：找不到源目录: $CURSOR_SRC" >&2
     else
@@ -720,6 +848,9 @@ if [ "$HAS_CURSOR" = true ]; then
         if [ -f "$CURSOR_SETT_SRC" ]; then
             merge_json_settings "$CURSOR_SETT_SRC" "$CURSOR_SETT_DST"
         fi
+
+        # hooks（beforeShellExecution 硬兜底，使用社区方案 dcg）
+        install_cursor_hooks
     fi
 fi
 
@@ -896,12 +1027,15 @@ CHECKS=""
 if [ "$HAS_VSCODE" = true ]; then
     CHECKS="$CHECKS ~/.copilot/instructions/:$COPILOT_DST/instructions"
     CHECKS="$CHECKS ~/.copilot/skills/:$COPILOT_DST/skills"
+    CHECKS="$CHECKS ~/.copilot/hooks/:$COPILOT_HOOKS_DST"
     CHECKS="$CHECKS VS_Code_mcp.json:$MCP_DST"
 fi
 if [ "$HAS_CURSOR" = true ]; then
     CHECKS="$CHECKS ~/.cursor/mcp.json:$CURSOR_DST/mcp.json"
     CHECKS="$CHECKS ~/.cursor/rules/:$CURSOR_DST/rules"
     CHECKS="$CHECKS ~/.cursor/skills/:$CURSOR_DST/skills"
+    CHECKS="$CHECKS ~/.cursor/hooks.json:$CURSOR_HOOKS_DST"
+    CHECKS="$CHECKS ~/.cursor/hooks/:$CURSOR_HOOKS_DIR_DST"
 fi
 if [ "$HAS_CODEX" = true ]; then
     CHECKS="$CHECKS ~/.codex/AGENTS.md:$CODEX_DST/AGENTS.md"
@@ -951,6 +1085,20 @@ if [ "$HAS_CLAUDE" = true ] && [ "$SKIP_DCG" = false ]; then
         echo "  + Claude Code dcg hook（低噪音过滤器）"
     else
         echo "  ~ Claude Code dcg hook（hooks/ 未找到）"
+    fi
+fi
+if [ "$HAS_CURSOR" = true ] && [ "$SKIP_DCG" = false ]; then
+    if [ -f "$CURSOR_HOOKS_DST" ]; then
+        echo "  + Cursor dcg hook（beforeShellExecution）"
+    else
+        echo "  ~ Cursor dcg hook（hooks.json 未找到）"
+    fi
+fi
+if [ "$HAS_VSCODE" = true ] && [ "$SKIP_DCG" = false ]; then
+    if [ -d "$COPILOT_HOOKS_DST" ]; then
+        echo "  + Copilot dcg hook（preToolUse）"
+    else
+        echo "  ~ Copilot dcg hook（hooks/ 未找到）"
     fi
 fi
 

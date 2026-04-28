@@ -1,0 +1,16 @@
+{
+  "_comment": "Cursor Hooks 配置：使用社区方案 dcg（Destructive Command Guard）作为 beforeShellExecution 硬层防护。注意：Cursor 的 beforeShellExecution 和 preToolUse 共享 stdout JSON schema（permission + user_message + agent_message）。",
+  "_doc": "https://cursor.com/docs/hooks",
+  "_dcg": "https://github.com/Dicklesworthstone/destructive_command_guard",
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "__CURSOR_DCG_HOOK_COMMAND__",
+        "type": "command",
+        "timeout": 10,
+        "failClosed": false
+      }
+    ]
+  }
+}
