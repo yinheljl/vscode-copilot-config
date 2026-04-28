@@ -21,6 +21,8 @@
     - codex/hooks/ → ~/.codex/hooks/（dcg 轻量过滤器）
     - claude/CLAUDE.md → ~/.claude/CLAUDE.md（Claude）
     - claude/skills/ → ~/.claude/skills/（Claude Skills，含安全护栏 skill）
+    - claude/hooks/ → ~/.claude/hooks/（dcg 轻量过滤器，Claude Code 硬层）
+    - claude/hooks → ~/.claude/settings.json（注册低噪音 dcg PreToolUse hook 到 Claude Code）
 
 .EXAMPLE
     .\restore.ps1                        # 增量模式（默认，不覆盖用户已有配置）
@@ -54,10 +56,13 @@ $cursorSrc       = Join-Path $scriptDir "cursor"
 $cursorDst       = Join-Path $env:USERPROFILE ".cursor"
 $claudeSrc       = Join-Path $scriptDir "claude"
 $claudeDst       = Join-Path $env:USERPROFILE ".claude"
-$claudeConfigSrc = Join-Path $claudeSrc "CLAUDE.md"
-$claudeConfigDst = Join-Path $claudeDst "CLAUDE.md"
-$claudeSkillsSrc = Join-Path $claudeSrc "skills"
-$claudeSkillsDst = Join-Path $claudeDst "skills"
+$claudeConfigSrc  = Join-Path $claudeSrc "CLAUDE.md"
+$claudeConfigDst  = Join-Path $claudeDst "CLAUDE.md"
+$claudeSkillsSrc  = Join-Path $claudeSrc "skills"
+$claudeSkillsDst  = Join-Path $claudeDst "skills"
+$claudeHooksSrc   = Join-Path $claudeSrc "hooks"
+$claudeHooksDst   = Join-Path $claudeDst "hooks"
+$claudeSettingsDst = Join-Path $claudeDst "settings.json"
 $vscodeMcpSrc    = Join-Path $scriptDir "vscode\mcp.json"
 $vscodeMcpDst    = Join-Path $env:APPDATA "Code\User\mcp.json"
 $vscodeSettSrc   = Join-Path $scriptDir "vscode\settings.json"
@@ -679,6 +684,97 @@ function Merge-CodexConfig($srcPath, $dstPath, $uvPath) {
     }
 }
 
+function Install-ClaudeHooks($settingsDstPath) {
+    if (-not (Test-DcgInstalled)) {
+        Write-Host "    → dcg 未安装，跳过 Claude Code PreToolUse hook。" -ForegroundColor DarkGray
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host "    [DryRun] $claudeHooksSrc -> $claudeHooksDst" -ForegroundColor Yellow
+        Write-Host "    [DryRun] 向 $settingsDstPath 写入 dcg PreToolUse hook" -ForegroundColor Yellow
+        return
+    }
+
+    # 1. 部署 claude/hooks/ → ~/.claude/hooks/
+    if (Test-Path $claudeHooksSrc) {
+        if ($Force) {
+            Copy-DirReplace $claudeHooksSrc $claudeHooksDst
+            Write-Host "    + ~/.claude/hooks/（覆盖，低噪音 dcg 过滤器）"
+        } else {
+            Copy-DirMerge $claudeHooksSrc $claudeHooksDst
+            Write-Host "    + ~/.claude/hooks/（增量，低噪音 dcg 过滤器）"
+        }
+    }
+
+    # 2. 合并 hooks.PreToolUse 条目到 ~/.claude/settings.json
+    $dcgScriptPath = Join-Path $claudeHooksDst "dcg_filter.ps1"
+    $hookCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$dcgScriptPath`""
+    $newGroup = [PSCustomObject]@{
+        matcher = "Bash"
+        hooks   = @([PSCustomObject]@{
+            type    = "command"
+            command = $hookCmd
+            timeout = 10
+        })
+    }
+
+    if (-not (Test-Path $settingsDstPath)) {
+        $obj = [PSCustomObject]@{
+            hooks = [PSCustomObject]@{ PreToolUse = @($newGroup) }
+        }
+        $dstDir = Split-Path $settingsDstPath -Parent
+        if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Path $dstDir -Force | Out-Null }
+        Write-Utf8NoBomFile $settingsDstPath (Format-Json ($obj | ConvertTo-Json -Depth 10) 2)
+        Write-Host "    + ~/.claude/settings.json（新建，写入 dcg PreToolUse hook）"
+        return
+    }
+
+    Backup-File $settingsDstPath
+    $cfg = Get-Content $settingsDstPath -Raw -Encoding UTF8 | ConvertFrom-Json
+
+    # 检查是否已存在 dcg hook
+    $hasDcg = $false
+    if ($cfg.PSObject.Properties.Name -contains "hooks") {
+        if ($cfg.hooks -and ($cfg.hooks.PSObject.Properties.Name -contains "PreToolUse")) {
+            foreach ($g in @($cfg.hooks.PreToolUse)) {
+                if (-not $g.hooks) { continue }
+                foreach ($h in @($g.hooks)) {
+                    if ($h.command -like "*dcg_filter*") { $hasDcg = $true; break }
+                }
+                if ($hasDcg) { break }
+            }
+        }
+    }
+
+    if ($hasDcg -and -not $Force) {
+        Write-Host "    + ~/.claude/settings.json（dcg hook 已存在，未修改）"
+        return
+    }
+
+    if (-not ($cfg.PSObject.Properties.Name -contains "hooks")) {
+        $cfg | Add-Member -MemberType NoteProperty -Name "hooks" -Value ([PSCustomObject]@{}) -Force
+    }
+    if (-not ($cfg.hooks.PSObject.Properties["PreToolUse"])) {
+        $cfg.hooks | Add-Member -MemberType NoteProperty -Name "PreToolUse" -Value @() -Force
+    }
+
+    if ($Force -and $hasDcg) {
+        # -Force 时替换旧 dcg 条目
+        $kept = @($cfg.hooks.PreToolUse | Where-Object {
+            $isDcg = $false
+            foreach ($h in @($_.hooks)) { if ($h.command -like "*dcg_filter*") { $isDcg = $true; break } }
+            -not $isDcg
+        })
+        $cfg.hooks.PreToolUse = $kept + @($newGroup)
+    } else {
+        $cfg.hooks.PreToolUse = @($cfg.hooks.PreToolUse) + @($newGroup)
+    }
+
+    Write-Utf8NoBomFile $settingsDstPath (Format-Json ($cfg | ConvertTo-Json -Depth 20) 2)
+    Write-Host "    + ~/.claude/settings.json（已写入 dcg PreToolUse hook）"
+}
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Cursor + VS Code Copilot + Codex + Claude 配置还原" -ForegroundColor Cyan
@@ -850,12 +946,13 @@ if ($hasCodex) {
 # ============================
 if ($hasClaude) {
     $step++
-    Write-Host "[$step/$totalSteps] 还原 Claude 配置（CLAUDE.md + skills）..." -ForegroundColor Green
+    Write-Host "[$step/$totalSteps] 还原 Claude 配置（CLAUDE.md + skills + 低噪音 hooks）..." -ForegroundColor Green
     if (-not (Test-Path $claudeSrc)) {
         Write-Warning "找不到源目录: $claudeSrc，跳过。"
     } elseif ($DryRun) {
         Write-Host "  [DryRun] $claudeConfigSrc -> $claudeConfigDst"
         Write-Host "  [DryRun] $claudeSkillsSrc -> $claudeSkillsDst"
+        Install-ClaudeHooks $claudeSettingsDst
     } else {
         if (-not (Test-Path $claudeDst)) {
             New-Item -ItemType Directory -Path $claudeDst -Force | Out-Null
@@ -874,6 +971,8 @@ if ($hasClaude) {
                 Write-Host "  + skills/ (增量)"
             }
         }
+        # hooks（低噪音硬兜底，使用社区方案 dcg）
+        Install-ClaudeHooks $claudeSettingsDst
     }
 }
 
@@ -970,7 +1069,8 @@ if ($hasClaude) {
     $checks = @(
         @{ Name = "~/.claude/CLAUDE.md"; Path = $claudeConfigDst },
         @{ Name = "~/.claude/skills/"; Path = $claudeSkillsDst },
-        @{ Name = "~/.claude/skills/destructive-command-guard/"; Path = (Join-Path $claudeSkillsDst "destructive-command-guard") }
+        @{ Name = "~/.claude/skills/destructive-command-guard/"; Path = (Join-Path $claudeSkillsDst "destructive-command-guard") },
+        @{ Name = "~/.claude/hooks/"; Path = $claudeHooksDst }
     ) + $checks
 }
 foreach ($c in $checks) {
@@ -996,6 +1096,18 @@ if ($hasCodex -and -not $SkipDcg) {
         } else {
             Write-Host "  - Codex dcg hook（默认启用但 hooks.json 未找到）" -ForegroundColor Red
         }
+    }
+}
+if ($hasClaude -and -not $SkipDcg) {
+    if (Test-DcgInstalled) {
+        Write-Host "  + dcg 二进制（Claude Code 硬层已启用）" -ForegroundColor Green
+    } else {
+        Write-Host "  ~ dcg 未安装（Claude Code 硬层未启用；软层 SKILL 仍生效）" -ForegroundColor Yellow
+    }
+    if (Test-Path $claudeHooksDst) {
+        Write-Host "  + Claude Code dcg hook（低噪音过滤器）" -ForegroundColor Green
+    } else {
+        Write-Host "  ~ Claude Code dcg hook（hooks/ 未找到）" -ForegroundColor Yellow
     }
 }
 
