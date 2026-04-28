@@ -77,6 +77,10 @@ $riskPattern = @'
 | \bbcdedit\b[\s\S]*\s/delete\b
 | \bwevtutil\s+cl\b
 | \bwmic\s+path\s+win32_process\s+call\s+terminate\b
+| \b(Get-CimInstance|gcim)\b[\s\S]*\bWin32_Process\b[\s\S]*\|\s*\b(Remove-CimInstance|rcim)\b
+| \b(Get-CimInstance|gcim)\b[\s\S]*\bWin32_Process\b[\s\S]*\|\s*\b(Invoke-CimMethod|icim)\b[\s\S]*\b-?MethodName\s+Terminate\b
+| \b(Invoke-CimMethod|icim)\b[\s\S]*\b-?ClassName\s+Win32_Process\b[\s\S]*\b-?MethodName\s+Terminate\b
+| \b(Invoke-CimMethod|icim)\b[\s\S]*\b-?MethodName\s+Terminate\b[\s\S]*\b-?ClassName\s+Win32_Process\b
 | \b(chmod\s+-R\s+777|Set-ExecutionPolicy\s+Unrestricted)\b
 | \b(npm\s+uninstall\s+-g|pip\s+uninstall\s+-y)\b
 )
@@ -95,6 +99,10 @@ $localBlockPattern = @'
 | \bbcdedit\b[\s\S]*\s/delete\b
 | \bwevtutil\s+cl\b
 | \bwmic\s+path\s+win32_process\s+call\s+terminate\b
+| \b(Get-CimInstance|gcim)\b[\s\S]*\bWin32_Process\b[\s\S]*\|\s*\b(Remove-CimInstance|rcim)\b
+| \b(Get-CimInstance|gcim)\b[\s\S]*\bWin32_Process\b[\s\S]*\|\s*\b(Invoke-CimMethod|icim)\b[\s\S]*\b-?MethodName\s+Terminate\b
+| \b(Invoke-CimMethod|icim)\b[\s\S]*\b-?ClassName\s+Win32_Process\b[\s\S]*\b-?MethodName\s+Terminate\b
+| \b(Invoke-CimMethod|icim)\b[\s\S]*\b-?MethodName\s+Terminate\b[\s\S]*\b-?ClassName\s+Win32_Process\b
 )
 '@
 
