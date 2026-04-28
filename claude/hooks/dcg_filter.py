@@ -40,6 +40,11 @@ RISK_RE = re.compile(
     | \b(docker|podman)\s+(system\s+prune|volume\s+rm|volume\s+prune|network\s+prune|container\s+prune|image\s+prune)\b
     | \b(aws\s+s3\s+rb|gcloud\s+projects\s+delete)\b
     | \b(Format-Volume|diskpart|mkfs(\.[A-Za-z0-9_+-]+)?|dd\s+if=|cipher\s+/w|fsutil)\b
+    | \b(sdelete|sdelete64)\b
+    | \bvssadmin\s+delete\s+shadows\b
+    | \bbcdedit\b[\s\S]*\s/delete\b
+    | \bwevtutil\s+cl\b
+    | \bwmic\s+path\s+win32_process\s+call\s+terminate\b
     | \b(chmod\s+-R\s+777|Set-ExecutionPolicy\s+Unrestricted)\b
     | \b(npm\s+uninstall\s+-g|pip\s+uninstall\s+-y)\b
     )
@@ -47,8 +52,32 @@ RISK_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+LOCAL_BLOCK_RE = re.compile(
+    r"""
+    (
+      \b(sdelete|sdelete64)\b
+    | \bvssadmin\s+delete\s+shadows\b
+    | \bbcdedit\b[\s\S]*\s/delete\b
+    | \bwevtutil\s+cl\b
+    | \bwmic\s+path\s+win32_process\s+call\s+terminate\b
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
 
 def approve() -> int:
+    return 0
+
+
+def deny(reason: str) -> int:
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }, separators=(",", ":")))
     return 0
 
 
@@ -75,6 +104,8 @@ def main() -> int:
     command = extract_command(event)
     if not command or not RISK_RE.search(command):
         return approve()
+    if LOCAL_BLOCK_RE.search(command):
+        return deny("BLOCKED by local destructive command guard. This Windows destructive command is not safely handled by dcg on this machine. Ask the user to run it manually if truly needed.")
 
     dcg = shutil.which("dcg") or shutil.which("dcg.exe")
     if not dcg:

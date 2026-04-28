@@ -8,6 +8,16 @@ function Approve-Hook {
     exit 0
 }
 
+function Deny-Hook([string]$reason) {
+    $block = @{
+        permission = "deny"
+        user_message = $reason
+        agent_message = "This command was blocked by the local destructive command guard. Ask the user to run it manually if truly needed."
+    } | ConvertTo-Json -Compress
+    Write-Output $block
+    exit 2
+}
+
 if ([string]::IsNullOrWhiteSpace($payload)) {
     Approve-Hook
 }
@@ -50,6 +60,11 @@ $riskPattern = @'
 | \b(docker|podman)\s+(system\s+prune|volume\s+rm|volume\s+prune|network\s+prune|container\s+prune|image\s+prune)\b
 | \b(aws\s+s3\s+rb|gcloud\s+projects\s+delete)\b
 | \b(Format-Volume|diskpart|mkfs(\.[A-Za-z0-9_+-]+)?|dd\s+if=|cipher\s+/w|fsutil)\b
+| \b(sdelete|sdelete64)\b
+| \bvssadmin\s+delete\s+shadows\b
+| \bbcdedit\b[\s\S]*\s/delete\b
+| \bwevtutil\s+cl\b
+| \bwmic\s+path\s+win32_process\s+call\s+terminate\b
 | \b(chmod\s+-R\s+777|Set-ExecutionPolicy\s+Unrestricted)\b
 | \b(npm\s+uninstall\s+-g|pip\s+uninstall\s+-y)\b
 )
@@ -57,6 +72,21 @@ $riskPattern = @'
 
 if ($command -notmatch $riskPattern) {
     Approve-Hook
+}
+
+$localBlockPattern = @'
+(?isx)
+(
+  \b(sdelete|sdelete64)\b
+| \bvssadmin\s+delete\s+shadows\b
+| \bbcdedit\b[\s\S]*\s/delete\b
+| \bwevtutil\s+cl\b
+| \bwmic\s+path\s+win32_process\s+call\s+terminate\b
+)
+'@
+
+if ($command -match $localBlockPattern) {
+    Deny-Hook "BLOCKED by local destructive command guard. This Windows destructive command is not safely handled by dcg on this machine. Ask the user to run it manually if truly needed."
 }
 
 $dcg = Get-Command dcg -ErrorAction SilentlyContinue
@@ -75,7 +105,8 @@ $dcgInput = @{
 
 $dcgJson = $dcgInput | & $dcg.Source
 if ($dcgJson -match '"permissionDecision"\s*:\s*"(deny|ask)"') {
-    $reason = "BLOCKED by dcg. Use `dcg explain `"$command`"` for details."
+    $cmdLiteral = $command | ConvertTo-Json -Compress
+    $reason = "BLOCKED by dcg. Use ``dcg explain $cmdLiteral`` for details."
     $block = @{
         permission = "deny"
         user_message = $reason
