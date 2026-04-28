@@ -85,5 +85,11 @@ if (($event.PSObject.Properties.Name -notcontains "tool_name") -and
     $payload = $event | ConvertTo-Json -Depth 20 -Compress
 }
 
-$payload | & $dcg.Source
-exit $LASTEXITCODE
+# dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
+$dcgOutput = $payload | & $dcg.Source
+if ($dcgOutput -match '"permissionDecision"\s*:\s*"deny"') {
+    Write-Output $dcgOutput
+    exit 0
+}
+Write-Output '{"continue":true}'
+exit 0

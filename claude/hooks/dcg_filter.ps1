@@ -81,11 +81,13 @@ if (($event.PSObject.Properties.Name -notcontains "tool_name") -and
     $payload = $event | ConvertTo-Json -Depth 20 -Compress
 }
 
-# Claude Code exit code semantics differ from Codex:
+# Claude Code exit code semantics:
 #   exit 0  = allow (action proceeds)
 #   exit 2  = BLOCK (stderr message shown to Claude)
-#   exit 1  = non-blocking error (action still proceeds — do NOT use for blocking)
-$payload | & $dcg.Source
-$dcgExit = $LASTEXITCODE
-if ($dcgExit -ne 0) { exit 2 }
+# Note: dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
+# dcg's stderr (text block) goes to the host console automatically.
+$dcgStdout = $payload | & $dcg.Source
+if ($dcgStdout -match '"permissionDecision"\s*:\s*"deny"') {
+    exit 2
+}
 exit 0

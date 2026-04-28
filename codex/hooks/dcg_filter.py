@@ -81,9 +81,20 @@ def main() -> int:
         payload = json.dumps(event, separators=(",", ":"))
 
     proc = subprocess.run([dcg], input=payload, text=True, capture_output=True)
-    sys.stdout.write(proc.stdout)
+    # dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
     sys.stderr.write(proc.stderr)
-    return proc.returncode
+    if proc.stdout.strip():
+        try:
+            decision = json.loads(proc.stdout)
+            if decision.get("hookSpecificOutput", {}).get("permissionDecision") == "deny":
+                # dcg's blocking JSON is relayed to stdout — Codex interprets it natively
+                sys.stdout.write(proc.stdout)
+                return 0
+        except (json.JSONDecodeError, AttributeError):
+            pass
+    # dcg allowed or didn't flag — explicitly approve
+    print(json.dumps({"continue": True}, separators=(",", ":")))
+    return 0
 
 
 if __name__ == "__main__":

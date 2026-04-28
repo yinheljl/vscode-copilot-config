@@ -85,10 +85,16 @@ def main() -> int:
         payload = json.dumps(event, separators=(",", ":"))
 
     proc = subprocess.run([dcg], input=payload, text=True, capture_output=True)
-    sys.stdout.write(proc.stdout)
+    # dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
+    # stderr contains the human-readable text block — pass it through to the user.
     sys.stderr.write(proc.stderr)
-    if proc.returncode != 0:
-        return 2  # Claude Code: BLOCK
+    if proc.stdout.strip():
+        try:
+            decision = json.loads(proc.stdout)
+            if decision.get("hookSpecificOutput", {}).get("permissionDecision") == "deny":
+                return 2  # Claude Code: BLOCK
+        except (json.JSONDecodeError, AttributeError):
+            pass
     return 0
 
 
