@@ -74,7 +74,7 @@ $dcgInput = @{
 } | ConvertTo-Json -Depth 10 -Compress
 
 $dcgJson = $dcgInput | & $dcg.Source
-if ($dcgJson -match '"permissionDecision"\s*:\s*"deny"') {
+if ($dcgJson -match '"permissionDecision"\s*:\s*"(deny|ask)"') {
     $reason = "BLOCKED by dcg. Use `dcg explain `"$command`"` for details."
     $block = @{
         permission = "deny"

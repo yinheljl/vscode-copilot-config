@@ -87,7 +87,7 @@ if (($event.PSObject.Properties.Name -notcontains "tool_name") -and
 
 # dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
 $dcgOutput = $payload | & $dcg.Source
-if ($dcgOutput -match '"permissionDecision"\s*:\s*"deny"') {
+if ($dcgOutput -match '"permissionDecision"\s*:\s*"(deny|ask)"') {
     Write-Output $dcgOutput
     exit 0
 }

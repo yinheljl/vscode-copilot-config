@@ -22,7 +22,7 @@ try {
 $command = $null
 if ($event.PSObject.Properties.Name -contains "toolName") {
     $toolName = [string]$event.toolName
-    if ($toolName -ne "bash") {
+    if ($toolName.ToLowerInvariant() -ne "bash") {
         Approve-Hook
     }
 }
@@ -91,7 +91,7 @@ $dcgInput = @{
 } | ConvertTo-Json -Depth 10 -Compress
 
 $dcgJson = $dcgInput | & $dcg.Source
-if ($dcgJson -match '"permissionDecision"\s*:\s*"deny"') {
+if ($dcgJson -match '"permissionDecision"\s*:\s*"(deny|ask)"') {
     $block = @{
         permissionDecision = "deny"
         permissionDecisionReason = "BLOCKED by dcg destructive command guard. Use `dcg explain `"$command`"` for details."

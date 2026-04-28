@@ -90,7 +90,7 @@ def main() -> int:
     if proc.stdout.strip():
         try:
             decision = json.loads(proc.stdout)
-            if decision.get("hookSpecificOutput", {}).get("permissionDecision") == "deny":
+            if decision.get("hookSpecificOutput", {}).get("permissionDecision") in {"deny", "ask"}:
                 return deny(f"BLOCKED by dcg. Use `dcg explain \"{command}\"` for details.")
         except (json.JSONDecodeError, AttributeError):
             pass

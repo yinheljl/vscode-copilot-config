@@ -86,8 +86,8 @@ def main() -> int:
     if proc.stdout.strip():
         try:
             decision = json.loads(proc.stdout)
-            if decision.get("hookSpecificOutput", {}).get("permissionDecision") == "deny":
-                # dcg's blocking JSON is relayed to stdout — Codex interprets it natively
+            if decision.get("hookSpecificOutput", {}).get("permissionDecision") in {"deny", "ask"}:
+                # dcg's decision JSON is relayed to stdout — Codex interprets it natively
                 sys.stdout.write(proc.stdout)
                 return 0
         except (json.JSONDecodeError, AttributeError):

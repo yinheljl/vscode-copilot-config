@@ -19,7 +19,9 @@ ROOT = Path(__file__).resolve().parent.parent
 PURE_JSON = [
     "vscode/mcp.json",
     "cursor/mcp.json",
+    "cursor/hooks.json",
     "codex/hooks.json",
+    "copilot/hooks/dcg-guard.json",
 ]
 JSONC = [
     "vscode/settings.json",

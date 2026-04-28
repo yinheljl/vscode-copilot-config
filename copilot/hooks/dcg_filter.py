@@ -62,7 +62,7 @@ def extract_command(event: object) -> str:
     if not isinstance(event, dict):
         return ""
     tool_name = event.get("toolName", "")
-    if tool_name != "bash":
+    if not isinstance(tool_name, str) or tool_name.lower() != "bash":
         return ""
     # Copilot: toolArgs is a JSON string, not a parsed object
     args = event.get("toolArgs")
@@ -104,7 +104,7 @@ def main() -> int:
     if proc.stdout.strip():
         try:
             decision = json.loads(proc.stdout)
-            if decision.get("hookSpecificOutput", {}).get("permissionDecision") == "deny":
+            if decision.get("hookSpecificOutput", {}).get("permissionDecision") in {"deny", "ask"}:
                 return deny(f"BLOCKED by dcg. Use `dcg explain \"{command}\"` for details.")
         except (json.JSONDecodeError, AttributeError):
             pass

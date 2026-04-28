@@ -33,8 +33,8 @@
     .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
     .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
     .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时自动下载并校验上游 release，不再交互询问
-    .\restore.ps1 -DisableDcgHooks       # 安装/检测 dcg，但关闭 Codex PreToolUse hook
-    .\restore.ps1 -SkipDcg               # 跳过 dcg 安装，并关闭 Codex PreToolUse hook
+    .\restore.ps1 -DisableDcgHooks       # 安装/检测 dcg，但跳过所有 dcg hook 部署；Codex 设为 codex_hooks=false
+    .\restore.ps1 -SkipDcg               # 跳过 dcg 安装与所有 dcg hook 部署；Codex 设为 codex_hooks=false
 #>
 param(
     [switch]$DryRun,
@@ -691,6 +691,14 @@ function Merge-CodexConfig($srcPath, $dstPath, $uvPath) {
 }
 
 function Install-ClaudeHooks($settingsDstPath) {
+    if ($SkipDcg) {
+        Write-Host "    → -SkipDcg 已启用，跳过 Claude Code dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
+        return
+    }
+    if ($DisableDcgHooks) {
+        Write-Host "    → -DisableDcgHooks 已启用，跳过 Claude Code dcg hook 部署。" -ForegroundColor DarkGray
+        return
+    }
     if (-not (Test-DcgInstalled)) {
         Write-Host "    → dcg 未安装，跳过 Claude Code PreToolUse hook。" -ForegroundColor DarkGray
         return
@@ -788,6 +796,14 @@ function Install-ClaudeHooks($settingsDstPath) {
 }
 
 function Install-CursorHooks($hooksJsonDstPath, $hooksDirDstPath) {
+    if ($SkipDcg) {
+        Write-Host "    → -SkipDcg 已启用，跳过 Cursor dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
+        return
+    }
+    if ($DisableDcgHooks) {
+        Write-Host "    → -DisableDcgHooks 已启用，跳过 Cursor dcg hook 部署。" -ForegroundColor DarkGray
+        return
+    }
     if (-not (Test-DcgInstalled)) {
         Write-Host "    → dcg 未安装，跳过 Cursor beforeShellExecution hook。" -ForegroundColor DarkGray
         return
@@ -827,6 +843,14 @@ function Install-CursorHooks($hooksJsonDstPath, $hooksDirDstPath) {
 }
 
 function Install-CopilotHooks($hooksDirDstPath) {
+    if ($SkipDcg) {
+        Write-Host "    → -SkipDcg 已启用，跳过 Copilot dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
+        return
+    }
+    if ($DisableDcgHooks) {
+        Write-Host "    → -DisableDcgHooks 已启用，跳过 Copilot dcg hook 部署。" -ForegroundColor DarkGray
+        return
+    }
     if (-not (Test-DcgInstalled)) {
         Write-Host "    → dcg 未安装，跳过 Copilot preToolUse hook。" -ForegroundColor DarkGray
         return
@@ -1137,21 +1161,27 @@ $step++
 Write-Host "[$step/$totalSteps] 验证..." -ForegroundColor Green
 $checks = @()
 if ($hasVSCode) {
-    $checks = @(
+    $copilotChecks = @(
         @{ Name = "~/.copilot/instructions/"; Path = (Join-Path $copilotDst "instructions") },
         @{ Name = "~/.copilot/skills/"; Path = (Join-Path $copilotDst "skills") },
-        @{ Name = "~/.copilot/hooks/"; Path = $copilotHooksDst },
         @{ Name = "VS Code mcp.json"; Path = $vscodeMcpDst }
-    ) + $checks
+    )
+    if (-not $SkipDcg -and -not $DisableDcgHooks) {
+        $copilotChecks += @{ Name = "~/.copilot/hooks/"; Path = $copilotHooksDst }
+    }
+    $checks = $copilotChecks + $checks
 }
 if ($hasCursor) {
-    $checks = @(
+    $cursorChecks = @(
         @{ Name = "~/.cursor/mcp.json"; Path = (Join-Path $cursorDst "mcp.json") },
         @{ Name = "~/.cursor/rules/"; Path = (Join-Path $cursorDst "rules") },
-        @{ Name = "~/.cursor/skills/"; Path = (Join-Path $cursorDst "skills") },
-        @{ Name = "~/.cursor/hooks.json"; Path = $cursorHooksDst },
-        @{ Name = "~/.cursor/hooks/"; Path = $cursorHooksDirDst }
-    ) + $checks
+        @{ Name = "~/.cursor/skills/"; Path = (Join-Path $cursorDst "skills") }
+    )
+    if (-not $SkipDcg -and -not $DisableDcgHooks) {
+        $cursorChecks += @{ Name = "~/.cursor/hooks.json"; Path = $cursorHooksDst }
+        $cursorChecks += @{ Name = "~/.cursor/hooks/"; Path = $cursorHooksDirDst }
+    }
+    $checks = $cursorChecks + $checks
 }
 if ($hasCodex) {
     $checks = @(
@@ -1162,12 +1192,15 @@ if ($hasCodex) {
     ) + $checks
 }
 if ($hasClaude) {
-    $checks = @(
+    $claudeChecks = @(
         @{ Name = "~/.claude/CLAUDE.md"; Path = $claudeConfigDst },
         @{ Name = "~/.claude/skills/"; Path = $claudeSkillsDst },
-        @{ Name = "~/.claude/skills/destructive-command-guard/"; Path = (Join-Path $claudeSkillsDst "destructive-command-guard") },
-        @{ Name = "~/.claude/hooks/"; Path = $claudeHooksDst }
-    ) + $checks
+        @{ Name = "~/.claude/skills/destructive-command-guard/"; Path = (Join-Path $claudeSkillsDst "destructive-command-guard") }
+    )
+    if (-not $SkipDcg -and -not $DisableDcgHooks) {
+        $claudeChecks += @{ Name = "~/.claude/hooks/"; Path = $claudeHooksDst }
+    }
+    $checks = $claudeChecks + $checks
 }
 foreach ($c in $checks) {
     if (Test-Path $c.Path) {
@@ -1200,21 +1233,27 @@ if ($hasClaude -and -not $SkipDcg) {
     } else {
         Write-Host "  ~ dcg 未安装（Claude Code 硬层未启用；软层 SKILL 仍生效）" -ForegroundColor Yellow
     }
-    if (Test-Path $claudeHooksDst) {
+    if ($DisableDcgHooks) {
+        Write-Host "  + Claude Code dcg hook 已按参数跳过" -ForegroundColor Yellow
+    } elseif (Test-Path $claudeHooksDst) {
         Write-Host "  + Claude Code dcg hook（低噪音过滤器）" -ForegroundColor Green
     } else {
         Write-Host "  ~ Claude Code dcg hook（hooks/ 未找到）" -ForegroundColor Yellow
     }
 }
 if ($hasCursor -and -not $SkipDcg) {
-    if (Test-Path $cursorHooksDst) {
+    if ($DisableDcgHooks) {
+        Write-Host "  + Cursor dcg hook 已按参数跳过" -ForegroundColor Yellow
+    } elseif (Test-Path $cursorHooksDst) {
         Write-Host "  + Cursor dcg hook（beforeShellExecution）" -ForegroundColor Green
     } else {
         Write-Host "  ~ Cursor dcg hook（hooks.json 未找到）" -ForegroundColor Yellow
     }
 }
 if ($hasVSCode -and -not $SkipDcg) {
-    if (Test-Path $copilotHooksDst) {
+    if ($DisableDcgHooks) {
+        Write-Host "  + Copilot dcg hook 已按参数跳过" -ForegroundColor Yellow
+    } elseif (Test-Path $copilotHooksDst) {
         Write-Host "  + Copilot dcg hook（preToolUse）" -ForegroundColor Green
     } else {
         Write-Host "  ~ Copilot dcg hook（hooks/ 未找到）" -ForegroundColor Yellow

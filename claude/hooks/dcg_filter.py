@@ -91,8 +91,10 @@ def main() -> int:
     if proc.stdout.strip():
         try:
             decision = json.loads(proc.stdout)
-            if decision.get("hookSpecificOutput", {}).get("permissionDecision") == "deny":
-                return 2  # Claude Code: BLOCK
+            if decision.get("hookSpecificOutput", {}).get("permissionDecision") in {"deny", "ask"}:
+                # Claude Code processes PreToolUse permissionDecision JSON on exit 0.
+                sys.stdout.write(proc.stdout)
+                return 0
         except (json.JSONDecodeError, AttributeError):
             pass
     return 0

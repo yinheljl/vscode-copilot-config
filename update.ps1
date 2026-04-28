@@ -16,7 +16,7 @@
     .\update.ps1 -Target Codex      # 仅更新 Codex 配置
     .\update.ps1 -Target Claude     # 仅更新 Claude 配置
     .\update.ps1 -Target Codex -Force  # 仅覆盖 Codex 配置
-    .\update.ps1 -DisableDcgHooks   # 还原时关闭 Codex PreToolUse dcg hook
+    .\update.ps1 -DisableDcgHooks   # 还原时跳过所有 dcg hook 部署；Codex 设为 codex_hooks=false
 #>
 param(
     [switch]$DryRun,

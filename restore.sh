@@ -381,6 +381,10 @@ install_claude_hooks() {
         echo "    → --skip-dcg 已启用，跳过 Claude Code dcg hook。软层 SKILL 仍生效。"
         return
     fi
+    if [ "$DISABLE_DCG_HOOKS" = true ]; then
+        echo "    → --disable-dcg-hooks 已启用，跳过 Claude Code dcg hook 部署。"
+        return
+    fi
 
     if ! test_dcg_installed; then
         echo "    → dcg 未安装，跳过 Claude Code PreToolUse hook。软层 SKILL 仍生效。"
@@ -490,6 +494,10 @@ install_cursor_hooks() {
         echo "    → --skip-dcg 已启用，跳过 Cursor dcg hook。软层 SKILL 仍生效。"
         return
     fi
+    if [ "$DISABLE_DCG_HOOKS" = true ]; then
+        echo "    → --disable-dcg-hooks 已启用，跳过 Cursor dcg hook 部署。"
+        return
+    fi
 
     if ! test_dcg_installed; then
         echo "    → dcg 未安装，跳过 Cursor beforeShellExecution hook。软层 SKILL 仍生效。"
@@ -553,6 +561,10 @@ install_copilot_hooks() {
 
     if [ "$SKIP_DCG" = true ]; then
         echo "    → --skip-dcg 已启用，跳过 Copilot dcg hook。软层 SKILL 仍生效。"
+        return
+    fi
+    if [ "$DISABLE_DCG_HOOKS" = true ]; then
+        echo "    → --disable-dcg-hooks 已启用，跳过 Copilot dcg hook 部署。"
         return
     fi
 
@@ -1027,15 +1039,19 @@ CHECKS=""
 if [ "$HAS_VSCODE" = true ]; then
     CHECKS="$CHECKS ~/.copilot/instructions/:$COPILOT_DST/instructions"
     CHECKS="$CHECKS ~/.copilot/skills/:$COPILOT_DST/skills"
-    CHECKS="$CHECKS ~/.copilot/hooks/:$COPILOT_HOOKS_DST"
+    if [ "$SKIP_DCG" = false ] && [ "$DISABLE_DCG_HOOKS" = false ]; then
+        CHECKS="$CHECKS ~/.copilot/hooks/:$COPILOT_HOOKS_DST"
+    fi
     CHECKS="$CHECKS VS_Code_mcp.json:$MCP_DST"
 fi
 if [ "$HAS_CURSOR" = true ]; then
     CHECKS="$CHECKS ~/.cursor/mcp.json:$CURSOR_DST/mcp.json"
     CHECKS="$CHECKS ~/.cursor/rules/:$CURSOR_DST/rules"
     CHECKS="$CHECKS ~/.cursor/skills/:$CURSOR_DST/skills"
-    CHECKS="$CHECKS ~/.cursor/hooks.json:$CURSOR_HOOKS_DST"
-    CHECKS="$CHECKS ~/.cursor/hooks/:$CURSOR_HOOKS_DIR_DST"
+    if [ "$SKIP_DCG" = false ] && [ "$DISABLE_DCG_HOOKS" = false ]; then
+        CHECKS="$CHECKS ~/.cursor/hooks.json:$CURSOR_HOOKS_DST"
+        CHECKS="$CHECKS ~/.cursor/hooks/:$CURSOR_HOOKS_DIR_DST"
+    fi
 fi
 if [ "$HAS_CODEX" = true ]; then
     CHECKS="$CHECKS ~/.codex/AGENTS.md:$CODEX_DST/AGENTS.md"
@@ -1048,7 +1064,9 @@ if [ "$HAS_CLAUDE" = true ]; then
     CHECKS="$CHECKS ~/.claude/CLAUDE.md:$CLAUDE_CONFIG_DST"
     CHECKS="$CHECKS ~/.claude/skills/:$CLAUDE_SKILLS_DST"
     CHECKS="$CHECKS ~/.claude/skills/destructive-command-guard/:$CLAUDE_SKILLS_DST/destructive-command-guard"
-    CHECKS="$CHECKS ~/.claude/hooks/:$CLAUDE_HOOKS_DST"
+    if [ "$SKIP_DCG" = false ] && [ "$DISABLE_DCG_HOOKS" = false ]; then
+        CHECKS="$CHECKS ~/.claude/hooks/:$CLAUDE_HOOKS_DST"
+    fi
 fi
 for item in $CHECKS; do
     name="${item%%:*}"
@@ -1081,21 +1099,27 @@ if [ "$HAS_CLAUDE" = true ] && [ "$SKIP_DCG" = false ]; then
     else
         echo "  ~ dcg 未安装（Claude Code 硬层未启用；软层 SKILL 仍生效）"
     fi
-    if [ -d "$CLAUDE_HOOKS_DST" ]; then
+    if [ "$DISABLE_DCG_HOOKS" = true ]; then
+        echo "  + Claude Code dcg hook 已按参数跳过"
+    elif [ -d "$CLAUDE_HOOKS_DST" ]; then
         echo "  + Claude Code dcg hook（低噪音过滤器）"
     else
         echo "  ~ Claude Code dcg hook（hooks/ 未找到）"
     fi
 fi
 if [ "$HAS_CURSOR" = true ] && [ "$SKIP_DCG" = false ]; then
-    if [ -f "$CURSOR_HOOKS_DST" ]; then
+    if [ "$DISABLE_DCG_HOOKS" = true ]; then
+        echo "  + Cursor dcg hook 已按参数跳过"
+    elif [ -f "$CURSOR_HOOKS_DST" ]; then
         echo "  + Cursor dcg hook（beforeShellExecution）"
     else
         echo "  ~ Cursor dcg hook（hooks.json 未找到）"
     fi
 fi
 if [ "$HAS_VSCODE" = true ] && [ "$SKIP_DCG" = false ]; then
-    if [ -d "$COPILOT_HOOKS_DST" ]; then
+    if [ "$DISABLE_DCG_HOOKS" = true ]; then
+        echo "  + Copilot dcg hook 已按参数跳过"
+    elif [ -d "$COPILOT_HOOKS_DST" ]; then
         echo "  + Copilot dcg hook（preToolUse）"
     else
         echo "  ~ Copilot dcg hook（hooks/ 未找到）"

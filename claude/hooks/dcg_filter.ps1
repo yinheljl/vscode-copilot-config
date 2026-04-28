@@ -81,13 +81,12 @@ if (($event.PSObject.Properties.Name -notcontains "tool_name") -and
     $payload = $event | ConvertTo-Json -Depth 20 -Compress
 }
 
-# Claude Code exit code semantics:
-#   exit 0  = allow (action proceeds)
-#   exit 2  = BLOCK (stderr message shown to Claude)
-# Note: dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
+# Claude Code can process PreToolUse permissionDecision JSON on exit 0.
+# dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
 # dcg's stderr (text block) goes to the host console automatically.
 $dcgStdout = $payload | & $dcg.Source
-if ($dcgStdout -match '"permissionDecision"\s*:\s*"deny"') {
-    exit 2
+if ($dcgStdout -match '"permissionDecision"\s*:\s*"(deny|ask)"') {
+    Write-Output $dcgStdout
+    exit 0
 }
 exit 0
