@@ -3,7 +3,7 @@
 > **一键配置 VS Code GitHub Copilot、Cursor、Codex 和 Claude 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
 
-当前版本：`1.4.2`
+当前版本：`1.4.3`
 
 ---
 
@@ -117,7 +117,7 @@
 | `codex/config.toml` | Codex MCP 服务器配置模板（含 `[features] codex_hooks = true`） |
 | `codex/skills/` | **Codex 全局 Skills（9 个，扁平结构，与 Cursor / Copilot / Claude 技能内容同源）** |
 | `codex/hooks/README.md` | **Codex PreToolUse 硬兜底说明（restore 脚本自动调用社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard) 的官方安装器）** |
-| `codex/hooks.json` | Codex Hooks 配置模板（注册 `dcg` 二进制拦截破坏性 Bash 命令；macOS/Linux 部署，Windows 上 Codex 引擎暂禁用 hook 故跳过） |
+| `codex/hooks.json` | Codex Hooks 配置模板（注册 `dcg` 二进制拦截破坏性 Bash 命令；Windows/macOS/Linux/WSL2 均由 restore 脚本部署） |
 | `cursor/mcp.json` | Cursor MCP 服务器配置模板（含路径占位符） |
 | `cursor/rules/` | Cursor 全局 Rules（`.mdc` 格式） |
 | `cursor/skills/` | Cursor Skills（按分类组织的 9 个，与 Copilot / Codex / Claude 技能内容同源） |
@@ -178,11 +178,7 @@
 
 > ### ⚠️ Windows 用户必读（不影响一键配置，但要知情）
 >
-> OpenAI 官方 [Codex Hooks 文档](https://developers.openai.com/codex/hooks) 当前明确：
->
-> > **"Hooks are currently disabled on Windows."**（标注为 *temporarily*）
->
-> **本仓库的处理方式**：在 Windows 上，`restore.ps1` 仍然会**询问并帮你装 dcg.exe**（因为它作为命令行工具、以及被 Cursor / Claude Code / Copilot CLI 等其他 AI agent 调用都仍然有用，且 OpenAI 解禁后会立即生效），但**不会**部署 `~/.codex/hooks.json`——避免误导你以为 Codex 当前已被保护。等官方解禁，重跑 `restore.ps1` 即自动启用。
+> OpenAI 当前 [Codex Hooks 文档](https://developers.openai.com/codex/hooks) 已不再声明 Windows hooks 禁用，并且配置参考包含 `hooks.windows_managed_dir`。本仓库现在会在 Windows 上安装/检测到 `dcg.exe` 后部署 `~/.codex/hooks.json`，并确保 `~/.codex/config.toml` 启用 `[features] codex_hooks = true`。
 
 ### 软层 — `destructive-command-guard` Skill（跨 4 IDE / 跨平台）
 
@@ -201,7 +197,7 @@
 
 | 维度 | 详情 |
 |------|------|
-| ⭐ 关注度 | GitHub **846+ stars**（截至 2026-04），最近 release `v0.4.0`（2026-04），活跃维护中 |
+| ⭐ 关注度 | GitHub **846+ stars**（截至 2026-04），restore 会从 GitHub Releases 解析 latest tag（本机验证为 `v0.4.5`），活跃维护中 |
 | 🛠 实现 | Rust 二进制（SIMD 加速，sub-millisecond latency）+ codecov 覆盖率徽章 |
 | 📦 规则覆盖 | **49+ 安全 packs**：`core.git` / `core.filesystem` 默认开；`database.postgresql` / `kubernetes.kubectl` / `cloud.aws` / `terraform` / `containers.docker` / `secrets.vault` 等可选开 |
 | 🔗 跨 agent | 同一份配置同时支持 Codex CLI / Claude Code / Gemini CLI / Copilot CLI / Cursor / OpenCode / Aider |
@@ -218,9 +214,8 @@
 3. **下载并校验**：
    - **macOS / Linux**：直接代理调用上游官方 `install.sh`（含 SHA256 校验 + 可选 cosign 签名）
    - **Windows**：因为上游 `install.ps1` 在 Windows PowerShell 5.1（系统默认 shell）下有兼容 bug（`Invoke-WebRequest -UseBasicParsing` 返回 byte[] 而非 string，导致它的 `.Trim()` 抛异常）—— `restore.ps1` 用 PS 5.1 兼容代码**复刻同样的流程**：从 GitHub Releases 拉 `dcg-x86_64-pc-windows-msvc.zip` + 上游 `.sha256` 强制校验 → 解压 → 写 `~/.local/bin/dcg.exe` → 加用户 PATH。**信任锚点不变**（zip 与 .sha256 都是 dcg 上游发布的 GitHub Release artifact）
-4. **macOS / Linux**：自动部署 `~/.codex/hooks.json` + 在 `~/.codex/config.toml` 启用 `[features] codex_hooks = true`
-5. **Windows**：装好 dcg.exe 后跳过 hooks.json 部署（Codex 引擎暂禁用 hook，等官方解禁后重跑即自动启用）
-6. 重启 Codex 会话
+4. **Windows / macOS / Linux / WSL2**：自动部署 `~/.codex/hooks.json` + 在 `~/.codex/config.toml` 启用 `[features] codex_hooks = true`
+5. 重启 Codex 会话
 
 详见 [`codex/hooks/README.md`](codex/hooks/README.md)。
 
@@ -235,7 +230,7 @@
 | 安装责任 | 本仓库脚本直接复制文件 | macOS/Linux：代理调用上游 `install.sh`（信任完全归上游）。Windows：因上游 `install.ps1` 在 PS 5.1 下有兼容 bug，本仓库用 PS 5.1 兼容代码**复刻**同样流程（信任锚点不变：仍下载上游 zip + 用上游 `.sha256` 校验） |
 | **Bus factor** | 本仓库维护者团队 | **1（作者明确声明不接受外部 PR）** ← 必须了解的风险 |
 | 升级方式 | `git pull` + `restore` | `dcg update` 或重跑 `restore -AutoInstallDcg` |
-| 影响面 | 跨 IDE 跨平台 | 全平台 dcg.exe 命令行可用；Codex hook 当前仅 macOS / Linux / WSL2 内 Linux Codex 生效 |
+| 影响面 | 跨 IDE 跨平台 | 全平台 dcg 命令行可用；Codex hooks 在当前官方文档支持的 Windows / macOS / Linux / WSL2 surfaces 生效 |
 
 **为什么用 dcg 而不是自研**：
 - 自研 hook 等同重新发明轮子；dcg 已有 49 个 packs 覆盖 git / 数据库 / k8s / 云厂商 / IaC 等，单仓库难以维护到这个广度
@@ -248,8 +243,7 @@
 
 **为什么仍然保留软层 SKILL**：
 - 万一 dcg 仓库哪天消失（Bus factor 1），软层 SKILL 仍然 100% 可用
-- Windows Codex 当前 hook 不生效，SKILL 是唯一兜底
-- 软+硬双层在 macOS/Linux 上互为冗余，符合 defense-in-depth 原则
+- 软+硬双层互为冗余，符合 defense-in-depth 原则
 
 ## 🔧 手动安装
 
@@ -271,7 +265,7 @@ foreach ($sub in "rules","skills") {
     Copy-Item -Recurse "C:\Temp\copilot-config\cursor\$sub" "$env:USERPROFILE\.cursor\" -Force
 }
 
-# 4. Codex：AGENTS.md + skills（hooks.json 见下文，Windows 上 hook 不生效可跳过）
+# 4. Codex：AGENTS.md + skills（hooks.json 由 restore 脚本自动部署）
 New-Item -ItemType Directory -Path "$env:USERPROFILE\.codex" -Force
 Copy-Item "C:\Temp\copilot-config\codex\AGENTS.md" "$env:USERPROFILE\.codex\AGENTS.md" -Force
 Copy-Item -Recurse "C:\Temp\copilot-config\codex\skills" "$env:USERPROFILE\.codex\" -Force
@@ -300,7 +294,7 @@ uv sync
 .\restore.ps1 -Target Claude         # 仅配置 Claude
 .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
 .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
-.\restore.ps1 -AutoInstallDcg        # 未装 dcg 时直接调用官方 install.ps1，不再交互询问
+.\restore.ps1 -AutoInstallDcg        # 未装 dcg 时自动下载并校验上游 release，不再交互询问
 .\restore.ps1 -SkipDcg               # 跳过 dcg 安装与硬层 hook 部署
 ```
 

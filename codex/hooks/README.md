@@ -1,6 +1,6 @@
 # Codex Hooks（破坏性命令硬兜底）
 
-> **Windows 用户必读**：Codex 官方文档当前明确 **"Hooks are currently disabled on Windows"**（[来源](https://developers.openai.com/codex/hooks)）。`restore.ps1` 在 Windows 上**仍然会帮你装 dcg.exe**（因为 dcg 作为 CLI 工具、以及被 Cursor / Claude Code / Copilot CLI 等其他 agent 调用都仍然有用，且 OpenAI 解禁后会立即生效），但**不会部署 `~/.codex/hooks.json`**——避免误导你以为 Codex 已经被保护。
+> **Windows 说明**：OpenAI 当前 Codex 文档已经包含 Windows hooks 配置项（如 `hooks.windows_managed_dir`），不再声明 Windows hooks 禁用。`restore.ps1` 会在 `dcg.exe` 已安装后部署 `~/.codex/hooks.json`，并确保 `~/.codex/config.toml` 启用 `[features] codex_hooks = true`。
 
 ## 这是什么？
 
@@ -10,7 +10,7 @@
 
 | 维度 | dcg |
 |------|------|
-| 受关注度 | GitHub 846+ stars，活跃维护中（最近 release v0.4.0，2026-04） |
+| 受关注度 | GitHub 846+ stars，活跃维护中；restore 会从 GitHub Releases 解析 latest tag（本机验证为 v0.4.5） |
 | 实现 | Rust 二进制（SIMD 加速，sub-millisecond 延迟） |
 | 包大小 | 49+ 安全 packs（git / 文件系统 / databases / k8s / docker / cloud / terraform 等） |
 | 跨 agent | Codex CLI / Claude Code / Gemini CLI / Copilot CLI / Cursor / OpenCode / Aider / Continue |
@@ -35,12 +35,12 @@
 
 | 操作系统 | 装 dcg 二进制 | 部署 `~/.codex/hooks.json` | Codex 运行时是否调用 hook |
 |---------|---------------|---------------------------|--------------------------|
-| Windows（PowerShell） | ✅ 自动询问安装 | ❌ 不部署 | ❌ Codex 引擎层禁用 |
+| Windows（PowerShell） | ✅ 自动询问安装 | ✅ 部署 | ✅ 启用 `codex_hooks = true` 后生效 |
 | macOS / Linux | ✅ 自动询问安装 | ✅ 部署 | ✅ 启用 `codex_hooks = true` 后生效 |
 | WSL2 内的 Linux Codex | ✅ | ✅ | ✅ |
-| Git Bash / MSYS / Cygwin | ❌ 提示走 PowerShell | ❌ | ❌ |
+| Git Bash / MSYS / Cygwin | ⚠️ 提示走 PowerShell 安装 | ✅ 已安装 dcg 后可部署 | 取决于实际运行的 Codex surface |
 
-## 启用条件清单（macOS / Linux）
+## 启用条件清单
 
 1. `dcg` 命令在 PATH（restore 询问后自动安装）
 2. `~/.codex/config.toml` 里有 `[features]\ncodex_hooks = true`（restore 自动追加）
@@ -54,7 +54,7 @@
 dcg --version
 dcg test "rm -rf /"     # 应返回 decision = block
 
-# Linux / macOS：检查 Codex hook 文件
+# 检查 Codex hook 文件
 cat ~/.codex/hooks.json
 grep codex_hooks ~/.codex/config.toml
 
@@ -85,7 +85,7 @@ custom_paths = [".dcg/packs/*.yaml"]
 
 ## 已知限制（来自上游与 Codex 引擎）
 
-- **Windows Codex hook 暂禁用**：Codex 引擎层面的限制，与 dcg 实现无关；OpenAI 标注为 "temporarily disabled"
+- **版本依赖**：需要当前 Codex 支持 hooks feature flag。OpenAI 当前文档包含 Windows hooks 配置项；如果你使用旧版 Codex，请先升级。
 - **只拦 Bash**：Codex 当前 `PreToolUse` matcher 只支持 `Bash` 工具，不拦 `apply_patch` / `Edit` / `Write` 等
 - **可被绕过**：模型可以把命令写到磁盘脚本里再执行；hook 是有用的护栏但不是绝对的强制边界（dcg 与官方文档都承认这点）
 - **dcg Bus factor = 1**：单人维护项目，作者明确不接受外部 PR。如果 dcg 仓库哪天消失，可以无缝切回纯软层 SKILL（仍然有效）
@@ -94,5 +94,4 @@ custom_paths = [".dcg/packs/*.yaml"]
 
 跨 IDE 的 [`destructive-command-guard` SKILL.md](../skills/destructive-command-guard/SKILL.md) 通过 prompt 层面引导 Codex / Cursor / Copilot / Claude 在生成危险命令前 `AskQuestion` 二次确认。
 
-- Windows 上：SKILL 是你**唯一**的 Codex 兜底，请保持启用（restore 默认就装）
-- macOS / Linux 上：SKILL 提供"模型主动避开"，dcg hook 提供"运行时强制阻断"，两层独立
+- SKILL 提供"模型主动避开"，dcg hook 提供"运行时强制阻断"，两层独立。

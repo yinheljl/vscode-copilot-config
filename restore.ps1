@@ -32,7 +32,7 @@
     .\restore.ps1 -Target Claude         # 仅配置 Claude
     .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
     .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
-    .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时直接调用官方 install.ps1，不再交互询问
+    .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时自动下载并校验上游 release，不再交互询问
     .\restore.ps1 -SkipDcg               # 跳过 dcg 安装与硬层 hook 部署
 #>
 param(
@@ -318,8 +318,8 @@ function Resolve-UvPath {
     foreach ($p in $candidates) {
         if (Test-Path $p) { return $p }
     }
-    $found = (Get-Command uv -ErrorAction SilentlyContinue).Source
-    if ($found) { return $found }
+    $cmd = Get-Command uv -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
     return $null
 }
 
@@ -355,14 +355,6 @@ function Test-DcgInstalled {
     if (Get-Command dcg.exe -ErrorAction SilentlyContinue) { return $true }
     $defaultBin = Join-Path $env:USERPROFILE ".local\bin\dcg.exe"
     if (Test-Path $defaultBin) { return $true }
-    return $false
-}
-
-function Test-WindowsHost {
-    # 兼容 PS 5.1（无 $IsWindows 自动变量）和 PS 7+
-    if ($env:OS -eq 'Windows_NT') { return $true }
-    $v = Get-Variable -Name IsWindows -ValueOnly -ErrorAction SilentlyContinue
-    if ($null -ne $v -and $v) { return $true }
     return $false
 }
 
@@ -476,14 +468,9 @@ function Invoke-DcgInstaller {
 function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
     # 硬层防护使用社区方案 dcg（Dicklesworthstone/destructive_command_guard）。
     # 设计原则：
-    #   1) 调用官方 install.ps1，不自己实现下载/SHA256/cosign 校验逻辑（责任清晰：出问题归上游）
+    #   1) Windows 上复刻官方 install.ps1 的下载 + SHA256 校验流程，避免 PS 5.1 兼容问题
     #   2) 不默默 irm|iex；首次安装需用户交互式确认（Y/N），或通过 -AutoInstallDcg 旗标显式同意
-    #   3) Codex 官方文档当前明确："Hooks are currently disabled on Windows"
-    #      （https://developers.openai.com/codex/hooks）—— 但 dcg.exe 仍然有用：
-    #         · 命令行工具：dcg test "rm -rf /"
-    #         · 同时被 Cursor / Claude Code / Copilot CLI 等其他 agent 调用
-    #         · 未来 Codex 在 Windows 解禁时立即生效
-    #      所以本函数在 Windows 上仍然装 dcg.exe，只跳过 ~/.codex/hooks.json 的部署
+    #   3) Codex 官方文档当前支持 Windows hooks 配置，dcg 存在后即部署 hooks.json
 
     Write-Host "  Codex 硬层（破坏性命令防护 dcg）：" -ForegroundColor DarkCyan
 
@@ -491,8 +478,6 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
         Write-Host "    → -SkipDcg 已启用，跳过 dcg 全部步骤。软层 SKILL 仍生效。" -ForegroundColor DarkGray
         return
     }
-
-    $isWindowsHost = Test-WindowsHost
 
     # Step 1: 检测 dcg
     $alreadyInstalled = Test-DcgInstalled
@@ -514,7 +499,7 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
 
         $shouldInstall = $false
         if ($DryRun) {
-            Write-Host "    [DryRun] 将调用官方 install.ps1 下载 dcg.exe 到 ~/.local/bin/" -ForegroundColor Yellow
+            Write-Host "    [DryRun] 将下载并校验上游 release，把 dcg.exe 安装到 ~/.local/bin/" -ForegroundColor Yellow
         } elseif ($AutoInstallDcg) {
             $shouldInstall = $true
             Write-Host "    -AutoInstallDcg 已启用，自动安装。" -ForegroundColor Cyan
@@ -524,7 +509,7 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
             Write-Host "    （非交互式 stdin，未安装 dcg。下次加 -AutoInstallDcg 自动安装。）" -ForegroundColor DarkGray
         } else {
             Write-Host ""
-            Write-Host "    将通过官方 install.ps1 安装 dcg：" -ForegroundColor Cyan
+            Write-Host "    将下载并校验上游 release 安装 dcg：" -ForegroundColor Cyan
             Write-Host "      源:    https://github.com/Dicklesworthstone/destructive_command_guard"
             Write-Host "      安装到: $env:USERPROFILE\.local\bin\dcg.exe"
             Write-Host "      校验:   官方安装器内置 SHA256（强制） + cosign（如果你装了）"
@@ -547,21 +532,7 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
         }
     }
 
-    # Step 2: Windows 上跳过 hooks.json 部署
-    if ($isWindowsHost) {
-        Write-Host ""
-        Write-Warning "    ⚠ Codex 官方文档：'Hooks are currently disabled on Windows'（https://developers.openai.com/codex/hooks）"
-        Write-Warning "      → 不部署 ~/.codex/hooks.json（避免误导你以为有保护）。"
-        if ($alreadyInstalled) {
-            Write-Host "      但 dcg.exe 仍可独立使用：" -ForegroundColor DarkGray
-            Write-Host "        · 命令行测试：dcg test ""rm -rf /""" -ForegroundColor DarkGray
-            Write-Host "        · Cursor / Claude Code / Copilot CLI 等其他 agent 仍可调用" -ForegroundColor DarkGray
-            Write-Host "        · OpenAI 解禁 Windows hook 后将自动生效" -ForegroundColor DarkGray
-        }
-        return
-    }
-
-    # Step 3: 非 Windows，部署 hooks.json + config.toml feature flag
+    # Step 2: 部署 hooks.json + config.toml feature flag
     if (-not $alreadyInstalled) {
         Write-Host "    → dcg 未安装，跳过 hooks.json 部署。" -ForegroundColor DarkGray
         return
@@ -802,7 +773,7 @@ if ($hasCodex) {
                 Write-Host "  + skills/ (增量)"
             }
         }
-        # hooks.json（硬兜底，使用社区方案 dcg；Windows 上自动跳过）
+        # hooks.json（硬兜底，使用社区方案 dcg）
         Install-CodexHooks $codexHooksJsonSrc $codexHooksJsonDst $codexConfigDst
     }
 }
@@ -1035,7 +1006,7 @@ foreach ($c in $checks) {
     }
 }
 
-# dcg 二进制独立检查（不强制要求；Windows 上 Codex 暂不调用 hook，但 dcg.exe 作为 CLI 工具仍可用）
+# dcg 二进制独立检查（不强制要求；未安装时软层 SKILL 仍生效）
 if ($hasCodex -and -not $SkipDcg) {
     if (Test-DcgInstalled) {
         Write-Host "  + dcg 二进制（社区方案 destructive_command_guard）" -ForegroundColor Green

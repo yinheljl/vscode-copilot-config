@@ -157,9 +157,8 @@ install_codex_hooks() {
     # 设计原则：
     #   1) 调用官方 install.sh，不自己实现下载/SHA256/cosign 校验逻辑
     #   2) 不默默 curl|bash；首次安装需用户交互式确认（Y/N），或通过 --auto-install-dcg 旗标显式同意
-    #   3) Windows（Git Bash / MSYS / Cygwin / WSL2）下 Codex hook 引擎被官方禁用
-    #      —— WSL2 内的 Linux 命名空间其实是 Linux，但运行的 codex 二进制如果是 Windows 版仍然不调用 hook
-    #      所以这里只把 MINGW/MSYS/CYGWIN 当作 Windows 处理（WSL2 内的 uname -s = Linux，正常走 Linux 路径）
+    #   3) Git Bash / MSYS / Cygwin 不负责安装 Windows dcg.exe；请用 restore.ps1 安装。
+    #      如果 dcg 已经存在，仍可继续部署 ~/.codex/hooks.json。
 
     echo "  Codex 硬层（破坏性命令防护 dcg）："
 
@@ -185,13 +184,13 @@ install_codex_hooks() {
     else
         echo "    × 未检测到 dcg（社区方案 destructive_command_guard）"
         local should_install=false
-        if [ "$AUTO_INSTALL_DCG" = true ]; then
+        if [ "$is_windows_host" = true ]; then
+            # Windows / Git Bash 上不运行 install.sh，必须走 PowerShell 的 restore.ps1。
+            echo "    ⚠ 当前是 Git Bash / MSYS / Cygwin。dcg 在 Windows 上需要走 PowerShell restore.ps1。"
+            echo "      请在 PowerShell 内运行：./restore.ps1 -Target Codex -AutoInstallDcg"
+        elif [ "$AUTO_INSTALL_DCG" = true ]; then
             should_install=true
             echo "    --auto-install-dcg 已启用，自动安装。"
-        elif [ "$is_windows_host" = true ]; then
-            # Windows / Git Bash 上没有 dcg.sh 安装路径，必须走 PowerShell；这里直接提示
-            echo "    ⚠ 当前是 Git Bash / MSYS / Cygwin。dcg 在 Windows 上需要走 PowerShell install.ps1。"
-            echo "      请在 PowerShell 内运行：./restore.ps1 -Target Codex -AutoInstallDcg"
         else
             echo ""
             echo "    将通过官方 install.sh 安装 dcg："
@@ -223,17 +222,12 @@ install_codex_hooks() {
         fi
     fi
 
-    # Step 2: Windows 上跳过 hooks.json 部署
-    if [ "$is_windows_host" = true ]; then
-        echo "" >&2
-        echo "    ⚠ Codex 官方文档：'Hooks are currently disabled on Windows'（https://developers.openai.com/codex/hooks）" >&2
-        echo "      → 不部署 ~/.codex/hooks.json（避免误导）" >&2
-        return
-    fi
-
-    # Step 3: 非 Windows，需要 dcg 已装才部署 hooks.json
+    # Step 2: 需要 dcg 已装才部署 hooks.json
     if [ "$dcg_installed" = false ]; then
         echo "    → dcg 未安装，跳过 hooks.json 部署。"
+        if [ "$is_windows_host" = true ]; then
+            echo "      请在 PowerShell 内运行：./restore.ps1 -Target Codex -AutoInstallDcg"
+        fi
         return
     fi
 
@@ -587,7 +581,7 @@ if [ "$HAS_CODEX" = true ]; then
                 echo "  + skills/ (增量)"
             fi
         fi
-        # hooks.json + config.toml feature flag（硬兜底，使用社区方案 dcg；Windows / 未装 dcg 自动跳过）
+        # hooks.json + config.toml feature flag（硬兜底，使用社区方案 dcg；未装 dcg 自动跳过）
         install_codex_hooks
     fi
 fi
