@@ -731,7 +731,13 @@ function Install-ClaudeHooks($settingsDstPath) {
     }
 
     Backup-File $settingsDstPath
-    $cfg = Get-Content $settingsDstPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $raw = Get-Content $settingsDstPath -Raw -Encoding UTF8
+    try {
+        $cfg = ConvertFrom-Jsonc $raw
+    } catch {
+        Write-Warning "  现有 settings.json 解析失败（含语法错误），跳过追加: $settingsDstPath"
+        return
+    }
 
     # 检查是否已存在 dcg hook
     $hasDcg = $false

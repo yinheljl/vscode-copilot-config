@@ -51,6 +51,9 @@ CLAUDE_CONFIG_SRC="$CLAUDE_SRC/CLAUDE.md"
 CLAUDE_CONFIG_DST="$CLAUDE_DST/CLAUDE.md"
 CLAUDE_SKILLS_SRC="$CLAUDE_SRC/skills"
 CLAUDE_SKILLS_DST="$CLAUDE_DST/skills"
+CLAUDE_HOOKS_SRC="$CLAUDE_SRC/hooks"
+CLAUDE_HOOKS_DST="$CLAUDE_DST/hooks"
+CLAUDE_SETTINGS_DST="$CLAUDE_DST/settings.json"
 CODEX_SRC="$SCRIPT_DIR/codex"
 CODEX_DST="$HOME/.codex"
 CODEX_SKILLS_SRC="$CODEX_SRC/skills"
@@ -361,6 +364,116 @@ PY
     set_codex_hooks_feature true
 }
 
+install_claude_hooks() {
+    # Claude Code 硬层：部署低噪音 dcg PreToolUse hook（claude/hooks/ → ~/.claude/hooks/），
+    # 并把 hook 注册到 ~/.claude/settings.json。
+    # 与 Codex 硬层共享同一套 dcg 二进制，但退出码语义不同（exit 0=allow, exit 2=block）。
+
+    echo "  Claude Code 硬层（破坏性命令防护 dcg）："
+
+    if [ "$SKIP_DCG" = true ]; then
+        echo "    → --skip-dcg 已启用，跳过 Claude Code dcg hook。软层 SKILL 仍生效。"
+        return
+    fi
+
+    if ! test_dcg_installed; then
+        echo "    → dcg 未安装，跳过 Claude Code PreToolUse hook。软层 SKILL 仍生效。"
+        return
+    fi
+
+    # 1. 部署 claude/hooks/ → ~/.claude/hooks/
+    if [ -d "$CLAUDE_HOOKS_SRC" ]; then
+        if [ "$FORCE" = true ]; then
+            copy_dir_replace "$CLAUDE_HOOKS_SRC" "$CLAUDE_HOOKS_DST"
+            echo "    + ~/.claude/hooks/（覆盖，低噪音 dcg 过滤器）"
+        else
+            copy_dir_merge "$CLAUDE_HOOKS_SRC" "$CLAUDE_HOOKS_DST"
+            echo "    + ~/.claude/hooks/（增量，低噪音 dcg 过滤器）"
+        fi
+    fi
+
+    # 2. 合并 hooks.PreToolUse 条目到 ~/.claude/settings.json
+    local hook_cmd
+    if command -v python3 >/dev/null 2>&1 && [ -f "$CLAUDE_HOOKS_DST/dcg_filter.py" ]; then
+        hook_cmd="python3 \"$CLAUDE_HOOKS_DST/dcg_filter.py\""
+    elif [ -f "$CLAUDE_HOOKS_DST/dcg_filter.ps1" ]; then
+        hook_cmd="powershell -NoProfile -ExecutionPolicy Bypass -File \"$CLAUDE_HOOKS_DST/dcg_filter.ps1\""
+    else
+        hook_cmd="dcg"
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "    ! 未安装 python3，跳过 Claude settings.json hook 注册。" >&2
+        return
+    fi
+
+    HOOK_CMD="$hook_cmd" SETTINGS_DST="$CLAUDE_SETTINGS_DST" FORCE="$FORCE" python3 - <<'PY'
+import json, os, sys
+
+hook_cmd = os.environ['HOOK_CMD']
+settings_dst = os.environ['SETTINGS_DST']
+force = os.environ.get('FORCE', 'false') == 'true'
+
+new_group = {
+    "matcher": "Bash",
+    "hooks": [
+        {
+            "type": "command",
+            "command": hook_cmd,
+            "timeout": 10
+        }
+    ]
+}
+
+if not os.path.exists(settings_dst):
+    os.makedirs(os.path.dirname(settings_dst), exist_ok=True)
+    obj = {"hooks": {"PreToolUse": [new_group]}}
+    with open(settings_dst, 'w', encoding='utf-8') as f:
+        json.dump(obj, f, indent=2, ensure_ascii=False)
+    print("    + ~/.claude/settings.json（新建，写入 dcg PreToolUse hook）")
+    sys.exit(0)
+
+with open(settings_dst, 'r', encoding='utf-8') as f:
+    cfg = json.load(f)
+
+has_dcg = False
+if "hooks" in cfg and isinstance(cfg["hooks"], dict):
+    for g in cfg["hooks"].get("PreToolUse", []):
+        for h in g.get("hooks", []):
+            if "dcg_filter" in h.get("command", ""):
+                has_dcg = True
+                break
+        if has_dcg:
+            break
+
+if has_dcg and not force:
+    print("    + ~/.claude/settings.json（dcg hook 已存在，未修改）")
+    sys.exit(0)
+
+# backup
+import shutil, time
+shutil.copy2(settings_dst, settings_dst + '.bak_' + time.strftime('%Y%m%d_%H%M%S'))
+
+if "hooks" not in cfg:
+    cfg["hooks"] = {}
+if "PreToolUse" not in cfg["hooks"]:
+    cfg["hooks"]["PreToolUse"] = []
+
+if force and has_dcg:
+    cfg["hooks"]["PreToolUse"] = [
+        g for g in cfg["hooks"]["PreToolUse"]
+        if not any("dcg_filter" in h.get("command", "") for h in g.get("hooks", []))
+    ]
+    cfg["hooks"]["PreToolUse"].append(new_group)
+else:
+    cfg["hooks"]["PreToolUse"].append(new_group)
+
+with open(settings_dst, 'w', encoding='utf-8') as f:
+    json.dump(cfg, f, indent=2, ensure_ascii=False)
+print("    + ~/.claude/settings.json（已写入 dcg PreToolUse hook）")
+PY
+}
+
 # 将任意字符串安全地编码为 JSON 字符串字面量内部（不含外层引号）
 # 用于把路径替换进 mcp.json 模板时正确转义 \ 和 " 等字符
 json_escape_value() {
@@ -641,7 +754,7 @@ fi
 
 # --- 4. 还原 Claude 配置 ---
 if [ "$HAS_CLAUDE" = true ]; then
-    echo "[4] 还原 Claude 配置（CLAUDE.md + skills）..."
+    echo "[4] 还原 Claude 配置（CLAUDE.md + skills + 低噪音 hooks）..."
     if [ ! -d "$CLAUDE_SRC" ]; then
         echo "  警告：找不到源目录: $CLAUDE_SRC" >&2
     else
@@ -660,6 +773,8 @@ if [ "$HAS_CLAUDE" = true ]; then
                 echo "  + skills/ (增量)"
             fi
         fi
+        # hooks（低噪音硬兜底，使用社区方案 dcg）
+        install_claude_hooks
     fi
 fi
 
@@ -799,6 +914,7 @@ if [ "$HAS_CLAUDE" = true ]; then
     CHECKS="$CHECKS ~/.claude/CLAUDE.md:$CLAUDE_CONFIG_DST"
     CHECKS="$CHECKS ~/.claude/skills/:$CLAUDE_SKILLS_DST"
     CHECKS="$CHECKS ~/.claude/skills/destructive-command-guard/:$CLAUDE_SKILLS_DST/destructive-command-guard"
+    CHECKS="$CHECKS ~/.claude/hooks/:$CLAUDE_HOOKS_DST"
 fi
 for item in $CHECKS; do
     name="${item%%:*}"
@@ -809,6 +925,34 @@ for item in $CHECKS; do
         echo "  - $name (未找到)"
     fi
 done
+
+# dcg 二进制独立检查（未安装时软层 SKILL 仍生效）
+if [ "$HAS_CODEX" = true ] && [ "$SKIP_DCG" = false ]; then
+    if test_dcg_installed; then
+        echo "  + dcg 二进制（社区方案 destructive_command_guard）"
+    else
+        echo "  ~ dcg 未安装（硬层未启用；软层 SKILL 仍生效）"
+    fi
+    if [ "$DISABLE_DCG_HOOKS" = true ]; then
+        echo "  + Codex dcg hook 已按参数关闭"
+    elif [ -f "$CODEX_HOOKS_JSON_DST" ]; then
+        echo "  + Codex dcg hook（默认启用，低噪音过滤器）"
+    else
+        echo "  - Codex dcg hook（默认启用但 hooks.json 未找到）"
+    fi
+fi
+if [ "$HAS_CLAUDE" = true ] && [ "$SKIP_DCG" = false ]; then
+    if test_dcg_installed; then
+        echo "  + dcg 二进制（Claude Code 硬层已启用）"
+    else
+        echo "  ~ dcg 未安装（Claude Code 硬层未启用；软层 SKILL 仍生效）"
+    fi
+    if [ -d "$CLAUDE_HOOKS_DST" ]; then
+        echo "  + Claude Code dcg hook（低噪音过滤器）"
+    else
+        echo "  ~ Claude Code dcg hook（hooks/ 未找到）"
+    fi
+fi
 
 echo ""
 echo "========================================"
