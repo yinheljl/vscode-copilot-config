@@ -1,17 +1,5 @@
 {
   "servers": {
-    "interactiveFeedback": {
-      "type": "stdio",
-      "command": "__FEEDBACK_MCP_PYTHON__",
-      "args": [
-        "-u",
-        "__FEEDBACK_SERVER_PATH__"
-      ],
-      "env": {
-        "PYTHONUNBUFFERED": "1",
-        "PYTHONUTF8": "1"
-      }
-    },
     "markitdown": {
       "type": "stdio",
       "command": "__UV_PATH__",

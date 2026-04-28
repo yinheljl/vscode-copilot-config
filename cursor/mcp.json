@@ -1,16 +1,5 @@
 {
   "mcpServers": {
-    "interactive-feedback": {
-      "command": "__UV_PATH__",
-      "args": [
-        "--directory",
-        "__FEEDBACK_MCP_DIR__",
-        "run",
-        "server.py"
-      ],
-      "timeout": 43200,
-      "autoApprove": ["interactive_feedback"]
-    },
     "markitdown": {
       "command": "__UV_PATH__",
       "args": [

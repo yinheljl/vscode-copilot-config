@@ -1,74 +1,74 @@
 ---
-description: "全局行为规范：中文回复、Python 虚拟环境、交互反馈策略。Use for any task — applies universally."
+description: "Global Behavioral Norms; Think Before Coding; Simplicity First; Surgical Changes; Goal-Driven Execution"
 applyTo: "**"
 ---
 
-# 全局行为规范
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
-## ⛔ 回复前强制自检（每次回复必须执行，不可跳过）
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-**在生成任何回复内容之前，先确认以下两项，任一项不满足则必须立即调整回复计划：**
+## 1. Global Behavioral Norms
 
-1. **交互工具**：本次回复结束时是否会调用 `interactive_feedback`（或降级工具）？→ 如果不会，**停下来，重新规划回复，确保包含该调用。**
-2. **中文回复**：本次回复是否全部使用中文？
+- Always respond in Chinese, Always fix code automatically.
+- Python scripts are executed in a virtual environment at all times. If you use the pip command to install dependencies, please use a domestic mirror.
+- If the requirements or instructions are unclear, use the built-in AskQuestion tool to ask the user clarifying questions before proceeding; do not make assumptions. Predefined options must be provided to the user through the built-in AskQuestion tool to facilitate quick decision-making.
 
-> 此自检在每一轮回复前都必须执行，包括纯问答、分析、报错等所有场景。没有例外。
+## 2. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 3. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 4. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 5. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
 ---
 
-## 1. 基础规则
-
-- **语言**：所有回复使用中文
-- **Python**：必须在 venv / conda 虚拟环境下执行
-- **pip**：安装依赖时使用国内源，例如 `-i https://pypi.tuna.tsinghua.edu.cn/simple`
-- **代码修复**：发现错误自动修复，不要等待用户二次确认
-
-## 2. 反馈交互（优先级最高）
-
-每次对话都必须通过交互工具与用户保持沟通，**禁止单方面结束对话**。
-
-### 工具选择
-
-- **始终优先** `interactive_feedback`（不区分中间过程或最终确认）
-- 仅在 `interactive_feedback` **连续失败 3 次** 后，降级到 `vscode_askQuestions`
-- 降级状态下每次仍先尝试 `interactive_feedback`，成功即恢复优先使用
-- 当前会话工具列表中**看不到** `interactive_feedback` 时，直接使用 `vscode_askQuestions`，不要因此跳过交互
-
-### 必须调用交互工具的场景
-
-任务完成、给出多方案、需要用户澄清、判断无需操作、出错需要决策、关键中间步骤。
-
-### 心跳处理
-
-`interactive_feedback` 默认 12 小时超时，期间通过 progress notification 静默保活：
-
-- 正常情况下工具直接返回用户反馈，**无需特殊处理**
-- 仅当完整 timeout 到期才返回包含 `[心跳]` 的消息
-- 收到 `[心跳]` 后**不输出任何文字**，立即用相同参数重新调用
-- 心跳与 `Tool not found` / `Connection closed` 类错误**不计入失败次数**
-
-### tab_id 与 tab_title
-
-调用 `interactive_feedback` 必须传入：
-
-- `tab_id`：首次调用随机生成 UUID v4，**严禁复用文档示例中的 UUID**；同会话保持一致
-- `tab_title`：≤15 字、描述当前任务（如 `日报填写`、`代码审查`），同会话保持一致；无法判断时用 `反馈`
-
-### 选项标识规则
-
-给出预定义选项时：
-
-1. 会结束会话的选项必须在末尾标注 `【结束会话】`
-2. 必须额外提供一个切换工具的选项（用 `interactive_feedback` 时给 `切换到 vscode_askQuestions`，反之亦然）
-
-### 用户离开
-
-用户说"等一下 / 稍后 / 我先离开"时，**不要**调用任何交互工具，直接等待用户回来，避免超时浪费请求。
-
-## 3. 关键禁止
-
-- 禁止直接结束对话或输出最终结果后停止
-- 禁止擅自判断任务已完成而结束反馈循环
-- 禁止收到 `[心跳]` 后输出文字
-- 禁止给出选项时不标注结束选项 / 不提供工具切换选项
-- 禁止同一回复中重复调用交互工具（每次回复只调用一次）
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

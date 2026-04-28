@@ -1,5 +1,5 @@
 {
-  "_comment": "Codex Hooks 模板：使用社区方案 dcg（Destructive Command Guard）作为硬层防护。restore 脚本会在 dcg 已安装后部署到 ~/.codex/hooks.json；Windows/macOS/Linux/WSL2 均使用同一份模板。restore 脚本默认会交互询问用户是否安装 dcg（含 SHA256 校验）；要无询问安装，加 -AutoInstallDcg / --auto-install-dcg。要启用 hook，~/.codex/config.toml 中必须存在 [features] codex_hooks = true（restore 自动追加）。",
+  "_comment": "Codex Hooks 模板：使用社区方案 dcg（Destructive Command Guard）作为默认硬层防护。Codex 当前 PreToolUse matcher 按工具名匹配 Bash，无法只匹配危险命令；因此本模板指向轻量过滤器，只有命令看起来高危时才调用 dcg 本体。",
   "_doc": "https://developers.openai.com/codex/hooks",
   "_dcg": "https://github.com/Dicklesworthstone/destructive_command_guard",
   "hooks": {
@@ -9,8 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "dcg",
-            "statusMessage": "[dcg] 校验 Bash 命令",
+            "command": "__DCG_HOOK_COMMAND__",
             "timeout": 10
           }
         ]

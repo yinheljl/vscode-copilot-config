@@ -14,10 +14,12 @@ TARGET_CODEX=false
 TARGET_CLAUDE=false
 AUTO_INSTALL_DCG=false
 SKIP_DCG=false
+DISABLE_DCG_HOOKS=false
 for arg in "$@"; do
     case "$arg" in
         --force|-f) FORCE=true ;;
         --auto-install-dcg) AUTO_INSTALL_DCG=true ;;
+        --disable-dcg-hooks) DISABLE_DCG_HOOKS=true ;;
         --skip-dcg) SKIP_DCG=true ;;
         --target=*)
             TARGET_ALL=false
@@ -57,7 +59,6 @@ CODEX_HOOKS_SRC="$CODEX_SRC/hooks"
 CODEX_HOOKS_DST="$CODEX_DST/hooks"
 CODEX_HOOKS_JSON_SRC="$CODEX_SRC/hooks.json"
 CODEX_HOOKS_JSON_DST="$CODEX_DST/hooks.json"
-FEEDBACK_MCP_DIR="$HOME/MCP/Interactive-Feedback-MCP"
 
 # VS Code / Cursor 用户配置目录（macOS 和 Linux 路径不同）
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -152,18 +153,58 @@ invoke_dcg_installer() {
     return 1
 }
 
+set_codex_hooks_feature() {
+    local enabled="$1"
+    local cfg_dst="$CODEX_DST/config.toml"
+    if [ ! -f "$cfg_dst" ]; then
+        mkdir -p "$CODEX_DST"
+        printf '[features]\ncodex_hooks = %s\n' "$enabled" > "$cfg_dst"
+        echo "    + config.toml 设置 [features] codex_hooks = $enabled"
+        return
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        local result
+        result=$(CFG="$cfg_dst" VALUE="$enabled" python3 - <<'PY'
+import os, re, shutil, time
+p = os.environ['CFG']
+v = os.environ['VALUE']
+with open(p, 'r', encoding='utf-8') as f:
+    s = f.read()
+if re.search(r'(?m)^\s*codex_hooks\s*=\s*(true|false)\b', s):
+    s2 = re.sub(r'(?m)^(\s*codex_hooks\s*=\s*)(true|false)\b', r'\g<1>' + v, s, count=1)
+elif re.search(r'(?m)^\[features\]\s*$', s):
+    s2 = re.sub(r'(?m)^\[features\]\s*$', '[features]\ncodex_hooks = ' + v, s, count=1)
+else:
+    s2 = s.rstrip() + '\n\n[features]\ncodex_hooks = ' + v + '\n'
+if s2 != s:
+    shutil.copy2(p, p + '.bak_' + time.strftime('%Y%m%d_%H%M%S'))
+    with open(p, 'w', encoding='utf-8') as f:
+        f.write(s2)
+    print('changed')
+else:
+    print('unchanged')
+PY
+)
+        if [ "$result" = "changed" ]; then
+            echo "    + config.toml 设置 [features] codex_hooks = $enabled"
+        fi
+    else
+        echo "    ⚠ 未安装 python3，无法可靠更新 codex_hooks，请手动设置为 $enabled" >&2
+    fi
+}
+
 install_codex_hooks() {
     # 硬层防护使用社区方案 dcg（Dicklesworthstone/destructive_command_guard）。
     # 设计原则：
     #   1) 调用官方 install.sh，不自己实现下载/SHA256/cosign 校验逻辑
     #   2) 不默默 curl|bash；首次安装需用户交互式确认（Y/N），或通过 --auto-install-dcg 旗标显式同意
-    #   3) Git Bash / MSYS / Cygwin 不负责安装 Windows dcg.exe；请用 restore.ps1 安装。
-    #      如果 dcg 已经存在，仍可继续部署 ~/.codex/hooks.json。
+    #   3) Codex PreToolUse matcher 当前按 Bash 工具名触发；默认使用轻量过滤器，只在疑似高危命令时调用 dcg
 
     echo "  Codex 硬层（破坏性命令防护 dcg）："
 
     if [ "$SKIP_DCG" = true ]; then
-        echo "    → --skip-dcg 已启用，跳过 dcg 全部步骤。软层 SKILL 仍生效。"
+        echo "    → --skip-dcg 已启用，跳过 dcg 全部步骤，并关闭 Codex hooks。软层 SKILL 仍生效。"
+        set_codex_hooks_feature false
         return
     fi
 
@@ -222,90 +263,65 @@ install_codex_hooks() {
         fi
     fi
 
-    # Step 2: 需要 dcg 已装才部署 hooks.json
-    if [ "$dcg_installed" = false ]; then
-        echo "    → dcg 未安装，跳过 hooks.json 部署。"
-        if [ "$is_windows_host" = true ]; then
-            echo "      请在 PowerShell 内运行：./restore.ps1 -Target Codex -AutoInstallDcg"
-        fi
+    # Step 2: 用户显式关闭时，仅保留 dcg 二进制。
+    if [ "$DISABLE_DCG_HOOKS" = true ]; then
+        echo "    → --disable-dcg-hooks 已启用：保留 dcg 二进制，但关闭 Codex PreToolUse hook。"
+        set_codex_hooks_feature false
         return
     fi
 
-    # 部署 hooks.json（直接拷贝模板，因为模板已经引用 dcg 二进制）
-    if [ -f "$CODEX_HOOKS_JSON_SRC" ]; then
-        if [ -f "$CODEX_HOOKS_JSON_DST" ] && [ "$FORCE" = false ]; then
-            cp "$CODEX_HOOKS_JSON_DST" "${CODEX_HOOKS_JSON_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-            if command -v python3 >/dev/null 2>&1; then
-                # 增量合并：保留用户已有 PreToolUse，去掉旧的 dcg/destructive-command-guard 条目，再追加新的
-                if NEW_SRC="$CODEX_HOOKS_JSON_SRC" DST="$CODEX_HOOKS_JSON_DST" python3 - <<'PY' 2>/dev/null
-import json, os, re
-src = os.environ['NEW_SRC']
-dst = os.environ['DST']
-with open(src, 'r', encoding='utf-8') as f:
-    new = json.load(f)
-with open(dst, 'r', encoding='utf-8') as f:
-    existing = json.load(f)
-existing.setdefault('hooks', {})
-existing['hooks'].setdefault('PreToolUse', [])
-markers = ('[dcg]', '[destructive-command-guard]')
-kept = []
-for grp in existing['hooks']['PreToolUse']:
-    is_guard = False
-    for h in grp.get('hooks', []):
-        sm = str(h.get('statusMessage', ''))
-        cmd = str(h.get('command', ''))
-        if any(m in sm for m in markers) or re.search(r'\bdcg\b', cmd) or 'pre_tool_use_guard' in cmd:
-            is_guard = True
-            break
-    if not is_guard:
-        kept.append(grp)
-existing['hooks']['PreToolUse'] = kept + new['hooks']['PreToolUse']
-with open(dst, 'w', encoding='utf-8') as f:
-    json.dump(existing, f, indent=2, ensure_ascii=False)
-PY
-                then
-                    echo "  + hooks.json（增量合并 PreToolUse → dcg）"
-                else
-                    cp -f "$CODEX_HOOKS_JSON_SRC" "$CODEX_HOOKS_JSON_DST"
-                    echo "  + hooks.json（合并失败，已覆盖）"
-                fi
-            else
-                cp -f "$CODEX_HOOKS_JSON_SRC" "$CODEX_HOOKS_JSON_DST"
-                echo "  + hooks.json（无 python3，已直接覆盖）"
-            fi
-        else
-            [ -f "$CODEX_HOOKS_JSON_DST" ] && cp "$CODEX_HOOKS_JSON_DST" "${CODEX_HOOKS_JSON_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-            cp -f "$CODEX_HOOKS_JSON_SRC" "$CODEX_HOOKS_JSON_DST"
-            echo "  + hooks.json（$([ -f "$CODEX_HOOKS_JSON_DST" ] && echo "覆盖" || echo "新建")）"
+    # Step 3: 默认启用低噪音 hook，需要 dcg 已装才部署 hooks.json
+    if [ "$dcg_installed" = false ]; then
+        echo "    → dcg 未安装，无法启用 hooks.json。"
+        if [ "$is_windows_host" = true ]; then
+            echo "      请在 PowerShell 内运行：./restore.ps1 -Target Codex -AutoInstallDcg"
         fi
+        set_codex_hooks_feature false
+        return
     fi
 
-    # 确保 config.toml 启用 codex_hooks（实验 feature flag）
-    local cfg_dst="$CODEX_DST/config.toml"
-    if [ -f "$cfg_dst" ]; then
-        if ! grep -qE '^\s*codex_hooks\s*=\s*true\b' "$cfg_dst"; then
-            cp "$cfg_dst" "${cfg_dst}.bak_$(date +%Y%m%d_%H%M%S)"
-            if grep -qE '^\[features\]' "$cfg_dst"; then
-                if command -v python3 >/dev/null 2>&1; then
-                    CFG="$cfg_dst" python3 - <<'PY'
-import re, os
-p = os.environ['CFG']
-with open(p, 'r', encoding='utf-8') as f:
-    s = f.read()
-s = re.sub(r'(?m)^\[features\]\s*$', '[features]\ncodex_hooks = true', s, count=1)
-with open(p, 'w', encoding='utf-8') as f:
-    f.write(s)
-PY
-                else
-                    # 没 python3 就直接 append（双栈也行，codex 取最后一个生效）
-                    printf '\ncodex_hooks = true\n' >> "$cfg_dst"
-                fi
-            else
-                printf '\n[features]\ncodex_hooks = true\n' >> "$cfg_dst"
-            fi
-            echo "  + config.toml（追加 [features] codex_hooks = true）"
+    # 部署 hooks 过滤器 + hooks.json
+    if [ -d "$CODEX_HOOKS_SRC" ]; then
+        if [ "$FORCE" = true ]; then
+            copy_dir_replace "$CODEX_HOOKS_SRC" "$CODEX_HOOKS_DST"
+            echo "  + hooks/（覆盖，低噪音 dcg 过滤器）"
+        else
+            copy_dir_merge "$CODEX_HOOKS_SRC" "$CODEX_HOOKS_DST"
+            echo "  + hooks/（增量，低噪音 dcg 过滤器）"
+        fi
+        if [ -f "$CODEX_HOOKS_DST/dcg_filter.py" ]; then
+            chmod +x "$CODEX_HOOKS_DST/dcg_filter.py" 2>/dev/null || true
         fi
     fi
+    if [ -f "$CODEX_HOOKS_JSON_SRC" ]; then
+        local hook_command
+        if command -v python3 >/dev/null 2>&1 && [ -f "$CODEX_HOOKS_DST/dcg_filter.py" ]; then
+            hook_command="python3 \"$CODEX_HOOKS_DST/dcg_filter.py\""
+        else
+            hook_command="dcg"
+        fi
+        if [ -f "$CODEX_HOOKS_JSON_DST" ] && [ "$FORCE" = false ]; then
+            cp "$CODEX_HOOKS_JSON_DST" "${CODEX_HOOKS_JSON_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+        fi
+        if command -v python3 >/dev/null 2>&1; then
+            SRC="$CODEX_HOOKS_JSON_SRC" DST="$CODEX_HOOKS_JSON_DST" HOOK_COMMAND="$hook_command" python3 - <<'PY'
+import json, os
+src = os.environ['SRC']
+dst = os.environ['DST']
+hook_command = os.environ['HOOK_COMMAND']
+with open(src, 'r', encoding='utf-8') as f:
+    s = f.read().replace('__DCG_HOOK_COMMAND__', hook_command.replace('\\', '\\\\').replace('"', '\\"'))
+json.loads(s)
+with open(dst, 'w', encoding='utf-8') as f:
+    f.write(s)
+PY
+        else
+            sed "s#__DCG_HOOK_COMMAND__#dcg#g" "$CODEX_HOOKS_JSON_SRC" > "$CODEX_HOOKS_JSON_DST"
+        fi
+        echo "  + hooks.json（低噪音过滤器 → dcg）"
+    fi
+
+    set_codex_hooks_feature true
 }
 
 # 将任意字符串安全地编码为 JSON 字符串字面量内部（不含外层引号）
@@ -403,21 +419,18 @@ PY
 }
 
 install_mcp_json() {
-    local src="$1" dst="$2" uv_path="$3" feedback_python="$4" mcp_dir="$5"
+    local src="$1" dst="$2" uv_path="$3"
     [ ! -f "$src" ] && return
     local content
     if command -v python3 &>/dev/null; then
         # 通过 Python 完成"读模板 + JSON 转义 + 占位符替换"
         # 避免 bash ${var//pat/repl} 把替换串里的 \\ 收缩为 \ 的隐患
-        content=$(SRC="$src" UV="$uv_path" FB="$feedback_python" DIR="$mcp_dir" SRV="$mcp_dir/server.py" python3 - <<'PY'
+        content=$(SRC="$src" UV="$uv_path" python3 - <<'PY'
 import os, json, sys
 with open(os.environ['SRC'], 'r', encoding='utf-8') as f:
     s = f.read()
 def esc(v): return json.dumps(v)[1:-1]
 s = s.replace('__UV_PATH__', esc(os.environ['UV']))
-s = s.replace('__FEEDBACK_MCP_PYTHON__', esc(os.environ['FB']))
-s = s.replace('__FEEDBACK_MCP_DIR__', esc(os.environ['DIR']))
-s = s.replace('__FEEDBACK_SERVER_PATH__', esc(os.environ['SRV']))
 sys.stdout.write(s)
 PY
 )
@@ -425,9 +438,6 @@ PY
         # 回退：bash 直接替换（典型 Linux/macOS 路径不含 \ 或 "，足够用）
         content=$(cat "$src")
         content="${content//__UV_PATH__/$uv_path}"
-        content="${content//__FEEDBACK_MCP_PYTHON__/$feedback_python}"
-        content="${content//__FEEDBACK_MCP_DIR__/$mcp_dir}"
-        content="${content//__FEEDBACK_SERVER_PATH__/$mcp_dir/server.py}"
     fi
     mkdir -p "$(dirname "$dst")"
 
@@ -442,8 +452,14 @@ new_data = json.loads(os.environ['NEW_DATA'])
 with open(dst, 'r', encoding='utf-8') as f:
     existing = json.load(f)
 for key in ('servers', 'mcpServers'):
+    if key in existing:
+        existing[key].pop('interactiveFeedback', None)
+        existing[key].pop('interactive-feedback', None)
     if key in new_data:
-        existing.setdefault(key, {}).update(new_data[key])
+        servers = existing.setdefault(key, {})
+        servers.pop('interactiveFeedback', None)
+        servers.pop('interactive-feedback', None)
+        servers.update(new_data[key])
 with open(dst, 'w', encoding='utf-8') as f:
     json.dump(existing, f, indent=2, ensure_ascii=False)
 PY
@@ -559,7 +575,7 @@ fi
 
 # --- 3. 还原 Codex 配置 ---
 if [ "$HAS_CODEX" = true ]; then
-    echo "[3] 还原 Codex 配置（AGENTS.md + skills + hooks）..."
+    echo "[3] 还原 Codex 配置（AGENTS.md + skills + 低噪音 hooks）..."
     if [ ! -d "$CODEX_SRC" ]; then
         echo "  警告：找不到源目录: $CODEX_SRC" >&2
     else
@@ -581,7 +597,7 @@ if [ "$HAS_CODEX" = true ]; then
                 echo "  + skills/ (增量)"
             fi
         fi
-        # hooks.json + config.toml feature flag（硬兜底，使用社区方案 dcg；未装 dcg 自动跳过）
+        # hooks.json + config.toml feature flag（默认启用低噪音硬兜底，使用社区方案 dcg）
         install_codex_hooks
     fi
 fi
@@ -610,139 +626,73 @@ if [ "$HAS_CLAUDE" = true ]; then
     fi
 fi
 
-# --- 5. 克隆 Interactive-Feedback-MCP + 生成 mcp.json ---
-echo "[5] 配置 Interactive-Feedback-MCP..."
-if [ -d "$FEEDBACK_MCP_DIR" ]; then
-    echo "  目录已存在，尝试更新..."
-    if command -v git &>/dev/null; then
-        (cd "$FEEDBACK_MCP_DIR" && git pull --ff-only) || echo "  更新失败，使用已有版本"
-    else
-        echo "  未安装 git，跳过更新"
-    fi
-else
-    mkdir -p "$(dirname "$FEEDBACK_MCP_DIR")"
-    if command -v git &>/dev/null; then
-        echo "  正在克隆（使用 git）..."
-        if ! git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$FEEDBACK_MCP_DIR"; then
-            echo "  警告：git clone 失败，请检查网络后手动克隆" >&2
-        fi
-    else
-        echo "  未安装 git，使用 ZIP 下载..."
-        ZIP_URL="https://github.com/rooney2020/qt-interactive-feedback-mcp/archive/refs/heads/main.zip"
-        ZIP_PATH="/tmp/interactive-feedback-mcp.zip"
-        EXTRACT_DIR="/tmp/interactive-feedback-mcp-extract"
-        if curl -fsSL "$ZIP_URL" -o "$ZIP_PATH"; then
-            rm -rf "$EXTRACT_DIR"
-            unzip -q "$ZIP_PATH" -d "$EXTRACT_DIR"
-            inner_dir=$(find "$EXTRACT_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
-            if [ -z "$inner_dir" ]; then
-                echo "  ZIP 解压结构异常，跳过" >&2
+# --- 5. 生成 MCP 配置 ---
+if [ "$HAS_CURSOR" = true ] || [ "$HAS_VSCODE" = true ] || [ "$HAS_CODEX" = true ]; then
+    echo "[5] 配置 MCP 服务器..."
+    UV_PATH=$(resolve_uv_path || true)
+    if [ -z "$UV_PATH" ]; then
+        echo "  未找到 uv，正在自动安装..."
+        if curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null; then
+            # 刷新 PATH
+            export PATH="$HOME/.local/bin:$PATH"
+            UV_PATH=$(resolve_uv_path || true)
+            if [ -n "$UV_PATH" ]; then
+                echo "  + uv 安装成功: $UV_PATH"
             else
-                mv "$inner_dir" "$FEEDBACK_MCP_DIR"
-                echo "  + 已通过 ZIP 下载完成"
+                echo "  警告：uv 安装后仍未找到，请手动检查" >&2
             fi
-            rm -f "$ZIP_PATH"
-            rm -rf "$EXTRACT_DIR"
         else
-            echo "  ZIP 下载失败，请手动下载: $ZIP_URL" >&2
-            echo "  解压到: $FEEDBACK_MCP_DIR" >&2
+            echo "  警告：uv 自动安装失败" >&2
+            echo "  请手动安装: https://docs.astral.sh/uv/" >&2
         fi
     fi
-fi
-
-FEEDBACK_REPO_READY=false
-FEEDBACK_PYTHON=""
-if [ -d "$FEEDBACK_MCP_DIR" ]; then
-    FEEDBACK_REPO_READY=true
-else
-    echo "  警告：Interactive-Feedback-MCP 目录不存在，跳过 uv sync，后续仅按预期路径生成 MCP 配置。" >&2
-fi
-
-UV_PATH=$(resolve_uv_path || true)
-if [ -z "$UV_PATH" ]; then
-    echo "  未找到 uv，正在自动安装..."
-    if curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null; then
-        # 刷新 PATH
-        export PATH="$HOME/.local/bin:$PATH"
-        UV_PATH=$(resolve_uv_path || true)
-        if [ -n "$UV_PATH" ]; then
-            echo "  + uv 安装成功: $UV_PATH"
-        else
-            echo "  警告：uv 安装后仍未找到，请手动检查" >&2
-        fi
-    else
-        echo "  警告：uv 自动安装失败" >&2
-        echo "  请手动安装: https://docs.astral.sh/uv/" >&2
-    fi
-fi
-if [ -n "$UV_PATH" ] && [ "$FEEDBACK_REPO_READY" = true ]; then
-    echo "  正在运行 uv sync..."
-    if ! (cd "$FEEDBACK_MCP_DIR" && "$UV_PATH" sync); then
-        echo "  警告：uv sync 失败，mcp.json 仍按预期路径生成" >&2
+    if [ -z "$UV_PATH" ]; then
+        echo "  警告：未找到 uv，请先安装: https://docs.astral.sh/uv/"
     fi
 
-    FEEDBACK_PYTHON="$FEEDBACK_MCP_DIR/.venv/bin/python"
-    if [ -x "$FEEDBACK_PYTHON" ]; then
-        echo "  + Interactive-Feedback-MCP 已就绪"
-    else
-        echo "  警告：找不到反馈服务虚拟环境 Python: $FEEDBACK_PYTHON" >&2
-        echo "  请确认 uv sync 是否成功完成" >&2
+    [ -z "$UV_PATH" ] && UV_PATH="$HOME/.local/bin/uv"
+
+    if [ "$HAS_CURSOR" = true ]; then
+        install_mcp_json "$CURSOR_SRC/mcp.json" "$CURSOR_DST/mcp.json" "$UV_PATH"
     fi
-elif [ -n "$UV_PATH" ]; then
-    echo "  警告：未找到 Interactive-Feedback-MCP 目录，跳过 uv sync。" >&2
-    echo "  请手动准备目录后执行: cd $FEEDBACK_MCP_DIR && uv sync" >&2
-    FEEDBACK_PYTHON=""
-else
-    echo "  警告：未找到 uv，请先安装: https://docs.astral.sh/uv/"
-    echo "  然后手动执行: cd $FEEDBACK_MCP_DIR && uv sync"
-    FEEDBACK_PYTHON=""
-fi
-
-# 始终生成 mcp.json（即使 MCP 安装失败，也用预期路径生成配置）
-[ -z "$UV_PATH" ] && UV_PATH="$HOME/.local/bin/uv"
-[ -z "$FEEDBACK_PYTHON" ] && FEEDBACK_PYTHON="$FEEDBACK_MCP_DIR/.venv/bin/python"
-
-if [ "$HAS_CURSOR" = true ]; then
-    install_mcp_json "$CURSOR_SRC/mcp.json" "$CURSOR_DST/mcp.json" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
-fi
-if [ "$HAS_VSCODE" = true ]; then
-    install_mcp_json "$MCP_SRC" "$MCP_DST" "$UV_PATH" "$FEEDBACK_PYTHON" "$FEEDBACK_MCP_DIR"
-fi
-if [ "$HAS_CODEX" = true ]; then
-    # 合并 Codex config.toml MCP 服务器配置
-    CODEX_CONFIG_SRC="$CODEX_SRC/config.toml"
-    CODEX_CONFIG_DST="$CODEX_DST/config.toml"
-    if [ -f "$CODEX_CONFIG_SRC" ]; then
-        if command -v python3 &>/dev/null; then
-            # TOML 基本字符串与 JSON 字符串转义规则一致：用 Python 一次性读取+转义+替换
-            config_content=$(SRC="$CODEX_CONFIG_SRC" UV="$UV_PATH" FB="$FEEDBACK_PYTHON" SRV="$FEEDBACK_MCP_DIR/server.py" python3 - <<'PY'
+    if [ "$HAS_VSCODE" = true ]; then
+        install_mcp_json "$MCP_SRC" "$MCP_DST" "$UV_PATH"
+    fi
+    if [ "$HAS_CODEX" = true ]; then
+        # 合并 Codex config.toml MCP 服务器配置
+        CODEX_CONFIG_SRC="$CODEX_SRC/config.toml"
+        CODEX_CONFIG_DST="$CODEX_DST/config.toml"
+        if [ -f "$CODEX_CONFIG_SRC" ]; then
+            if command -v python3 &>/dev/null; then
+                # TOML 基本字符串与 JSON 字符串转义规则一致：用 Python 一次性读取+转义+替换
+                config_content=$(SRC="$CODEX_CONFIG_SRC" UV="$UV_PATH" python3 - <<'PY'
 import os, json, sys
 with open(os.environ['SRC'], 'r', encoding='utf-8') as f:
     s = f.read()
 def esc(v): return json.dumps(v)[1:-1]
 s = s.replace('__UV_PATH__', esc(os.environ['UV']))
-s = s.replace('__FEEDBACK_MCP_PYTHON__', esc(os.environ['FB']))
-s = s.replace('__FEEDBACK_SERVER_PATH__', esc(os.environ['SRV']))
 sys.stdout.write(s)
 PY
 )
-        else
-            config_content=$(cat "$CODEX_CONFIG_SRC")
-            config_content="${config_content//__UV_PATH__/$UV_PATH}"
-            config_content="${config_content//__FEEDBACK_MCP_PYTHON__/$FEEDBACK_PYTHON}"
-            config_content="${config_content//__FEEDBACK_SERVER_PATH__/$FEEDBACK_MCP_DIR/server.py}"
-        fi
-        mkdir -p "$CODEX_DST"
-        if [ -f "$CODEX_CONFIG_DST" ] && [ "$FORCE" = false ]; then
-            cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-            if command -v python3 &>/dev/null; then
-                merged_ok=false
-                if NEW_CONTENT="$config_content" DST="$CODEX_CONFIG_DST" python3 - <<'PY'
+            else
+                config_content=$(cat "$CODEX_CONFIG_SRC")
+                config_content="${config_content//__UV_PATH__/$UV_PATH}"
+            fi
+            mkdir -p "$CODEX_DST"
+            if [ -f "$CODEX_CONFIG_DST" ] && [ "$FORCE" = false ]; then
+                cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+                if command -v python3 &>/dev/null; then
+                    merged_ok=false
+                    if NEW_CONTENT="$config_content" DST="$CODEX_CONFIG_DST" python3 - <<'PY'
 import os, re, sys
 new_content = os.environ['NEW_CONTENT']
 dst = os.environ['DST']
 with open(dst, 'r', encoding='utf-8') as f:
     existing = f.read()
+legacy_re = re.compile(r'(?ms)^\[mcp_servers\.(?:interactiveFeedback|interactive-feedback)(?:\.[^\]]+)?\]\s*.*?(?=^\[|\Z)')
+original = existing
+existing = legacy_re.sub('', existing)
+removed_legacy = existing != original
 # 仅按"顶层 [mcp_servers.NAME]"切块，子表（如 .env）随父块一同保留
 header_re = re.compile(r'(?m)^\[mcp_servers\.([A-Za-z_][A-Za-z0-9_-]*)\]\s*$')
 matches = list(header_re.finditer(new_content))
@@ -754,29 +704,36 @@ for i, m in enumerate(matches):
     start = m.start()
     end = matches[i+1].start() if i+1 < len(matches) else len(new_content)
     to_add.append(new_content[start:end].rstrip())
-if not to_add:
+if not to_add and not removed_legacy:
     print('  + config.toml (MCP 服务器已存在，无需修改)')
     sys.exit(0)
-result = existing.rstrip() + '\n\n' + '\n\n'.join(to_add) + '\n'
+result = existing.rstrip()
+if to_add:
+    result += '\n\n' + '\n\n'.join(to_add)
+result = result.rstrip() + '\n'
 with open(dst, 'w', encoding='utf-8') as f:
     f.write(result)
-print(f'  + config.toml (增量合并，追加 {len(to_add)} 个 MCP 服务器)')
+if removed_legacy:
+    print('  + config.toml (增量合并，已移除旧 interactiveFeedback 服务器)')
+else:
+    print(f'  + config.toml (增量合并，追加 {len(to_add)} 个 MCP 服务器)')
 PY
-                then
-                    merged_ok=true
-                fi
-                if [ "$merged_ok" = false ]; then
+                    then
+                        merged_ok=true
+                    fi
+                    if [ "$merged_ok" = false ]; then
+                        printf '%s\n' "$config_content" > "$CODEX_CONFIG_DST"
+                        echo "  + config.toml (Python 合并失败，已覆盖)"
+                    fi
+                else
+                    echo "  ! 未安装 python3，已直接覆盖 config.toml" >&2
                     printf '%s\n' "$config_content" > "$CODEX_CONFIG_DST"
-                    echo "  + config.toml (Python 合并失败，已覆盖)"
                 fi
             else
-                echo "  ! 未安装 python3，已直接覆盖 config.toml" >&2
-                printf '%s\n' "$config_content" > "$CODEX_CONFIG_DST"
+                [ -f "$CODEX_CONFIG_DST" ] && cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+                echo "$config_content" > "$CODEX_CONFIG_DST"
+                echo "  + config.toml (已替换路径)"
             fi
-        else
-            [ -f "$CODEX_CONFIG_DST" ] && cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-            echo "$config_content" > "$CODEX_CONFIG_DST"
-            echo "  + config.toml (已替换路径)"
         fi
     fi
 fi
@@ -799,15 +756,13 @@ if [ "$HAS_CODEX" = true ]; then
     CHECKS="$CHECKS ~/.codex/config.toml:$CODEX_DST/config.toml"
     CHECKS="$CHECKS ~/.codex/skills/:$CODEX_SKILLS_DST"
     CHECKS="$CHECKS ~/.codex/skills/destructive-command-guard/:$CODEX_SKILLS_DST/destructive-command-guard"
-    CHECKS="$CHECKS ~/.codex/hooks.json(可选):$CODEX_HOOKS_JSON_DST"
+    CHECKS="$CHECKS ~/.codex/hooks.json:$CODEX_HOOKS_JSON_DST"
 fi
 if [ "$HAS_CLAUDE" = true ]; then
     CHECKS="$CHECKS ~/.claude/CLAUDE.md:$CLAUDE_CONFIG_DST"
     CHECKS="$CHECKS ~/.claude/skills/:$CLAUDE_SKILLS_DST"
     CHECKS="$CHECKS ~/.claude/skills/destructive-command-guard/:$CLAUDE_SKILLS_DST/destructive-command-guard"
 fi
-CHECKS="$CHECKS Interactive-Feedback-MCP:$FEEDBACK_MCP_DIR"
-
 for item in $CHECKS; do
     name="${item%%:*}"
     path="${item#*:}"

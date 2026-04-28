@@ -13,16 +13,18 @@
     .\update.ps1                    # 拉取更新并还原
     .\update.ps1 -DryRun            # 预览模式
     .\update.ps1 -CheckOnly         # 仅检查更新，不执行
-    .\update.ps1 -SkipFeedbackMCP   # 跳过反馈 MCP 更新
     .\update.ps1 -Target Codex      # 仅更新 Codex 配置
     .\update.ps1 -Target Claude     # 仅更新 Claude 配置
     .\update.ps1 -Target Codex -Force  # 仅覆盖 Codex 配置
+    .\update.ps1 -DisableDcgHooks   # 还原时关闭 Codex PreToolUse dcg hook
 #>
 param(
     [switch]$DryRun,
     [switch]$CheckOnly,
-    [switch]$SkipFeedbackMCP,
     [switch]$Force,
+    [switch]$AutoInstallDcg,
+    [switch]$DisableDcgHooks,
+    [switch]$SkipDcg,
     [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude")]
     [string[]]$Target = @("All")
 )
@@ -188,7 +190,9 @@ if (Test-Path $restoreScript) {
     $restoreArgs = @{}
     if ($DryRun) { $restoreArgs["DryRun"] = $true }
     if ($Force) { $restoreArgs["Force"] = $true }
-    if ($SkipFeedbackMCP) { $restoreArgs["SkipFeedbackMCP"] = $true }
+    if ($AutoInstallDcg) { $restoreArgs["AutoInstallDcg"] = $true }
+    if ($DisableDcgHooks) { $restoreArgs["DisableDcgHooks"] = $true }
+    if ($SkipDcg) { $restoreArgs["SkipDcg"] = $true }
     if ($Target -notcontains "All") { $restoreArgs["Target"] = $Target }
     & $restoreScript @restoreArgs
 } else {

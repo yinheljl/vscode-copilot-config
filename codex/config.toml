@@ -1,31 +1,20 @@
 # Codex MCP 服务器配置模板
 # 由 vscode-copilot-config 自动生成，路径占位符由 restore 脚本替换
 #
-# 此文件包含 MCP 服务器配置 + 启用 hooks 所需的 feature flag。
+# 此文件包含 MCP 服务器配置 + hooks feature flag 默认值。
 # 其他 Codex 设置（model、sandbox 等）请参考: https://developers.openai.com/codex/config-basic
 
 # ----------------------------------------------------------------
-# Hooks（破坏性命令安全护栏的硬兜底）
+# Hooks（破坏性命令安全护栏的低噪音硬兜底）
 # ----------------------------------------------------------------
-# 启用后 Codex 会读取 ~/.codex/hooks.json，并在每次 Bash 工具调用前
-# 同步执行 codex/hooks/pre_tool_use_guard.py 进行模式校验。
-# 详见: https://developers.openai.com/codex/hooks
+# Codex 当前 PreToolUse matcher 只能按工具名匹配 Bash。
+# hooks.json 默认指向一个轻量过滤器：只有命令看起来高危时才调用 dcg 本体。
 [features]
 codex_hooks = true
 
 # ----------------------------------------------------------------
 # MCP servers
 # ----------------------------------------------------------------
-[mcp_servers.interactiveFeedback]
-command = "__FEEDBACK_MCP_PYTHON__"
-args = ["-u", "__FEEDBACK_SERVER_PATH__"]
-startup_timeout_sec = 30
-tool_timeout_sec = 43200
-
-[mcp_servers.interactiveFeedback.env]
-PYTHONUNBUFFERED = "1"
-PYTHONUTF8 = "1"
-
 [mcp_servers.markitdown]
 command = "__UV_PATH__"
 args = ["tool", "run", "markitdown-mcp"]

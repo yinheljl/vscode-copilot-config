@@ -17,29 +17,28 @@
     - codex/AGENTS.md → ~/.codex/AGENTS.md（Codex）
     - codex/config.toml → 合并到 ~/.codex/config.toml（Codex）
     - codex/skills/ → ~/.codex/skills/（Codex 全局 Agent Skills，含安全护栏 skill）
-    - codex/hooks/ → ~/.codex/hooks/（破坏性命令硬兜底 PreToolUse hook）
-    - codex/hooks.json → 合并到 ~/.codex/hooks.json（注册 hook 到 Codex）
+    - codex/hooks.json → ~/.codex/hooks.json（注册低噪音 dcg PreToolUse hook 到 Codex）
+    - codex/hooks/ → ~/.codex/hooks/（dcg 轻量过滤器）
     - claude/CLAUDE.md → ~/.claude/CLAUDE.md（Claude）
     - claude/skills/ → ~/.claude/skills/（Claude Skills，含安全护栏 skill）
-    - 克隆/下载 qt-interactive-feedback-mcp 到用户级共享 MCP 目录
 
 .EXAMPLE
     .\restore.ps1                        # 增量模式（默认，不覆盖用户已有配置）
     .\restore.ps1 -Force                 # 完全覆盖模式
     .\restore.ps1 -DryRun                # 预览模式
-    .\restore.ps1 -SkipFeedbackMCP       # 跳过 Interactive-Feedback-MCP
     .\restore.ps1 -Target Codex          # 仅配置 Codex
     .\restore.ps1 -Target Claude         # 仅配置 Claude
     .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
     .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
     .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时自动下载并校验上游 release，不再交互询问
-    .\restore.ps1 -SkipDcg               # 跳过 dcg 安装与硬层 hook 部署
+    .\restore.ps1 -DisableDcgHooks       # 安装/检测 dcg，但关闭 Codex PreToolUse hook
+    .\restore.ps1 -SkipDcg               # 跳过 dcg 安装，并关闭 Codex PreToolUse hook
 #>
 param(
     [switch]$DryRun,
     [switch]$Force,
-    [switch]$SkipFeedbackMCP,
     [switch]$AutoInstallDcg,
+    [switch]$DisableDcgHooks,
     [switch]$SkipDcg,
     [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude")]
     [string[]]$Target = @("All")
@@ -77,7 +76,6 @@ $codexHooksSrc   = Join-Path $codexSrc "hooks"
 $codexHooksDst   = Join-Path $codexDst "hooks"
 $codexHooksJsonSrc = Join-Path $codexSrc "hooks.json"
 $codexHooksJsonDst = Join-Path $codexDst "hooks.json"
-$feedbackMcpDir  = Join-Path (Join-Path $env:USERPROFILE "MCP") "Interactive-Feedback-MCP"
 
 # ============================
 # IDE 自动检测
@@ -259,14 +257,30 @@ function Merge-JsonSettings($srcPath, $dstPath) {
     }
 }
 
-function Merge-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir, $serverKey) {
+function Remove-LegacyFeedbackServers($serversObj) {
+    if (-not $serversObj) { return $false }
+    $changed = $false
+    foreach ($name in @("interactiveFeedback", "interactive-feedback")) {
+        if ($serversObj.PSObject.Properties.Name -contains $name) {
+            $serversObj.PSObject.Properties.Remove($name)
+            $changed = $true
+        }
+    }
+    return $changed
+}
+
+function Remove-LegacyFeedbackCodexBlocks([string]$toml) {
+    return [regex]::Replace(
+        $toml,
+        '(?ms)^\[mcp_servers\.(?:interactiveFeedback|interactive-feedback)(?:\.[^\]]+)?\]\s*.*?(?=^\[|\z)',
+        ''
+    )
+}
+
+function Merge-McpJson($srcPath, $dstPath, $uvPath, $serverKey) {
     if (-not (Test-Path $srcPath)) { return }
     $content = Get-Content $srcPath -Raw -Encoding UTF8
-    $serverPath = Join-Path $mcpDir "server.py"
     $content = $content.Replace('__UV_PATH__', (Escape-JsonString $uvPath))
-    $content = $content.Replace('__FEEDBACK_MCP_PYTHON__', (Escape-JsonString $feedbackPythonPath))
-    $content = $content.Replace('__FEEDBACK_MCP_DIR__', (Escape-JsonString $mcpDir))
-    $content = $content.Replace('__FEEDBACK_SERVER_PATH__', (Escape-JsonString $serverPath))
     try {
         $srcObj = $content | ConvertFrom-Json
     } catch {
@@ -290,6 +304,7 @@ function Merge-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir
             if (-not ($dstObj.PSObject.Properties.Name -contains $serverKey)) {
                 $dstObj | Add-Member -MemberType NoteProperty -Name $serverKey -Value ([PSCustomObject]@{}) -Force
             }
+            $removedLegacy = Remove-LegacyFeedbackServers $dstObj.$serverKey
             # 从源中合并每个 server 到目标
             $srcServers = $srcObj.$serverKey
             if ($srcServers) {
@@ -300,7 +315,11 @@ function Merge-McpJson($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir
             $json = $dstObj | ConvertTo-Json -Depth 20 -Compress
             $json = Format-Json $json 2
             Write-Utf8NoBomFile $dstPath $json
-            Write-Host "  + mcp.json (增量合并，保留已有服务器)"
+            if ($removedLegacy) {
+                Write-Host "  + mcp.json (增量合并，已移除旧 interactive-feedback 服务器)"
+            } else {
+                Write-Host "  + mcp.json (增量合并，保留已有服务器)"
+            }
             return
         }
     }
@@ -320,12 +339,6 @@ function Resolve-UvPath {
     }
     $cmd = Get-Command uv -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
-    return $null
-}
-
-function Get-FeedbackPythonPath($mcpDir) {
-    $pythonPath = Join-Path $mcpDir ".venv\Scripts\python.exe"
-    if (Test-Path $pythonPath) { return $pythonPath }
     return $null
 }
 
@@ -465,17 +478,50 @@ function Invoke-DcgInstaller {
     }
 }
 
+function Set-CodexHooksFeature($configTomlPath, [bool]$enabled) {
+    $value = if ($enabled) { "true" } else { "false" }
+    if (-not (Test-Path $configTomlPath)) {
+        $dir = Split-Path $configTomlPath -Parent
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        Write-Utf8NoBomFile $configTomlPath "[features]`r`ncodex_hooks = $value`r`n"
+        Write-Host "    + config.toml 设置 [features] codex_hooks = $value"
+        return
+    }
+    $cfg = Get-Content $configTomlPath -Raw -Encoding UTF8
+    $newCfg = $cfg
+
+    $m = [regex]::Match($newCfg, '(?m)^(\s*codex_hooks\s*=\s*)(true|false)\b')
+    if ($m.Success) {
+        $newCfg = $newCfg.Substring(0, $m.Index) + $m.Groups[1].Value + $value + $newCfg.Substring($m.Index + $m.Length)
+    } elseif ($newCfg -match '(?m)^\[features\]\s*$') {
+        $newCfg = [regex]::Replace($newCfg, '(?m)^\[features\]\s*$', "[features]`r`ncodex_hooks = $value", 1)
+    } else {
+        $newCfg = $newCfg.TrimEnd() + "`r`n`r`n[features]`r`ncodex_hooks = $value`r`n"
+    }
+
+    if ($newCfg -ne $cfg) {
+        Backup-File $configTomlPath
+        Write-Utf8NoBomFile $configTomlPath $newCfg
+        Write-Host "    + config.toml 设置 [features] codex_hooks = $value"
+    }
+}
+
 function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
     # 硬层防护使用社区方案 dcg（Dicklesworthstone/destructive_command_guard）。
     # 设计原则：
     #   1) Windows 上复刻官方 install.ps1 的下载 + SHA256 校验流程，避免 PS 5.1 兼容问题
     #   2) 不默默 irm|iex；首次安装需用户交互式确认（Y/N），或通过 -AutoInstallDcg 旗标显式同意
-    #   3) Codex 官方文档当前支持 Windows hooks 配置，dcg 存在后即部署 hooks.json
+    #   3) Codex PreToolUse matcher 当前按 Bash 工具名触发；默认使用轻量过滤器，只在疑似高危命令时调用 dcg
 
     Write-Host "  Codex 硬层（破坏性命令防护 dcg）：" -ForegroundColor DarkCyan
 
     if ($SkipDcg) {
-        Write-Host "    → -SkipDcg 已启用，跳过 dcg 全部步骤。软层 SKILL 仍生效。" -ForegroundColor DarkGray
+        Write-Host "    → -SkipDcg 已启用，跳过 dcg 全部步骤，并关闭 Codex hooks。软层 SKILL 仍生效。" -ForegroundColor DarkGray
+        if ($DryRun) {
+            Write-Host "    [DryRun] 将在 $configTomlPath 设置 codex_hooks = false" -ForegroundColor Yellow
+        } else {
+            Set-CodexHooksFeature $configTomlPath $false
+        }
         return
     }
 
@@ -532,15 +578,37 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
         }
     }
 
-    # Step 2: 部署 hooks.json + config.toml feature flag
+    # Step 2: 用户显式关闭时，仅保留 dcg 二进制。
+    if ($DisableDcgHooks) {
+        Write-Host "    → -DisableDcgHooks 已启用：保留 dcg 二进制，但关闭 Codex PreToolUse hook。" -ForegroundColor DarkGray
+        if ($DryRun) {
+            Write-Host "    [DryRun] 将在 $configTomlPath 设置 codex_hooks = false" -ForegroundColor Yellow
+        } else {
+            Set-CodexHooksFeature $configTomlPath $false
+        }
+        return
+    }
+
+    # Step 3: 默认启用低噪音 hook，部署 hooks.json + 过滤器 + config.toml feature flag
     if (-not $alreadyInstalled) {
-        Write-Host "    → dcg 未安装，跳过 hooks.json 部署。" -ForegroundColor DarkGray
+        Write-Host "    → dcg 未安装，无法启用 hooks.json。" -ForegroundColor DarkGray
+        if (-not $DryRun) { Set-CodexHooksFeature $configTomlPath $false }
         return
     }
     if ($DryRun) {
         Write-Host "    [DryRun] $jsonSrcPath -> $jsonDstPath" -ForegroundColor Yellow
-        Write-Host "    [DryRun] 在 $configTomlPath 追加 [features] codex_hooks = true" -ForegroundColor Yellow
+        Write-Host "    [DryRun] $codexHooksSrc -> $codexHooksDst" -ForegroundColor Yellow
+        Write-Host "    [DryRun] 在 $configTomlPath 设置 [features] codex_hooks = true" -ForegroundColor Yellow
         return
+    }
+    if (Test-Path $codexHooksSrc) {
+        if ($Force) {
+            Copy-DirReplace $codexHooksSrc $codexHooksDst
+            Write-Host "    + ~/.codex/hooks/（覆盖，低噪音 dcg 过滤器）"
+        } else {
+            Copy-DirMerge $codexHooksSrc $codexHooksDst
+            Write-Host "    + ~/.codex/hooks/（增量，低噪音 dcg 过滤器）"
+        }
     }
     if (Test-Path $jsonSrcPath) {
         $dstDir = Split-Path $jsonDstPath -Parent
@@ -548,31 +616,20 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
         if ((Test-Path $jsonDstPath) -and -not $Force) {
             Backup-File $jsonDstPath
         }
-        Copy-Item $jsonSrcPath $jsonDstPath -Force
-        Write-Host "    + ~/.codex/hooks.json（指向 dcg）"
+        $hookScript = Join-Path $codexHooksDst "dcg_filter.ps1"
+        $hookCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File ""$hookScript"""
+        $hookJson = Get-Content $jsonSrcPath -Raw -Encoding UTF8
+        $hookJson = $hookJson.Replace('__DCG_HOOK_COMMAND__', (Escape-JsonString $hookCommand))
+        Write-Utf8NoBomFile $jsonDstPath $hookJson
+        Write-Host "    + ~/.codex/hooks.json（低噪音过滤器 → dcg）"
     }
-    if (Test-Path $configTomlPath) {
-        $cfg = Get-Content $configTomlPath -Raw -Encoding UTF8
-        if ($cfg -notmatch '(?m)^\s*codex_hooks\s*=\s*true\b') {
-            Backup-File $configTomlPath
-            if ($cfg -match '(?m)^\[features\]\s*$') {
-                $cfg = [regex]::Replace($cfg, '(?m)^\[features\]\s*$', "[features]`r`ncodex_hooks = true", 1)
-            } else {
-                $cfg = $cfg.TrimEnd() + "`r`n`r`n[features]`r`ncodex_hooks = true`r`n"
-            }
-            Write-Utf8NoBomFile $configTomlPath $cfg
-            Write-Host "    + config.toml 启用 [features] codex_hooks = true"
-        }
-    }
+    Set-CodexHooksFeature $configTomlPath $true
 }
 
-function Merge-CodexConfig($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mcpDir) {
+function Merge-CodexConfig($srcPath, $dstPath, $uvPath) {
     if (-not (Test-Path $srcPath)) { return }
     $content = Get-Content $srcPath -Raw -Encoding UTF8
-    $serverPath = Join-Path $mcpDir "server.py"
     $content = $content.Replace('__UV_PATH__', (Escape-JsonString $uvPath))
-    $content = $content.Replace('__FEEDBACK_MCP_PYTHON__', (Escape-JsonString $feedbackPythonPath))
-    $content = $content.Replace('__FEEDBACK_SERVER_PATH__', (Escape-JsonString $serverPath))
 
     $dstDir = Split-Path $dstPath -Parent
     if (-not (Test-Path $dstDir)) {
@@ -582,7 +639,9 @@ function Merge-CodexConfig($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mc
     if ((Test-Path $dstPath) -and -not $Force) {
         # 增量模式：检查已有配置，追加缺失的 MCP 服务器
         Backup-File $dstPath
-        $existing = Get-Content $dstPath -Raw -Encoding UTF8
+        $existingOriginal = Get-Content $dstPath -Raw -Encoding UTF8
+        $existing = Remove-LegacyFeedbackCodexBlocks $existingOriginal
+        $removedLegacy = ($existing -ne $existingOriginal)
         $serversToAdd = @()
 
         # 提取模板中的 MCP 服务器段落
@@ -597,11 +656,18 @@ function Merge-CodexConfig($srcPath, $dstPath, $uvPath, $feedbackPythonPath, $mc
             }
         }
 
-        if ($serversToAdd.Count -gt 0) {
-            $appendContent = "`n`n" + ($serversToAdd -join "`n`n") + "`n"
-            $result = $existing.TrimEnd() + $appendContent
+        if ($serversToAdd.Count -gt 0 -or $removedLegacy) {
+            $result = $existing.TrimEnd()
+            if ($serversToAdd.Count -gt 0) {
+                $result = $result + "`n`n" + ($serversToAdd -join "`n`n")
+            }
+            $result = $result.TrimEnd() + "`n"
             Write-Utf8NoBomFile $dstPath $result
-            Write-Host "  + config.toml (增量合并，追加 MCP 服务器)"
+            if ($removedLegacy) {
+                Write-Host "  + config.toml (增量合并，已移除旧 interactiveFeedback 服务器)"
+            } else {
+                Write-Host "  + config.toml (增量合并，追加 MCP 服务器)"
+            }
         } else {
             Write-Host "  + config.toml (MCP 服务器已存在，无需修改)"
         }
@@ -663,7 +729,8 @@ if ($hasVSCode) { $totalSteps += 2 }
 if ($hasCursor) { $totalSteps++ }
 if ($hasCodex)  { $totalSteps++ }
 if ($hasClaude) { $totalSteps++ }
-if (-not $SkipFeedbackMCP) { $totalSteps++ }
+$hasMcpTargets = $hasVSCode -or $hasCursor -or $hasCodex
+if ($hasMcpTargets) { $totalSteps++ }
 $step = 0
 
 # ============================
@@ -745,7 +812,7 @@ if ($hasCursor) {
 # ============================
 if ($hasCodex) {
     $step++
-    Write-Host "[$step/$totalSteps] 还原 Codex 配置（AGENTS.md + skills + hooks）..." -ForegroundColor Green
+    Write-Host "[$step/$totalSteps] 还原 Codex 配置（AGENTS.md + skills + 低噪音 hooks）..." -ForegroundColor Green
     if (-not (Test-Path $codexSrc)) {
         Write-Warning "找不到源目录: $codexSrc，跳过。"
     } elseif ($DryRun) {
@@ -773,7 +840,7 @@ if ($hasCodex) {
                 Write-Host "  + skills/ (增量)"
             }
         }
-        # hooks.json（硬兜底，使用社区方案 dcg）
+        # hooks.json（低噪音硬兜底，使用社区方案 dcg）
         Install-CodexHooks $codexHooksJsonSrc $codexHooksJsonDst $codexConfigDst
     }
 }
@@ -826,77 +893,14 @@ if ($hasVSCode) {
 }
 
 # ============================
-# 克隆 Interactive-Feedback-MCP + 生成 mcp.json
+# 生成 MCP 配置
 # ============================
-if (-not $SkipFeedbackMCP) {
+if ($hasMcpTargets) {
     $step++
-    Write-Host "[$step/$totalSteps] 配置 Interactive-Feedback-MCP..." -ForegroundColor Green
+    Write-Host "[$step/$totalSteps] 配置 MCP 服务器..." -ForegroundColor Green
     if ($DryRun) {
-        Write-Host "  [DryRun] 将克隆到 $feedbackMcpDir 并运行 uv sync"
+        Write-Host "  [DryRun] 将生成 VS Code / Cursor / Codex MCP 配置"
     } else {
-        if (Test-Path $feedbackMcpDir) {
-            Write-Host "  目录已存在，尝试更新..."
-            if (Get-Command git -ErrorAction SilentlyContinue) {
-                Push-Location $feedbackMcpDir
-                $prevPref = $ErrorActionPreference
-                $ErrorActionPreference = "Continue"
-                try {
-                    & git pull --ff-only 2>&1 | Out-Null
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Warning "  git pull 失败（退出码 $LASTEXITCODE），使用本地已有版本继续"
-                    }
-                } finally {
-                    $ErrorActionPreference = $prevPref
-                    Pop-Location
-                }
-            } else {
-                Write-Host "  未安装 git，跳过更新" -ForegroundColor Yellow
-            }
-        } else {
-            $feedbackParentDir = Split-Path $feedbackMcpDir -Parent
-            if (-not (Test-Path $feedbackParentDir)) {
-                New-Item -ItemType Directory -Path $feedbackParentDir -Force | Out-Null
-            }
-            if (Get-Command git -ErrorAction SilentlyContinue) {
-                Write-Host "  正在克隆（使用 git）..."
-                $prevPref = $ErrorActionPreference
-                $ErrorActionPreference = "Continue"
-                try {
-                    & git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git $feedbackMcpDir 2>&1 | Out-Null
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Warning "  git clone 失败（退出码 $LASTEXITCODE），请检查网络后手动克隆"
-                    }
-                } finally {
-                    $ErrorActionPreference = $prevPref
-                }
-            } else {
-                Write-Host "  未安装 git，使用 ZIP 下载..." -ForegroundColor Yellow
-                $zipUrl = "https://github.com/rooney2020/qt-interactive-feedback-mcp/archive/refs/heads/main.zip"
-                $zipPath = Join-Path $env:TEMP "interactive-feedback-mcp.zip"
-                $extractDir = Join-Path $env:TEMP "interactive-feedback-mcp-extract"
-                try {
-                    Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
-                    if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
-                    Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
-                    $innerDir = Get-ChildItem $extractDir -Directory | Select-Object -First 1
-                    Move-Item $innerDir.FullName $feedbackMcpDir
-                    Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
-                    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-                    Write-Host "  + 已通过 ZIP 下载完成"
-                } catch {
-                    Write-Warning "  ZIP 下载失败: $_"
-                    Write-Warning "  请手动下载: $zipUrl"
-                    Write-Warning "  解压到: $feedbackMcpDir"
-                }
-            }
-        }
-
-        $feedbackRepoReady = Test-Path $feedbackMcpDir
-        if (-not $feedbackRepoReady) {
-            Write-Warning "  Interactive-Feedback-MCP 目录不存在，跳过 uv sync，后续仅按预期路径生成 MCP 配置。"
-        }
-
-        $feedbackPythonPath = $null
         $uvPath = Resolve-UvPath
         if (-not $uvPath) {
             Write-Host "  未找到 uv，正在自动安装..." -ForegroundColor Yellow
@@ -916,47 +920,20 @@ if (-not $SkipFeedbackMCP) {
                 Write-Warning "  请手动安装: https://docs.astral.sh/uv/"
             }
         }
-        if ($uvPath -and $feedbackRepoReady) {
-            Write-Host "  正在运行 uv sync..."
-            Push-Location $feedbackMcpDir
-            $prevPref = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
-            try {
-                & $uvPath sync 2>&1 | ForEach-Object { Write-Host "    $_" }
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "  uv sync 失败（退出码 $LASTEXITCODE），mcp.json 仍按预期路径生成"
-                }
-            } finally {
-                $ErrorActionPreference = $prevPref
-                Pop-Location
-            }
-            $feedbackPythonPath = Get-FeedbackPythonPath $feedbackMcpDir
-            if ($feedbackPythonPath) {
-                Write-Host "  + Interactive-Feedback-MCP 已就绪"
-            } else {
-                Write-Warning "  找不到反馈服务虚拟环境 Python: $feedbackMcpDir\.venv\Scripts\python.exe"
-                Write-Warning "  请确认 uv sync 是否成功完成。"
-            }
-        } elseif ($uvPath) {
-            Write-Warning "  未找到 Interactive-Feedback-MCP 目录，跳过 uv sync。"
-            Write-Warning "  请手动准备目录后执行: cd $feedbackMcpDir && uv sync"
-        } else {
+        if (-not $uvPath) {
             Write-Warning "  未找到 uv，请先安装: https://docs.astral.sh/uv/"
-            Write-Warning "  然后手动执行: cd $feedbackMcpDir && uv sync"
         }
 
-        # 始终生成 mcp.json（即使 MCP 安装失败，也用预期路径生成配置）
         if (-not $uvPath) { $uvPath = Join-Path $env:USERPROFILE ".local\bin\uv.exe" }
-        if (-not $feedbackPythonPath) { $feedbackPythonPath = Join-Path $feedbackMcpDir ".venv\Scripts\python.exe" }
         if ($hasCursor) {
             $cursorMcpSrc = Join-Path $cursorSrc "mcp.json"
-            Merge-McpJson $cursorMcpSrc (Join-Path $cursorDst "mcp.json") $uvPath $feedbackPythonPath $feedbackMcpDir "mcpServers"
+            Merge-McpJson $cursorMcpSrc (Join-Path $cursorDst "mcp.json") $uvPath "mcpServers"
         }
         if ($hasVSCode) {
-            Merge-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath $feedbackPythonPath $feedbackMcpDir "servers"
+            Merge-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath "servers"
         }
         if ($hasCodex) {
-            Merge-CodexConfig $codexConfigSrc $codexConfigDst $uvPath $feedbackPythonPath $feedbackMcpDir
+            Merge-CodexConfig $codexConfigSrc $codexConfigDst $uvPath
         }
     }
 }
@@ -966,9 +943,7 @@ if (-not $SkipFeedbackMCP) {
 # ============================
 $step++
 Write-Host "[$step/$totalSteps] 验证..." -ForegroundColor Green
-$checks = @(
-    @{ Name = "Interactive-Feedback-MCP"; Path = $feedbackMcpDir }
-)
+$checks = @()
 if ($hasVSCode) {
     $checks = @(
         @{ Name = "~/.copilot/instructions/"; Path = (Join-Path $copilotDst "instructions") },
@@ -1006,12 +981,21 @@ foreach ($c in $checks) {
     }
 }
 
-# dcg 二进制独立检查（不强制要求；未安装时软层 SKILL 仍生效）
+# dcg 二进制独立检查（未安装时软层 SKILL 仍生效）
 if ($hasCodex -and -not $SkipDcg) {
     if (Test-DcgInstalled) {
         Write-Host "  + dcg 二进制（社区方案 destructive_command_guard）" -ForegroundColor Green
     } else {
         Write-Host "  ~ dcg 未安装（硬层未启用；软层 SKILL 仍生效）" -ForegroundColor Yellow
+    }
+    if ($DisableDcgHooks) {
+        Write-Host "  + Codex dcg hook 已按参数关闭" -ForegroundColor Yellow
+    } else {
+        if (Test-Path $codexHooksJsonDst) {
+            Write-Host "  + Codex dcg hook（默认启用，低噪音过滤器）" -ForegroundColor Green
+        } else {
+            Write-Host "  - Codex dcg hook（默认启用但 hooks.json 未找到）" -ForegroundColor Red
+        }
     }
 }
 

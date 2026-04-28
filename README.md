@@ -3,7 +3,7 @@
 > **一键配置 VS Code GitHub Copilot、Cursor、Codex 和 Claude 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
 
-当前版本：`1.4.3`
+当前版本：`1.4.5`
 
 ---
 
@@ -111,13 +111,13 @@
 |-----------|------|
 | `claude/CLAUDE.md` | Claude 全局行为规范（5 条编码准则） |
 | `claude/skills/` | Claude 全局 Skills（9 个，扁平结构，与其他 IDE 技能内容同源） |
-| `copilot/instructions/` | VS Code Copilot 全局指令（中文规范、交互反馈策略、防超时等） |
+| `copilot/instructions/` | VS Code Copilot 全局指令（中文规范、Python 虚拟环境、5 条编码准则等） |
 | `copilot/skills/` | VS Code Copilot 自定义 Skill（按分类组织的 9 个，含安全护栏） |
 | `codex/AGENTS.md` | Codex 全局指令（AGENTS.md 格式，5 条编码准则） |
-| `codex/config.toml` | Codex MCP 服务器配置模板（含 `[features] codex_hooks = true`） |
+| `codex/config.toml` | Codex MCP 服务器配置模板（默认 `[features] codex_hooks = true`） |
 | `codex/skills/` | **Codex 全局 Skills（9 个，扁平结构，与 Cursor / Copilot / Claude 技能内容同源）** |
-| `codex/hooks/README.md` | **Codex PreToolUse 硬兜底说明（restore 脚本自动调用社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard) 的官方安装器）** |
-| `codex/hooks.json` | Codex Hooks 配置模板（注册 `dcg` 二进制拦截破坏性 Bash 命令；Windows/macOS/Linux/WSL2 均由 restore 脚本部署） |
+| `codex/hooks/README.md` | **Codex PreToolUse 低噪音硬兜底说明（restore 脚本检测/安装社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)）** |
+| `codex/hooks.json` | Codex Hooks 配置模板（轻量过滤器先筛选，再按需调用 `dcg`） |
 | `cursor/mcp.json` | Cursor MCP 服务器配置模板（含路径占位符） |
 | `cursor/rules/` | Cursor 全局 Rules（`.mdc` 格式） |
 | `cursor/skills/` | Cursor Skills（按分类组织的 9 个，与 Copilot / Codex / Claude 技能内容同源） |
@@ -138,10 +138,8 @@
 
 | 服务器 | 用途 | 安装位置 |
 |--------|------|----------|
-| Interactive-Feedback-MCP | Qt 桌面交互反馈窗口，让 AI 通过弹窗与用户持续对话 | `~/MCP/Interactive-Feedback-MCP` |
 | markitdown (Microsoft) | 将 Word/PDF/PPT/Excel 等文件转换为 Markdown，AI 可直接读取 | 通过 `uvx tool run` 按需启动，无需本地安装 |
 
-> 反馈服务统一安装到用户级共享目录，VS Code、Cursor 和 Codex 各自使用不同启动方式。
 > 其他 MCP 服务（GitHub、Context7 等）不由本仓库自动安装，按需手动配置。
 > mcp.json 模板不包含任何 API Key 或 Token，路径使用占位符，由还原脚本自动替换。
 
@@ -150,7 +148,7 @@
 | 规则文件 | 适用于 | 说明 |
 |----------|--------|------|
 | `claude/CLAUDE.md` | Claude | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
-| `copilot/instructions/copilot-instructions.md` | VS Code Copilot | 中文回复、Python 虚拟环境、交互反馈策略、防超时 |
+| `copilot/instructions/copilot-instructions.md` | VS Code Copilot | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
 | `codex/AGENTS.md` | Codex | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
 | `cursor/rules/mcp-feedback.mdc` | Cursor | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
 
@@ -174,11 +172,11 @@
 
 ## 🛡️ 安全防护（破坏性命令双层兜底）
 
-**背景**：Codex 等 AI agent 在 Windows 上有过整盘删除事故（典型如 `powershell -c "cmd /c rmdir /s /q F:\foo"` 中 PowerShell × cmd 的转义符冲突，实际执行成 `rmdir /s /q F:\` 整盘清空）。本仓库提供**软 + 硬**双层防护，**两层都由 restore 脚本自动配置**。
+**背景**：Codex 等 AI agent 在 Windows 上有过整盘删除事故（典型如 `powershell -c "cmd /c rmdir /s /q F:\foo"` 中 PowerShell × cmd 的转义符冲突，实际执行成 `rmdir /s /q F:\` 整盘清空）。本仓库默认启用**软层 SKILL + dcg 低噪音硬层 hook**。
 
 > ### ⚠️ Windows 用户必读（不影响一键配置，但要知情）
 >
-> OpenAI 当前 [Codex Hooks 文档](https://developers.openai.com/codex/hooks) 已不再声明 Windows hooks 禁用，并且配置参考包含 `hooks.windows_managed_dir`。本仓库现在会在 Windows 上安装/检测到 `dcg.exe` 后部署 `~/.codex/hooks.json`，并确保 `~/.codex/config.toml` 启用 `[features] codex_hooks = true`。
+> Codex 当前 PreToolUse hook 的 matcher 只能按工具名匹配 `Bash`，不能只匹配 `rm -rf` / `git reset --hard` 等危险命令。为减少 token / 上下文噪音，本仓库默认让 hook 先进入轻量过滤器；只有命令看起来高危时，才调用 `dcg` 本体。
 
 ### 软层 — `destructive-command-guard` Skill（跨 4 IDE / 跨平台）
 
@@ -191,7 +189,7 @@
 | 💰 成本 | description 约 200 tokens 注入 system prompt，完整 SKILL.md 仅在触发时加载 |
 | ⚠️ 局限 | 属于 prompt 层，模型在极端情况（上下文严重压缩、`--full-auto` / `--yolo` / `danger-full-access`）可能绕过 |
 
-### 硬层 — 社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)（restore 脚本一键配置）
+### 硬层 — 社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)（默认启用低噪音 hook）
 
 经过对比 OpenAI 官方文档与社区方案，本仓库**不自研 hook 脚本**，改为引用社区项目 [`Dicklesworthstone/destructive_command_guard`（dcg）](https://github.com/Dicklesworthstone/destructive_command_guard)：
 
@@ -214,8 +212,9 @@
 3. **下载并校验**：
    - **macOS / Linux**：直接代理调用上游官方 `install.sh`（含 SHA256 校验 + 可选 cosign 签名）
    - **Windows**：因为上游 `install.ps1` 在 Windows PowerShell 5.1（系统默认 shell）下有兼容 bug（`Invoke-WebRequest -UseBasicParsing` 返回 byte[] 而非 string，导致它的 `.Trim()` 抛异常）—— `restore.ps1` 用 PS 5.1 兼容代码**复刻同样的流程**：从 GitHub Releases 拉 `dcg-x86_64-pc-windows-msvc.zip` + 上游 `.sha256` 强制校验 → 解压 → 写 `~/.local/bin/dcg.exe` → 加用户 PATH。**信任锚点不变**（zip 与 .sha256 都是 dcg 上游发布的 GitHub Release artifact）
-4. **Windows / macOS / Linux / WSL2**：自动部署 `~/.codex/hooks.json` + 在 `~/.codex/config.toml` 启用 `[features] codex_hooks = true`
-5. 重启 Codex 会话
+4. **低噪音 hook**：部署 `~/.codex/hooks/` 过滤器和 `~/.codex/hooks.json`，并设置 `codex_hooks = true`
+5. **按需调用 dcg**：过滤器只在命令看起来涉及删除、危险 git、数据库清空、格式化、云资源销毁等高危模式时调用 `dcg`
+6. 重启 Codex 会话
 
 详见 [`codex/hooks/README.md`](codex/hooks/README.md)。
 
@@ -230,7 +229,7 @@
 | 安装责任 | 本仓库脚本直接复制文件 | macOS/Linux：代理调用上游 `install.sh`（信任完全归上游）。Windows：因上游 `install.ps1` 在 PS 5.1 下有兼容 bug，本仓库用 PS 5.1 兼容代码**复刻**同样流程（信任锚点不变：仍下载上游 zip + 用上游 `.sha256` 校验） |
 | **Bus factor** | 本仓库维护者团队 | **1（作者明确声明不接受外部 PR）** ← 必须了解的风险 |
 | 升级方式 | `git pull` + `restore` | `dcg update` 或重跑 `restore -AutoInstallDcg` |
-| 影响面 | 跨 IDE 跨平台 | 全平台 dcg 命令行可用；Codex hooks 在当前官方文档支持的 Windows / macOS / Linux / WSL2 surfaces 生效 |
+| 影响面 | 跨 IDE 跨平台 | 全平台 dcg 命令行可用；Codex hook 默认启用轻量过滤器，高危命令才进入 dcg 本体 |
 
 **为什么用 dcg 而不是自研**：
 - 自研 hook 等同重新发明轮子；dcg 已有 49 个 packs 覆盖 git / 数据库 / k8s / 云厂商 / IaC 等，单仓库难以维护到这个广度
@@ -243,7 +242,7 @@
 
 **为什么仍然保留软层 SKILL**：
 - 万一 dcg 仓库哪天消失（Bus factor 1），软层 SKILL 仍然 100% 可用
-- 软+硬双层互为冗余，符合 defense-in-depth 原则
+- 硬层 hook 使用轻量过滤器，尽量避免每次 shell 调用都产生 dcg 校验噪音；高危命令仍进入 dcg 本体
 
 ## 🔧 手动安装
 
@@ -265,7 +264,7 @@ foreach ($sub in "rules","skills") {
     Copy-Item -Recurse "C:\Temp\copilot-config\cursor\$sub" "$env:USERPROFILE\.cursor\" -Force
 }
 
-# 4. Codex：AGENTS.md + skills（hooks.json 由 restore 脚本自动部署）
+# 4. Codex：AGENTS.md + skills（dcg 低噪音 hook 由 restore 脚本部署）
 New-Item -ItemType Directory -Path "$env:USERPROFILE\.codex" -Force
 Copy-Item "C:\Temp\copilot-config\codex\AGENTS.md" "$env:USERPROFILE\.codex\AGENTS.md" -Force
 Copy-Item -Recurse "C:\Temp\copilot-config\codex\skills" "$env:USERPROFILE\.codex\" -Force
@@ -275,13 +274,9 @@ New-Item -ItemType Directory -Path "$env:USERPROFILE\.claude" -Force
 Copy-Item "C:\Temp\copilot-config\claude\CLAUDE.md" "$env:USERPROFILE\.claude\CLAUDE.md" -Force
 Copy-Item -Recurse "C:\Temp\copilot-config\claude\skills" "$env:USERPROFILE\.claude\" -Force
 
-# 6. 安装 Interactive-Feedback-MCP
-git clone https://github.com/rooney2020/qt-interactive-feedback-mcp.git "$env:USERPROFILE\MCP\Interactive-Feedback-MCP"
-cd "$env:USERPROFILE\MCP\Interactive-Feedback-MCP"
-uv sync
 ```
 
-> 手动安装时需自行处理 mcp.json 和 config.toml 模板中的路径占位符替换，详见 `vscode/mcp.json`、`cursor/mcp.json` 和 `codex/config.toml`。
+> 手动安装时需自行处理 mcp.json 和 config.toml 模板中的路径占位符替换，详见 `vscode/mcp.json`、`cursor/mcp.json` 和 `codex/config.toml`。本仓库不再自动安装或配置 Interactive-Feedback-MCP。
 
 ### 可选参数（脚本安装）
 
@@ -289,13 +284,13 @@ uv sync
 .\restore.ps1                        # 增量模式（默认，保留用户已有配置）
 .\restore.ps1 -Force                 # 完全覆盖模式
 .\restore.ps1 -DryRun                # 预览模式，不实际修改
-.\restore.ps1 -SkipFeedbackMCP       # 跳过 Interactive-Feedback-MCP
 .\restore.ps1 -Target Codex          # 仅配置 Codex
 .\restore.ps1 -Target Claude         # 仅配置 Claude
 .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
 .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
 .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时自动下载并校验上游 release，不再交互询问
-.\restore.ps1 -SkipDcg               # 跳过 dcg 安装与硬层 hook 部署
+.\restore.ps1 -DisableDcgHooks       # 安装/检测 dcg，但关闭 Codex PreToolUse hook
+.\restore.ps1 -SkipDcg               # 跳过 dcg 安装，并关闭 Codex PreToolUse hook
 ```
 
 ```bash
@@ -307,7 +302,8 @@ bash restore.sh --target=claude      # 仅配置 Claude
 bash restore.sh --target=vscode,cursor  # 仅配置 VS Code 和 Cursor
 bash restore.sh --force --target=codex  # 仅覆盖 Codex 配置
 bash restore.sh --auto-install-dcg   # 未装 dcg 时直接调用官方 install.sh，不再交互询问
-bash restore.sh --skip-dcg           # 跳过 dcg 安装与硬层 hook 部署
+bash restore.sh --disable-dcg-hooks  # 安装/检测 dcg，但关闭 Codex PreToolUse hook
+bash restore.sh --skip-dcg           # 跳过 dcg 安装，并关闭 Codex PreToolUse hook
 ```
 
 ## ❓ 常见问题
@@ -345,11 +341,6 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 - [x] 破坏性命令双层兜底（软层 SKILL.md + 硬层社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)）
 - [ ] 设置页面内一键更新按钮
 - [ ] 更多 MCP 服务器预配置
-
-## 🙏 致谢
-
-- [rooney2020/qt-interactive-feedback-mcp](https://github.com/rooney2020/qt-interactive-feedback-mcp) — Interactive-Feedback-MCP 恢复流程和验证思路
-- [dragonstylecc/Interactive-Feedback-With-Capture-MCP](https://github.com/dragonstylecc/Interactive-Feedback-With-Capture-MCP) — 截图反馈功能参考
 
 ## 📄 许可
 
