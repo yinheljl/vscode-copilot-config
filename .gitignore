@@ -4,6 +4,9 @@ copilot/ide/
 # 备份文件
 *.bak_*
 
+# Temporary review reports
+CODE_REVIEW.md
+
 # Python 运行时
 __pycache__/
 *.pyc
