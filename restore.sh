@@ -446,41 +446,40 @@ if not os.path.exists(settings_dst):
 with open(settings_dst, 'r', encoding='utf-8') as f:
     cfg = json.load(f)
 
-has_dcg = False
-if "hooks" in cfg and isinstance(cfg["hooks"], dict):
-    for g in cfg["hooks"].get("PreToolUse", []):
-        for h in g.get("hooks", []):
-            if "dcg_filter" in h.get("command", ""):
-                has_dcg = True
-                break
-        if has_dcg:
-            break
-
-if has_dcg and not force:
-    print("    + ~/.claude/settings.json（dcg hook 已存在，未修改）")
-    sys.exit(0)
-
 # backup
 import shutil, time
 shutil.copy2(settings_dst, settings_dst + '.bak_' + time.strftime('%Y%m%d_%H%M%S'))
 
-if "hooks" not in cfg:
+if "hooks" not in cfg or not isinstance(cfg["hooks"], dict):
     cfg["hooks"] = {}
-if "PreToolUse" not in cfg["hooks"]:
+if "PreToolUse" not in cfg["hooks"] or not isinstance(cfg["hooks"]["PreToolUse"], list):
     cfg["hooks"]["PreToolUse"] = []
 
-if force and has_dcg:
-    cfg["hooks"]["PreToolUse"] = [
-        g for g in cfg["hooks"]["PreToolUse"]
-        if not any("dcg_filter" in h.get("command", "") for h in g.get("hooks", []))
-    ]
-    cfg["hooks"]["PreToolUse"].append(new_group)
-else:
-    cfg["hooks"]["PreToolUse"].append(new_group)
+kept_groups = []
+for group in cfg["hooks"]["PreToolUse"]:
+    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+        kept_groups.append(group)
+        continue
+
+    kept_hooks = []
+    for hook in group["hooks"]:
+        cmd = str(hook.get("command", "")) if isinstance(hook, dict) else ""
+        trimmed = cmd.strip().lower()
+        is_project_dcg_hook = "dcg_filter" in cmd
+        is_direct_dcg_hook = trimmed in ("dcg", "dcg.exe")
+        if not (is_project_dcg_hook or is_direct_dcg_hook):
+            kept_hooks.append(hook)
+
+    if kept_hooks:
+        new_existing_group = dict(group)
+        new_existing_group["hooks"] = kept_hooks
+        kept_groups.append(new_existing_group)
+
+cfg["hooks"]["PreToolUse"] = kept_groups + [new_group]
 
 with open(settings_dst, 'w', encoding='utf-8') as f:
     json.dump(cfg, f, indent=2, ensure_ascii=False)
-print("    + ~/.claude/settings.json（已写入 dcg PreToolUse hook）")
+print("    + ~/.claude/settings.json（已规范化为单条低噪音 dcg PreToolUse hook）")
 PY
 }
 

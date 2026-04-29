@@ -753,25 +753,6 @@ function Install-ClaudeHooks($settingsDstPath) {
         return
     }
 
-    # 检查是否已存在 dcg hook
-    $hasDcg = $false
-    if ($cfg.PSObject.Properties.Name -contains "hooks") {
-        if ($cfg.hooks -and ($cfg.hooks.PSObject.Properties.Name -contains "PreToolUse")) {
-            foreach ($g in @($cfg.hooks.PreToolUse)) {
-                if (-not $g.hooks) { continue }
-                foreach ($h in @($g.hooks)) {
-                    if ($h.command -like "*dcg_filter*") { $hasDcg = $true; break }
-                }
-                if ($hasDcg) { break }
-            }
-        }
-    }
-
-    if ($hasDcg -and -not $Force) {
-        Write-Host "    + ~/.claude/settings.json（dcg hook 已存在，未修改）"
-        return
-    }
-
     if (-not ($cfg.PSObject.Properties.Name -contains "hooks")) {
         $cfg | Add-Member -MemberType NoteProperty -Name "hooks" -Value ([PSCustomObject]@{}) -Force
     }
@@ -779,20 +760,36 @@ function Install-ClaudeHooks($settingsDstPath) {
         $cfg.hooks | Add-Member -MemberType NoteProperty -Name "PreToolUse" -Value @() -Force
     }
 
-    if ($Force -and $hasDcg) {
-        # -Force 时替换旧 dcg 条目
-        $kept = @($cfg.hooks.PreToolUse | Where-Object {
-            $isDcg = $false
-            foreach ($h in @($_.hooks)) { if ($h.command -like "*dcg_filter*") { $isDcg = $true; break } }
-            -not $isDcg
-        })
-        $cfg.hooks.PreToolUse = $kept + @($newGroup)
-    } else {
-        $cfg.hooks.PreToolUse = @($cfg.hooks.PreToolUse) + @($newGroup)
+    $keptGroups = @()
+    foreach ($group in @($cfg.hooks.PreToolUse)) {
+        if (-not ($group.PSObject.Properties.Name -contains "hooks")) {
+            $keptGroups += $group
+            continue
+        }
+
+        $keptHooks = @()
+        foreach ($hook in @($group.hooks)) {
+            $cmd = ""
+            if ($hook.PSObject.Properties.Name -contains "command") {
+                $cmd = [string]$hook.command
+            }
+            $trimmedCmd = $cmd.Trim()
+            $isProjectDcgHook = $cmd -like "*dcg_filter*"
+            $isDirectDcgHook = $trimmedCmd -match '^dcg(\.exe)?$'
+            if (-not ($isProjectDcgHook -or $isDirectDcgHook)) {
+                $keptHooks += $hook
+            }
+        }
+
+        if ($keptHooks.Count -gt 0) {
+            $group.hooks = @($keptHooks)
+            $keptGroups += $group
+        }
     }
+    $cfg.hooks.PreToolUse = @($keptGroups) + @($newGroup)
 
     Write-Utf8NoBomFile $settingsDstPath (Format-Json ($cfg | ConvertTo-Json -Depth 20) 2)
-    Write-Host "    + ~/.claude/settings.json（已写入 dcg PreToolUse hook）"
+    Write-Host "    + ~/.claude/settings.json（已规范化为单条低噪音 dcg PreToolUse hook）"
 }
 
 function Install-CursorHooks($hooksJsonDstPath, $hooksDirDstPath) {
