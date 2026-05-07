@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "markitdown": {
+      "args": [
+        "tool",
+        "run",
+        "markitdown-mcp"
+      ],
+      "command": "__UV_PATH__",
+      "timeout": 60000
+    }
+  }
+}

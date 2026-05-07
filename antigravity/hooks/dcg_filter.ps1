@@ -1,0 +1,132 @@
+$ErrorActionPreference = "SilentlyContinue"
+
+$payload = [Console]::In.ReadToEnd()
+
+function Approve-Hook {
+    # Claude Code: exit 0 (no JSON output required) = allow
+    exit 0
+}
+
+function Deny-Hook([string]$reason) {
+    $out = @{
+        hookSpecificOutput = @{
+            hookEventName = "PreToolUse"
+            permissionDecision = "deny"
+            permissionDecisionReason = $reason
+        }
+    } | ConvertTo-Json -Depth 10 -Compress
+    Write-Output $out
+    exit 0
+}
+
+if ([string]::IsNullOrWhiteSpace($payload)) {
+    Approve-Hook
+}
+
+try {
+    $event = $payload | ConvertFrom-Json -ErrorAction Stop
+} catch {
+    Approve-Hook
+}
+
+$command = $null
+if ($event.PSObject.Properties.Name -contains "tool_input" -and $event.tool_input) {
+    if ($event.tool_input.PSObject.Properties.Name -contains "command") {
+        $command = [string]$event.tool_input.command
+    }
+}
+if (-not $command -and $event.PSObject.Properties.Name -contains "toolInput" -and $event.toolInput) {
+    if ($event.toolInput.PSObject.Properties.Name -contains "command") {
+        $command = [string]$event.toolInput.command
+    }
+}
+if (-not $command -and $event.PSObject.Properties.Name -contains "command") {
+    $command = [string]$event.command
+}
+
+if ([string]::IsNullOrWhiteSpace($command)) {
+    Approve-Hook
+}
+
+$riskPattern = @'
+(?isx)
+(
+  \b(rm|del|rd|rmdir|Remove-Item|ri|erase)\b
+| \b(find\b[\s\S]*\s-delete\b)
+| \bxargs\b[\s\S]*\b(rm|del|rmdir|Remove-Item)\b
+| \bgit\s+reset\b[\s\S]*\s--hard\b
+| \bgit\s+checkout\b[\s\S]*\s--\s+
+| \bgit\s+restore\b(?![\s\S]*\s--staged\b)
+| \bgit\s+clean\b
+| \bgit\s+branch\b[\s\S]*\s-D\b
+| \bgit\s+stash\s+(drop|clear)\b
+| \bgit\s+push\b[\s\S]*\s--force(?=\s|$)
+| \bgit\s+(filter-branch|filter-repo|rebase)\b
+| \b(DROP\s+(DATABASE|SCHEMA|TABLE)|TRUNCATE\s+TABLE|DELETE\s+FROM)\b
+| \b(redis-cli\b[\s\S]*\bFLUSH(ALL|DB)\b)
+| \b(kubectl|oc)\s+delete\b
+| \bterraform\s+destroy\b
+| \b(cdk|pulumi)\s+destroy\b
+| \b(docker|podman)\s+(system\s+prune|volume\s+rm|volume\s+prune|network\s+prune|container\s+prune|image\s+prune)\b
+| \b(aws\s+s3\s+rb|gcloud\s+projects\s+delete)\b
+| \b(Format-Volume|diskpart|mkfs(\.[A-Za-z0-9_+-]+)?|dd\s+if=|cipher\s+/w|fsutil)\b
+| \b(sdelete|sdelete64)\b
+| \bvssadmin\s+delete\s+shadows\b
+| \bbcdedit\b[\s\S]*\s/delete\b
+| \bwevtutil\s+cl\b
+| \bwmic\s+path\s+win32_process\s+call\s+terminate\b
+| \b(Get-CimInstance|gcim)\b[\s\S]*\bWin32_Process\b[\s\S]*\|\s*\b(Remove-CimInstance|rcim)\b
+| \b(Get-CimInstance|gcim)\b[\s\S]*\bWin32_Process\b[\s\S]*\|\s*\b(Invoke-CimMethod|icim)\b[\s\S]*\b-?MethodName\s+Terminate\b
+| \b(Invoke-CimMethod|icim)\b[\s\S]*\b-?ClassName\s+Win32_Process\b[\s\S]*\b-?MethodName\s+Terminate\b
+| \b(Invoke-CimMethod|icim)\b[\s\S]*\b-?MethodName\s+Terminate\b[\s\S]*\b-?ClassName\s+Win32_Process\b
+| \b(chmod\s+-R\s+777|Set-ExecutionPolicy\s+Unrestricted)\b
+| \b(npm\s+uninstall\s+-g|pip\s+uninstall\s+-y)\b
+)
+'@
+
+if ($command -notmatch $riskPattern) {
+    Approve-Hook
+}
+
+$localBlockPattern = @'
+(?isx)
+(
+  \b(sdelete|sdelete64)\b
+| \bvssadmin\s+delete\s+shadows\b
+| \bbcdedit\b[\s\S]*\s/delete\b
+| \bwevtutil\s+cl\b
+| \bwmic\s+path\s+win32_process\s+call\s+terminate\b
+| \b(Get-CimInstance|gcim)\b[\s\S]*\bWin32_Process\b[\s\S]*\|\s*\b(Remove-CimInstance|rcim)\b
+| \b(Get-CimInstance|gcim)\b[\s\S]*\bWin32_Process\b[\s\S]*\|\s*\b(Invoke-CimMethod|icim)\b[\s\S]*\b-?MethodName\s+Terminate\b
+| \b(Invoke-CimMethod|icim)\b[\s\S]*\b-?ClassName\s+Win32_Process\b[\s\S]*\b-?MethodName\s+Terminate\b
+| \b(Invoke-CimMethod|icim)\b[\s\S]*\b-?MethodName\s+Terminate\b[\s\S]*\b-?ClassName\s+Win32_Process\b
+)
+'@
+
+if ($command -match $localBlockPattern) {
+    Deny-Hook "BLOCKED by local destructive command guard. This Windows destructive command is not safely handled by dcg on this machine. Ask the user to run it manually if truly needed."
+}
+
+$dcg = Get-Command dcg -ErrorAction SilentlyContinue
+if (-not $dcg) {
+    $dcg = Get-Command dcg.exe -ErrorAction SilentlyContinue
+}
+if (-not $dcg) {
+    Approve-Hook
+}
+
+if (($event.PSObject.Properties.Name -notcontains "tool_name") -and
+    ($event.PSObject.Properties.Name -notcontains "toolName")) {
+    $event | Add-Member -MemberType NoteProperty -Name "tool_name" -Value "Bash" -Force
+    $payload = $event | ConvertTo-Json -Depth 20 -Compress
+}
+
+# Claude Code can process PreToolUse permissionDecision JSON on exit 0.
+# dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
+# dcg's stderr (text block) goes to the host console automatically.
+$dcgStdout = $payload | & $dcg.Source
+if ($dcgStdout -match '"permissionDecision"\s*:\s*"(deny|ask)"') {
+    Write-Output $dcgStdout
+    exit 0
+}
+exit 0

@@ -1,6 +1,6 @@
-﻿<#
+<#
 .SYNOPSIS
-    从当前机器同步最新的 Cursor + VS Code Copilot + Codex + Claude 配置到本仓库并推送到 GitHub
+    从当前机器同步最新的 Cursor + VS Code Copilot + Codex + Claude + Antigravity 配置到本仓库并推送到 GitHub
 
 .DESCRIPTION
     同步以下配置到本仓库目录：
@@ -12,6 +12,9 @@
     - ~/.codex/skills/ (排除 .system 与 codex-primary-runtime) → codex/skills/
     - ~/.claude/CLAUDE.md → claude/CLAUDE.md
     - ~/.claude/skills/ → claude/skills/
+    - ~/.gemini/GEMINI.md → antigravity/GEMINI.md
+    - ~/.gemini/antigravity/skills/ → antigravity/skills/
+    - Antigravity settings.json (chat.tools 相关) → antigravity/settings.json
     注意：mcp.json、config.toml、hooks.json 使用模板（含占位符），不从本机同步。
     codex/hooks/ 目录只保留 README（指向社区方案 dcg），不部署任何脚本。
     然后 git commit 并 push。
@@ -38,10 +41,14 @@ $codexSrc        = Join-Path $env:USERPROFILE ".codex"
 $codexDst        = Join-Path $repoDir "codex"
 $claudeSrc       = Join-Path $env:USERPROFILE ".claude"
 $claudeDst       = Join-Path $repoDir "claude"
+$antigravitySrc  = Join-Path $env:USERPROFILE ".gemini"
+$antigravityDst  = Join-Path $repoDir "antigravity"
 $vscodeSettSrc   = Join-Path $env:APPDATA "Code\User\settings.json"
 $vscodeSettDst   = Join-Path $repoDir "vscode\settings.json"
 $cursorSettSrc   = Join-Path $env:APPDATA "Cursor\User\settings.json"
 $cursorSettDst   = Join-Path $repoDir "cursor\settings.json"
+$antigravitySettSrc = Join-Path $env:APPDATA "antigravity\User\settings.json"
+$antigravitySettDst = Join-Path $repoDir "antigravity\settings.json"
 
 $copilotKeys = @("chat.", "github.copilot")
 # 任何键名（不区分大小写）匹配下列任一片段，将被排除以避免泄露
@@ -146,7 +153,7 @@ function Extract-CopilotSettings($srcPath, $dstPath) {
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  同步 Cursor + VS Code + Codex + Claude 配置到仓库" -ForegroundColor Cyan
+Write-Host "  同步 Cursor + VS Code + Codex + Claude + Antigravity 配置到仓库" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -155,7 +162,7 @@ Assert-GitReady $repoDir
 # ============================
 # 1. 同步 copilot
 # ============================
-Write-Host "[1/5] 同步 Copilot..." -ForegroundColor Green
+Write-Host "[1/7] 同步 Copilot..." -ForegroundColor Green
 foreach ($subdir in @("instructions", "skills")) {
     $src = Join-Path $copilotSrc $subdir
     $dst = Join-Path $copilotDst $subdir
@@ -169,7 +176,7 @@ foreach ($subdir in @("instructions", "skills")) {
 # ============================
 # 2. 同步 Cursor 配置（不含 mcp.json，使用模板）
 # ============================
-Write-Host "[2/5] 同步 Cursor 配置..." -ForegroundColor Green
+Write-Host "[2/7] 同步 Cursor 配置..." -ForegroundColor Green
 if (-not (Test-Path $cursorDst)) {
     New-Item -ItemType Directory -Path $cursorDst -Force | Out-Null
 }
@@ -202,7 +209,7 @@ Write-Host "  * mcp.json 使用模板，不从本机同步" -ForegroundColor Dar
 # ============================
 # 3. 同步 Codex 配置（AGENTS.md + skills；config.toml/hooks.json 使用模板）
 # ============================
-Write-Host "[3/5] 同步 Codex 配置..." -ForegroundColor Green
+Write-Host "[3/7] 同步 Codex 配置..." -ForegroundColor Green
 $codexAgentsSrc = Join-Path $codexSrc "AGENTS.md"
 if (Test-Path $codexAgentsSrc) {
     if (-not (Test-Path $codexDst)) {
@@ -243,7 +250,7 @@ Write-Host "  * config.toml / hooks.json 使用模板，不从本机同步（hoo
 # ============================
 # 4. 同步 Claude 配置
 # ============================
-Write-Host "[4/6] 同步 Claude 配置..." -ForegroundColor Green
+Write-Host "[4/7] 同步 Claude 配置..." -ForegroundColor Green
 $claudeConfigSrc = Join-Path $claudeSrc "CLAUDE.md"
 if (Test-Path $claudeConfigSrc) {
     if (-not (Test-Path $claudeDst)) {
@@ -271,7 +278,7 @@ if (Test-Path $claudeSkillsSrcLocal) {
 # ============================
 # 5. 同步 VS Code 配置（不含 mcp.json，使用模板）
 # ============================
-Write-Host "[5/6] 同步 VS Code 配置..." -ForegroundColor Green
+Write-Host "[5/7] 同步 VS Code 配置..." -ForegroundColor Green
 if (-not (Test-Path (Join-Path $repoDir "vscode"))) {
     New-Item -ItemType Directory -Path (Join-Path $repoDir "vscode") -Force | Out-Null
 }
@@ -281,9 +288,41 @@ Write-Host "  + settings.json (Copilot 相关)"
 Write-Host "  * mcp.json 使用模板，不从本机同步" -ForegroundColor DarkGray
 
 # ============================
-# 6. Git commit & push
+# 6. 同步 Antigravity 配置
 # ============================
-Write-Host "[6/6] 提交到 Git..." -ForegroundColor Green
+Write-Host "[6/7] 同步 Antigravity 配置..." -ForegroundColor Green
+$antigravityConfigSrc = Join-Path $antigravitySrc "GEMINI.md"
+if (Test-Path $antigravityConfigSrc) {
+    if (-not (Test-Path $antigravityDst)) {
+        New-Item -ItemType Directory -Path $antigravityDst -Force | Out-Null
+    }
+    Copy-Item $antigravityConfigSrc (Join-Path $antigravityDst "GEMINI.md") -Force
+    Write-Host "  + GEMINI.md"
+} else {
+    Write-Host "  未找到 ~/.gemini/GEMINI.md，跳过" -ForegroundColor Yellow
+}
+
+$antigravitySkillsSrcLocal = Join-Path $antigravitySrc "antigravity\skills"
+$antigravitySkillsDstRepo  = Join-Path $antigravityDst "skills"
+if (Test-Path $antigravitySkillsSrcLocal) {
+    if (-not (Test-Path $antigravityDst)) {
+        New-Item -ItemType Directory -Path $antigravityDst -Force | Out-Null
+    }
+    if (Test-Path $antigravitySkillsDstRepo) { Remove-Item $antigravitySkillsDstRepo -Recurse -Force }
+    Copy-Item $antigravitySkillsSrcLocal $antigravitySkillsDstRepo -Recurse -Force
+    Write-Host "  + skills/"
+} else {
+    Write-Host "  未找到 ~/.gemini/antigravity/skills/，跳过" -ForegroundColor Yellow
+}
+
+Extract-CopilotSettings $antigravitySettSrc $antigravitySettDst
+Write-Host "  + settings.json (chat.tools 相关)"
+Write-Host "  * mcp_config.json 使用模板，不从本机同步" -ForegroundColor DarkGray
+
+# ============================
+# 7. Git commit & push
+# ============================
+Write-Host "[7/7] 提交到 Git..." -ForegroundColor Green
 Push-Location $repoDir
 git add -A
 $status = git status --porcelain

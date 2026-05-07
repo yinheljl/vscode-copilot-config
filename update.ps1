@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     从 GitHub 拉取最新配置并自动还原到本机
 
@@ -25,7 +25,7 @@ param(
     [switch]$AutoInstallDcg,
     [switch]$DisableDcgHooks,
     [switch]$SkipDcg,
-    [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude")]
+    [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude", "Antigravity")]
     [string[]]$Target = @("All")
 )
 

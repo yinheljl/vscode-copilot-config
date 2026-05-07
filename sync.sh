@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sync.sh — 从当前机器同步 Cursor + VS Code Copilot + Codex + Claude 配置到本仓库（Linux / macOS）
+# sync.sh — 从当前机器同步 Cursor + VS Code Copilot + Codex + Claude + Antigravity 配置到本仓库（Linux / macOS）
 #
 # 同步内容：
 #   ~/.copilot/{instructions,skills}        → copilot/
@@ -8,6 +8,9 @@
 #   VS Code settings.json (Copilot 相关)    → vscode/settings.json
 #   ~/.codex/AGENTS.md                       → codex/AGENTS.md
 #   ~/.claude/{CLAUDE.md,skills}             → claude/
+#   ~/.gemini/GEMINI.md                      → antigravity/GEMINI.md
+#   ~/.gemini/antigravity/skills             → antigravity/skills/
+#   Antigravity settings.json                → antigravity/settings.json
 # mcp.json 与 config.toml 使用模板，不从本机同步。
 
 set -euo pipefail
@@ -54,13 +57,18 @@ CODEX_SRC="$HOME/.codex"
 CODEX_DST="$REPO_DIR/codex"
 CLAUDE_SRC="$HOME/.claude"
 CLAUDE_DST="$REPO_DIR/claude"
+ANTIGRAVITY_SRC="$HOME/.gemini"
+ANTIGRAVITY_DST="$REPO_DIR/antigravity"
+ANTIGRAVITY_SETT_DST="$REPO_DIR/antigravity/settings.json"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User"
     CURSOR_USER_DIR="$HOME/Library/Application Support/Cursor/User"
+    ANTIGRAVITY_SETT_SRC="$HOME/Library/Application Support/antigravity/User/settings.json"
 else
     VSCODE_USER_DIR="$HOME/.config/Code/User"
     CURSOR_USER_DIR="$HOME/.config/Cursor/User"
+    ANTIGRAVITY_SETT_SRC="$HOME/.config/antigravity/User/settings.json"
 fi
 VSCODE_SETT_SRC="$VSCODE_USER_DIR/settings.json"
 VSCODE_SETT_DST="$REPO_DIR/vscode/settings.json"
@@ -139,14 +147,14 @@ PY
 }
 
 echo "========================================"
-echo "  同步 Cursor + VS Code + Codex + Claude 配置到仓库"
+echo "  同步 Cursor + VS Code + Codex + Claude + Antigravity 配置到仓库"
 echo "========================================"
 echo ""
 
 assert_git_ready
 
 # --- 1. Copilot ---
-echo "[1/5] 同步 Copilot..."
+echo "[1/7] 同步 Copilot..."
 for sub in instructions skills; do
     src="$COPILOT_SRC/$sub"
     dst="$COPILOT_DST/$sub"
@@ -159,7 +167,7 @@ for sub in instructions skills; do
 done
 
 # --- 2. Cursor ---
-echo "[2/5] 同步 Cursor..."
+echo "[2/7] 同步 Cursor..."
 mkdir -p "$CURSOR_DST"
 for sub in rules skills; do
     src="$CURSOR_SRC/$sub"
@@ -180,7 +188,7 @@ echo "  + settings.json (Copilot/MCP 相关)"
 echo "  * mcp.json 使用模板，不从本机同步"
 
 # --- 3. Codex ---
-echo "[3/5] 同步 Codex..."
+echo "[3/7] 同步 Codex..."
 if [ -f "$CODEX_SRC/AGENTS.md" ]; then
     mkdir -p "$CODEX_DST"
     cp -f "$CODEX_SRC/AGENTS.md" "$CODEX_DST/AGENTS.md"
@@ -211,7 +219,7 @@ fi
 echo "  * config.toml / hooks.json 使用模板，不从本机同步（hooks.json 引用社区方案 dcg）"
 
 # --- 4. Claude ---
-echo "[4/6] 同步 Claude..."
+echo "[4/7] 同步 Claude..."
 if [ -f "$CLAUDE_SRC/CLAUDE.md" ]; then
     mkdir -p "$CLAUDE_DST"
     cp -f "$CLAUDE_SRC/CLAUDE.md" "$CLAUDE_DST/CLAUDE.md"
@@ -229,14 +237,35 @@ else
 fi
 
 # --- 5. VS Code ---
-echo "[5/6] 同步 VS Code..."
+echo "[5/7] 同步 VS Code..."
 mkdir -p "$REPO_DIR/vscode"
 extract_copilot_settings "$VSCODE_SETT_SRC" "$VSCODE_SETT_DST"
 echo "  + settings.json (Copilot 相关)"
 echo "  * mcp.json 使用模板，不从本机同步"
 
-# --- 6. Git commit & push ---
-echo "[6/6] 提交到 Git..."
+# --- 6. Antigravity ---
+echo "[6/7] 同步 Antigravity..."
+if [ -f "$ANTIGRAVITY_SRC/GEMINI.md" ]; then
+    mkdir -p "$ANTIGRAVITY_DST"
+    cp -f "$ANTIGRAVITY_SRC/GEMINI.md" "$ANTIGRAVITY_DST/GEMINI.md"
+    echo "  + GEMINI.md"
+else
+    echo "  未找到 ~/.gemini/GEMINI.md，跳过"
+fi
+if [ -d "$ANTIGRAVITY_SRC/antigravity/skills" ]; then
+    rm -rf "$ANTIGRAVITY_DST/skills"
+    mkdir -p "$ANTIGRAVITY_DST"
+    cp -rf "$ANTIGRAVITY_SRC/antigravity/skills" "$ANTIGRAVITY_DST/skills"
+    echo "  + skills/"
+else
+    echo "  未找到 ~/.gemini/antigravity/skills/，跳过"
+fi
+extract_copilot_settings "$ANTIGRAVITY_SETT_SRC" "$ANTIGRAVITY_SETT_DST"
+echo "  + settings.json (chat.tools 相关)"
+echo "  * mcp_config.json 使用模板，不从本机同步"
+
+# --- 7. Git commit & push ---
+echo "[7/7] 提交到 Git..."
 cd "$REPO_DIR"
 git add -A
 if [ -z "$(git status --porcelain)" ]; then

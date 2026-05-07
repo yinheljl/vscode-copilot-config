@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PURE_JSON = [
     "vscode/mcp.json",
     "cursor/mcp.json",
+    "antigravity/mcp.json",
     "cursor/hooks.json",
     "codex/hooks.json",
     "copilot/hooks/dcg-guard.json",
@@ -26,6 +27,7 @@ PURE_JSON = [
 JSONC = [
     "vscode/settings.json",
     "cursor/settings.json",
+    "antigravity/settings.json",
 ]
 TOML_FILES = [
     "codex/config.toml",

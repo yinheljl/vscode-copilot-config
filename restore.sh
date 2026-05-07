@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# restore.sh — 还原 Cursor + VS Code GitHub Copilot + Codex + Claude 个人配置（Linux / macOS）
+# restore.sh — 还原 Cursor + VS Code GitHub Copilot + Codex + Claude + Antigravity 个人配置（Linux / macOS）
 # 自动检测已安装的 IDE，仅配置已安装的环境。
 # 默认增量模式（不覆盖用户已有配置），使用 --force 切换为覆盖模式。
 
@@ -12,6 +12,7 @@ TARGET_VSCODE=false
 TARGET_CURSOR=false
 TARGET_CODEX=false
 TARGET_CLAUDE=false
+TARGET_ANTIGRAVITY=false
 AUTO_INSTALL_DCG=false
 SKIP_DCG=false
 DISABLE_DCG_HOOKS=false
@@ -33,6 +34,7 @@ for arg in "$@"; do
                     cursor) TARGET_CURSOR=true ;;
                     codex)  TARGET_CODEX=true ;;
                     claude) TARGET_CLAUDE=true ;;
+                    antigravity) TARGET_ANTIGRAVITY=true ;;
                     all)    TARGET_ALL=true ;;
                 esac
             done
@@ -68,14 +70,26 @@ CODEX_HOOKS_SRC="$CODEX_SRC/hooks"
 CODEX_HOOKS_DST="$CODEX_DST/hooks"
 CODEX_HOOKS_JSON_SRC="$CODEX_SRC/hooks.json"
 CODEX_HOOKS_JSON_DST="$CODEX_DST/hooks.json"
+ANTIGRAVITY_SRC="$SCRIPT_DIR/antigravity"
+ANTIGRAVITY_DST="$HOME/.gemini/antigravity"
+ANTIGRAVITY_CONFIG_SRC="$ANTIGRAVITY_SRC/GEMINI.md"
+ANTIGRAVITY_CONFIG_DST="$HOME/.gemini/GEMINI.md"
+ANTIGRAVITY_SKILLS_SRC="$ANTIGRAVITY_SRC/skills"
+ANTIGRAVITY_SKILLS_DST="$ANTIGRAVITY_DST/skills"
+ANTIGRAVITY_HOOKS_SRC="$ANTIGRAVITY_SRC/hooks"
+ANTIGRAVITY_HOOKS_DST="$ANTIGRAVITY_DST/hooks"
+ANTIGRAVITY_MCP_SRC="$ANTIGRAVITY_SRC/mcp.json"
+ANTIGRAVITY_MCP_DST="$ANTIGRAVITY_DST/mcp_config.json"
 
-# VS Code / Cursor 用户配置目录（macOS 和 Linux 路径不同）
+# VS Code / Cursor / Antigravity 用户配置目录（macOS 和 Linux 路径不同）
 if [[ "$OSTYPE" == "darwin"* ]]; then
     VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User"
     CURSOR_USER_DIR="$HOME/Library/Application Support/Cursor/User"
+    ANTIGRAVITY_USER_DIR="$HOME/Library/Application Support/antigravity/User"
 else
     VSCODE_USER_DIR="$HOME/.config/Code/User"
     CURSOR_USER_DIR="$HOME/.config/Cursor/User"
+    ANTIGRAVITY_USER_DIR="$HOME/.config/antigravity/User"
 fi
 
 MCP_SRC="$SCRIPT_DIR/vscode/mcp.json"
@@ -84,6 +98,8 @@ VSCODE_SETT_SRC="$SCRIPT_DIR/vscode/settings.json"
 VSCODE_SETT_DST="$VSCODE_USER_DIR/settings.json"
 CURSOR_SETT_SRC="$SCRIPT_DIR/cursor/settings.json"
 CURSOR_SETT_DST="$CURSOR_USER_DIR/settings.json"
+ANTIGRAVITY_SETT_SRC="$SCRIPT_DIR/antigravity/settings.json"
+ANTIGRAVITY_SETT_DST="$ANTIGRAVITY_USER_DIR/settings.json"
 
 # ============================
 # IDE 自动检测
@@ -92,6 +108,7 @@ HAS_VSCODE=false
 HAS_CURSOR=false
 HAS_CODEX=false
 HAS_CLAUDE=false
+HAS_ANTIGRAVITY=false
 
 if [ -d "$VSCODE_USER_DIR" ] || command -v code &>/dev/null; then
     HAS_VSCODE=true
@@ -109,6 +126,10 @@ if [ -d "$CLAUDE_DST" ] || command -v claude &>/dev/null; then
     HAS_CLAUDE=true
 fi
 
+if [ -d "$ANTIGRAVITY_DST" ] || command -v antigravity &>/dev/null; then
+    HAS_ANTIGRAVITY=true
+fi
+
 # ============================
 # --target 参数过滤
 # ============================
@@ -117,6 +138,7 @@ if [ "$TARGET_ALL" = false ]; then
     [ "$TARGET_CURSOR" = false ] && HAS_CURSOR=false
     [ "$TARGET_CODEX"  = false ] && HAS_CODEX=false
     [ "$TARGET_CLAUDE" = false ] && HAS_CLAUDE=false
+    [ "$TARGET_ANTIGRAVITY" = false ] && HAS_ANTIGRAVITY=false
 fi
 
 resolve_uv_path() {
@@ -483,6 +505,114 @@ print("    + ~/.claude/settings.json（已规范化为单条低噪音 dcg PreToo
 PY
 }
 
+install_antigravity_hooks() {
+    echo "  Antigravity 硬层（破坏性命令防护 dcg）："
+
+    if [ "$SKIP_DCG" = true ]; then
+        echo "    → --skip-dcg 已启用，跳过 Antigravity dcg hook。软层 SKILL 仍生效。"
+        return
+    fi
+    if [ "$DISABLE_DCG_HOOKS" = true ]; then
+        echo "    → --disable-dcg-hooks 已启用，跳过 Antigravity dcg hook 部署。"
+        return
+    fi
+
+    if ! test_dcg_installed; then
+        echo "    → dcg 未安装，跳过 Antigravity PreToolUse hook。软层 SKILL 仍生效。"
+        return
+    fi
+
+    # 1. 部署 antigravity/hooks/ → ~/.gemini/antigravity/hooks/
+    if [ -d "$ANTIGRAVITY_HOOKS_SRC" ]; then
+        if [ "$FORCE" = true ]; then
+            copy_dir_replace "$ANTIGRAVITY_HOOKS_SRC" "$ANTIGRAVITY_HOOKS_DST"
+            echo "    + ~/.gemini/antigravity/hooks/（覆盖，低噪音 dcg 过滤器）"
+        else
+            copy_dir_merge "$ANTIGRAVITY_HOOKS_SRC" "$ANTIGRAVITY_HOOKS_DST"
+            echo "    + ~/.gemini/antigravity/hooks/（增量，低噪音 dcg 过滤器）"
+        fi
+    fi
+
+    # 2. 合并 chat.hooks.PreToolUse 条目到 settings.json
+    local hook_cmd
+    if command -v python3 >/dev/null 2>&1 && [ -f "$ANTIGRAVITY_HOOKS_DST/dcg_filter.py" ]; then
+        hook_cmd="python3 \"$ANTIGRAVITY_HOOKS_DST/dcg_filter.py\""
+    elif [ -f "$ANTIGRAVITY_HOOKS_DST/dcg_filter.ps1" ]; then
+        hook_cmd="powershell -NoProfile -ExecutionPolicy Bypass -File \"$ANTIGRAVITY_HOOKS_DST/dcg_filter.ps1\""
+    else
+        hook_cmd="dcg"
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "    ! 未安装 python3，跳过 Antigravity settings.json hook 注册。" >&2
+        return
+    fi
+
+    HOOK_CMD="$hook_cmd" SETTINGS_DST="$ANTIGRAVITY_SETT_DST" FORCE="$FORCE" python3 - <<'PY'
+import json, os, sys
+
+hook_cmd = os.environ['HOOK_CMD']
+settings_dst = os.environ['SETTINGS_DST']
+force = os.environ.get('FORCE', 'false') == 'true'
+
+new_group = {
+    "matcher": "Bash",
+    "hooks": [
+        {
+            "type": "command",
+            "command": hook_cmd,
+            "timeout": 10
+        }
+    ]
+}
+
+if not os.path.exists(settings_dst):
+    os.makedirs(os.path.dirname(settings_dst), exist_ok=True)
+    obj = {"chat.hooks": {"PreToolUse": [new_group]}}
+    with open(settings_dst, 'w', encoding='utf-8') as f:
+        json.dump(obj, f, indent=2, ensure_ascii=False)
+    print("    + Antigravity settings.json（新建，写入 dcg PreToolUse hook）")
+    sys.exit(0)
+
+with open(settings_dst, 'r', encoding='utf-8') as f:
+    cfg = json.load(f)
+
+import shutil, time
+shutil.copy2(settings_dst, settings_dst + '.bak_' + time.strftime('%Y%m%d_%H%M%S'))
+
+if "chat.hooks" not in cfg or not isinstance(cfg["chat.hooks"], dict):
+    cfg["chat.hooks"] = {}
+if "PreToolUse" not in cfg["chat.hooks"] or not isinstance(cfg["chat.hooks"]["PreToolUse"], list):
+    cfg["chat.hooks"]["PreToolUse"] = []
+
+kept_groups = []
+for group in cfg["chat.hooks"]["PreToolUse"]:
+    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+        kept_groups.append(group)
+        continue
+
+    kept_hooks = []
+    for hook in group["hooks"]:
+        cmd = str(hook.get("command", "")) if isinstance(hook, dict) else ""
+        trimmed = cmd.strip().lower()
+        is_project_dcg_hook = "dcg_filter" in cmd
+        is_direct_dcg_hook = trimmed in ("dcg", "dcg.exe")
+        if not (is_project_dcg_hook or is_direct_dcg_hook):
+            kept_hooks.append(hook)
+
+    if kept_hooks:
+        new_existing_group = dict(group)
+        new_existing_group["hooks"] = kept_hooks
+        kept_groups.append(new_existing_group)
+
+cfg["chat.hooks"]["PreToolUse"] = kept_groups + [new_group]
+
+with open(settings_dst, 'w', encoding='utf-8') as f:
+    json.dump(cfg, f, indent=2, ensure_ascii=False)
+print("    + Antigravity settings.json（已规范化为单条低噪音 dcg PreToolUse hook）")
+PY
+}
+
 install_cursor_hooks() {
     # Cursor 硬层：部署低噪音 dcg beforeShellExecution hook（cursor/hooks.json + cursor/hooks/ → ~/.cursor/）。
     # Cursor 的 preToolUse deny 有已知 bug，因此使用 beforeShellExecution（仅 Shell 命令触发）。
@@ -790,19 +920,22 @@ if [ "$HAS_VSCODE" = true ]; then echo "  + VS Code"; fi
 if [ "$HAS_CURSOR" = true ]; then echo "  + Cursor"; fi
 if [ "$HAS_CODEX" = true ]; then echo "  + Codex"; fi
 if [ "$HAS_CLAUDE" = true ]; then echo "  + Claude"; fi
-if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ] && [ "$HAS_CODEX" = false ] && [ "$HAS_CLAUDE" = false ]; then
+if [ "$HAS_ANTIGRAVITY" = true ]; then echo "  + Antigravity"; fi
+if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ] && [ "$HAS_CODEX" = false ] && [ "$HAS_CLAUDE" = false ] && [ "$HAS_ANTIGRAVITY" = false ]; then
     if [ "$TARGET_ALL" = false ]; then
         echo "  指定的 IDE 未安装，仍将安装配置（IDE 安装后即可使用）。"
         [ "$TARGET_VSCODE" = true ] && HAS_VSCODE=true
         [ "$TARGET_CURSOR" = true ] && HAS_CURSOR=true
         [ "$TARGET_CODEX"  = true ] && HAS_CODEX=true
         [ "$TARGET_CLAUDE" = true ] && HAS_CLAUDE=true
+        [ "$TARGET_ANTIGRAVITY" = true ] && HAS_ANTIGRAVITY=true
     else
         echo "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。"
         HAS_VSCODE=true
         HAS_CURSOR=true
         HAS_CODEX=true
         HAS_CLAUDE=true
+        HAS_ANTIGRAVITY=true
     fi
 fi
 echo ""
@@ -920,8 +1053,41 @@ if [ "$HAS_CLAUDE" = true ]; then
     fi
 fi
 
+# --- 4.5. 还原 Antigravity 配置 ---
+if [ "$HAS_ANTIGRAVITY" = true ]; then
+    echo "[4.5] 还原 Antigravity 配置（GEMINI.md + skills + settings + 低噪音 hooks）..."
+    if [ ! -d "$ANTIGRAVITY_SRC" ]; then
+        echo "  警告：找不到源目录: $ANTIGRAVITY_SRC" >&2
+    else
+        mkdir -p "$HOME/.gemini"
+        mkdir -p "$ANTIGRAVITY_DST"
+        
+        if [ -f "$ANTIGRAVITY_CONFIG_SRC" ]; then
+            [ -f "$ANTIGRAVITY_CONFIG_DST" ] && cp "$ANTIGRAVITY_CONFIG_DST" "${ANTIGRAVITY_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+            cp "$ANTIGRAVITY_CONFIG_SRC" "$ANTIGRAVITY_CONFIG_DST"
+            echo "  + GEMINI.md"
+        fi
+        
+        if [ -d "$ANTIGRAVITY_SKILLS_SRC" ]; then
+            if [ "$FORCE" = true ]; then
+                copy_dir_replace "$ANTIGRAVITY_SKILLS_SRC" "$ANTIGRAVITY_SKILLS_DST"
+                echo "  + skills/ (覆盖)"
+            else
+                copy_dir_merge "$ANTIGRAVITY_SKILLS_SRC" "$ANTIGRAVITY_SKILLS_DST"
+                echo "  + skills/ (增量)"
+            fi
+        fi
+        
+        if [ -f "$ANTIGRAVITY_SETT_SRC" ]; then
+            merge_json_settings "$ANTIGRAVITY_SETT_SRC" "$ANTIGRAVITY_SETT_DST"
+        fi
+        
+        install_antigravity_hooks
+    fi
+fi
+
 # --- 5. 生成 MCP 配置 ---
-if [ "$HAS_CURSOR" = true ] || [ "$HAS_VSCODE" = true ] || [ "$HAS_CODEX" = true ]; then
+if [ "$HAS_CURSOR" = true ] || [ "$HAS_VSCODE" = true ] || [ "$HAS_CODEX" = true ] || [ "$HAS_ANTIGRAVITY" = true ]; then
     echo "[5] 配置 MCP 服务器..."
     UV_PATH=$(resolve_uv_path || true)
     if [ -z "$UV_PATH" ]; then
@@ -951,6 +1117,9 @@ if [ "$HAS_CURSOR" = true ] || [ "$HAS_VSCODE" = true ] || [ "$HAS_CODEX" = true
     fi
     if [ "$HAS_VSCODE" = true ]; then
         install_mcp_json "$MCP_SRC" "$MCP_DST" "$UV_PATH"
+    fi
+    if [ "$HAS_ANTIGRAVITY" = true ]; then
+        install_mcp_json "$ANTIGRAVITY_MCP_SRC" "$ANTIGRAVITY_MCP_DST" "$UV_PATH"
     fi
     if [ "$HAS_CODEX" = true ]; then
         # 合并 Codex config.toml MCP 服务器配置
@@ -1067,6 +1236,16 @@ if [ "$HAS_CLAUDE" = true ]; then
         CHECKS="$CHECKS ~/.claude/hooks/:$CLAUDE_HOOKS_DST"
     fi
 fi
+if [ "$HAS_ANTIGRAVITY" = true ]; then
+    CHECKS="$CHECKS ~/.gemini/GEMINI.md:$ANTIGRAVITY_CONFIG_DST"
+    CHECKS="$CHECKS ~/.gemini/antigravity/skills/:$ANTIGRAVITY_SKILLS_DST"
+    CHECKS="$CHECKS ~/.gemini/antigravity/skills/destructive-command-guard/:$ANTIGRAVITY_SKILLS_DST/destructive-command-guard"
+    CHECKS="$CHECKS ~/.gemini/antigravity/mcp_config.json:$ANTIGRAVITY_MCP_DST"
+    CHECKS="$CHECKS Antigravity_settings.json:$ANTIGRAVITY_SETT_DST"
+    if [ "$SKIP_DCG" = false ] && [ "$DISABLE_DCG_HOOKS" = false ]; then
+        CHECKS="$CHECKS ~/.gemini/antigravity/hooks/:$ANTIGRAVITY_HOOKS_DST"
+    fi
+fi
 for item in $CHECKS; do
     name="${item%%:*}"
     path="${item#*:}"
@@ -1106,6 +1285,20 @@ if [ "$HAS_CLAUDE" = true ] && [ "$SKIP_DCG" = false ]; then
         echo "  ~ Claude Code dcg hook（hooks/ 未找到）"
     fi
 fi
+if [ "$HAS_ANTIGRAVITY" = true ] && [ "$SKIP_DCG" = false ]; then
+    if test_dcg_installed; then
+        echo "  + dcg 二进制（Antigravity 硬层已启用）"
+    else
+        echo "  ~ dcg 未安装（Antigravity 硬层未启用；软层 SKILL 仍生效）"
+    fi
+    if [ "$DISABLE_DCG_HOOKS" = true ]; then
+        echo "  + Antigravity dcg hook 已按参数跳过"
+    elif [ -d "$ANTIGRAVITY_HOOKS_DST" ]; then
+        echo "  + Antigravity dcg hook（低噪音过滤器）"
+    else
+        echo "  ~ Antigravity dcg hook（hooks/ 未找到）"
+    fi
+fi
 if [ "$HAS_CURSOR" = true ] && [ "$SKIP_DCG" = false ]; then
     if [ "$DISABLE_DCG_HOOKS" = true ]; then
         echo "  + Cursor dcg hook 已按参数跳过"
@@ -1135,4 +1328,5 @@ if [ "$HAS_VSCODE" = true ]; then echo "  - 重启 VS Code"; fi
 if [ "$HAS_CURSOR" = true ]; then echo "  - 重启 Cursor，验证 MCP Server 是否正常加载"; fi
 if [ "$HAS_CODEX" = true ]; then echo "  - 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载"; fi
 if [ "$HAS_CLAUDE" = true ]; then echo "  - 重启 Claude Code"; fi
+if [ "$HAS_ANTIGRAVITY" = true ]; then echo "  - 重启 Antigravity"; fi
 echo "  - 如需其他 MCP（GitHub、Context7 等），按需手动安装"

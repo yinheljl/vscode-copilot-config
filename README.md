@@ -1,6 +1,6 @@
-# VS Code & Cursor & Codex & Claude 全局配置中心
+# VS Code & Cursor & Codex & Claude & Antigravity 全局配置中心
 
-> **一键配置 VS Code GitHub Copilot、Cursor、Codex 和 Claude 的全局 Rules、Skills、MCP 服务器等。**
+> **一键配置 VS Code GitHub Copilot、Cursor、Codex、Claude 和 Antigravity 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
 
 当前版本：`1.4.10`
@@ -40,15 +40,15 @@
    bash ~/.copilot-config/restore.sh
    ```
 
-3. **提示用户重启所有已安装的 IDE**（VS Code、Cursor、Codex、Claude 等）
+3. **提示用户重启所有已安装的 IDE**（VS Code、Cursor、Codex、Claude、Antigravity 等）
 
-> **脚本会自动检测并配置所有已安装的 IDE**（VS Code / Cursor / Codex / Claude），无需手动指定。
+> **脚本会自动检测并配置所有已安装的 IDE**（VS Code / Cursor / Codex / Claude / Antigravity），无需手动指定。
 >
 > **可选参数**（仅在用户明确要求时使用）：
 >
 > | 用户意图 | 参数 |
 > |----------|------|
-> | 仅配置指定 IDE | `-Target Codex`、`-Target VSCode,Cursor`、`-Target Claude` |
+> | 仅配置指定 IDE | `-Target Codex`、`-Target VSCode,Cursor`、`-Target Claude`、`-Target Antigravity` |
 > | 覆盖已有配置 | `-Force` |
 > | 组合使用 | `-Target Codex -Force` |
 >
@@ -57,6 +57,7 @@
 > - "Cursor" → `-Target Cursor`
 > - "Codex" → `-Target Codex`
 > - "Claude" / "Claude Code" → `-Target Claude`
+> - "Antigravity" → `-Target Antigravity`
 > - "覆盖" / "覆盖模式" / "干净安装" → 加 `-Force`
 > - 未指定 → 不传 `-Target`（配置所有 IDE）
 
@@ -112,6 +113,11 @@
 | `claude/CLAUDE.md` | Claude 全局行为规范（5 条编码准则） |
 | `claude/skills/` | Claude 全局 Skills（9 个，扁平结构，与其他 IDE 技能内容同源） |
 | `claude/hooks/` | Claude Code PreToolUse dcg 低噪音过滤器 |
+| `antigravity/GEMINI.md` | Antigravity 全局行为规范 |
+| `antigravity/skills/` | Antigravity 全局 Skills |
+| `antigravity/hooks/` | Antigravity PreToolUse dcg 低噪音过滤器 |
+| `antigravity/mcp.json` | Antigravity MCP 服务器配置模板 |
+| `antigravity/settings.json` | Antigravity 编辑器设置模板 |
 | `copilot/instructions/` | VS Code Copilot 全局指令（中文规范、Python 虚拟环境、5 条编码准则等） |
 | `copilot/skills/` | VS Code Copilot 自定义 Skill（按分类组织的 9 个，含安全护栏） |
 | `copilot/hooks/` | GitHub Copilot preToolUse dcg 低噪音过滤器 |
@@ -154,10 +160,11 @@
 | `copilot/instructions/copilot-instructions.md` | VS Code Copilot | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
 | `codex/AGENTS.md` | Codex | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
 | `cursor/rules/mcp-feedback.mdc` | Cursor | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
+| `antigravity/GEMINI.md` | Antigravity | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
 
 ## 🛠️ Skills 清单
 
-### 共享 Skills（Cursor + VS Code Copilot + Codex + Claude 四套同源）
+### 共享 Skills（Cursor + VS Code Copilot + Codex + Claude + Antigravity 五套同源）
 
 | 分类 | 技能 | 用途 |
 |------|------|------|
@@ -188,7 +195,7 @@
 | 项 | 详情 |
 |----|------|
 | ✅ 平台 | Windows / macOS / Linux 全部生效 |
-| ✅ IDE | Cursor / VS Code Copilot / Codex / Claude 四家同源 |
+| ✅ IDE | Cursor / VS Code Copilot / Codex / Claude / Antigravity 五家同源 |
 | 💰 成本 | description 约 200 tokens 注入 system prompt，完整 SKILL.md 仅在触发时加载 |
 | ⚠️ 局限 | 属于 prompt 层，模型在极端情况（上下文严重压缩、`--full-auto` / `--yolo` / `danger-full-access`）可能绕过 |
 
@@ -277,6 +284,13 @@ New-Item -ItemType Directory -Path "$env:USERPROFILE\.claude" -Force
 Copy-Item "C:\Temp\copilot-config\claude\CLAUDE.md" "$env:USERPROFILE\.claude\CLAUDE.md" -Force
 Copy-Item -Recurse "C:\Temp\copilot-config\claude\skills" "$env:USERPROFILE\.claude\" -Force
 
+# 6. Antigravity：GEMINI.md + skills + settings.json
+New-Item -ItemType Directory -Path "$env:USERPROFILE\.gemini\antigravity" -Force
+Copy-Item "C:\Temp\copilot-config\antigravity\GEMINI.md" "$env:USERPROFILE\.gemini\GEMINI.md" -Force
+Copy-Item -Recurse "C:\Temp\copilot-config\antigravity\skills" "$env:USERPROFILE\.gemini\antigravity\" -Force
+New-Item -ItemType Directory -Path "$env:APPDATA\antigravity\User" -Force
+Copy-Item "C:\Temp\copilot-config\antigravity\settings.json" "$env:APPDATA\antigravity\User\settings.json" -Force
+
 ```
 
 > 手动安装时需自行处理 mcp.json 和 config.toml 模板中的路径占位符替换，详见 `vscode/mcp.json`、`cursor/mcp.json` 和 `codex/config.toml`。本仓库不再自动安装或配置 Interactive-Feedback-MCP。
@@ -302,6 +316,7 @@ bash restore.sh                      # 增量模式（默认）
 bash restore.sh --force              # 完全覆盖模式
 bash restore.sh --target=codex       # 仅配置 Codex
 bash restore.sh --target=claude      # 仅配置 Claude
+bash restore.sh --target=antigravity # 仅配置 Antigravity
 bash restore.sh --target=vscode,cursor  # 仅配置 VS Code 和 Cursor
 bash restore.sh --force --target=codex  # 仅覆盖 Codex 配置
 bash restore.sh --auto-install-dcg   # 未装 dcg 时直接调用官方 install.sh，不再交互询问
@@ -327,11 +342,11 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 ### 格式差异说明
 
-| 特性 | Cursor | VS Code | Codex | Claude |
-|------|--------|---------|-------|--------|
-| MCP 配置格式 | `mcp.json` (`mcpServers`) | `mcp.json` (`servers`) | `config.toml` (`[mcp_servers]`) | 不由本仓库配置 |
-| MCP 条目格式 | 无需 `type` 字段 | 需要 `type: "stdio"` | TOML 表格式 | 不适用 |
-| 规则格式 | `.mdc` + YAML frontmatter | `.instructions.md` + YAML frontmatter | `AGENTS.md`（纯 Markdown） | `CLAUDE.md`（纯 Markdown） |
+| 特性 | Cursor | VS Code | Codex | Claude | Antigravity |
+|------|--------|---------|-------|--------|-------------|
+| MCP 配置格式 | `mcp.json` (`mcpServers`) | `mcp.json` (`servers`) | `config.toml` (`[mcp_servers]`) | 不由本仓库配置 | `mcp_config.json` (`mcpServers`) |
+| MCP 条目格式 | 无需 `type` 字段 | 需要 `type: "stdio"` | TOML 表格式 | 不适用 | 无需 `type` 字段 |
+| 规则格式 | `.mdc` + YAML frontmatter | `.instructions.md` + YAML frontmatter | `AGENTS.md`（纯 Markdown） | `CLAUDE.md`（纯 Markdown） | `GEMINI.md`（纯 Markdown） |
 
 ## 🗺️ 路线图
 

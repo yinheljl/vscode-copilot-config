@@ -1,9 +1,9 @@
-﻿<#
+<#
 .SYNOPSIS
-    还原 Cursor + VS Code GitHub Copilot + Codex + Claude 个人配置到当前机器
+    还原 Cursor + VS Code GitHub Copilot + Codex + Claude + Antigravity 个人配置到当前机器
 
 .DESCRIPTION
-    自动检测已安装的 IDE（VS Code、Cursor、Codex、Claude），仅配置已安装的环境。
+    自动检测已安装的 IDE（VS Code、Cursor、Codex、Claude、Antigravity），仅配置已安装的环境。
     默认使用增量模式：仅添加/更新配置，不删除用户已有的自定义内容。
     使用 -Force 参数可切换为完全覆盖模式。
 
@@ -23,6 +23,11 @@
     - claude/skills/ → ~/.claude/skills/（Claude Skills，含安全护栏 skill）
     - claude/hooks/ → ~/.claude/hooks/（dcg 轻量过滤器，Claude Code 硬层）
     - claude/hooks → ~/.claude/settings.json（注册低噪音 dcg PreToolUse hook 到 Claude Code）
+    - antigravity/GEMINI.md → ~/.gemini/GEMINI.md（Antigravity）
+    - antigravity/skills/ → ~/.gemini/antigravity/skills/（Antigravity Skills，含安全护栏 skill）
+    - antigravity/hooks/ → ~/.gemini/antigravity/hooks/（dcg 轻量过滤器）
+    - antigravity/mcp.json → ~/.gemini/antigravity/mcp_config.json（Antigravity MCP）
+    - antigravity/settings.json → 合并到 %APPDATA%\antigravity\User\settings.json
 
 .EXAMPLE
     .\restore.ps1                        # 增量模式（默认，不覆盖用户已有配置）
@@ -42,7 +47,7 @@ param(
     [switch]$AutoInstallDcg,
     [switch]$DisableDcgHooks,
     [switch]$SkipDcg,
-    [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude")]
+    [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude", "Antigravity")]
     [string[]]$Target = @("All")
 )
 
@@ -87,6 +92,18 @@ $codexHooksSrc   = Join-Path $codexSrc "hooks"
 $codexHooksDst   = Join-Path $codexDst "hooks"
 $codexHooksJsonSrc = Join-Path $codexSrc "hooks.json"
 $codexHooksJsonDst = Join-Path $codexDst "hooks.json"
+$antigravitySrc        = Join-Path $scriptDir "antigravity"
+$antigravityDst        = Join-Path $env:USERPROFILE ".gemini\antigravity"
+$antigravityConfigSrc  = Join-Path $antigravitySrc "GEMINI.md"
+$antigravityConfigDst  = Join-Path $env:USERPROFILE ".gemini\GEMINI.md"
+$antigravitySkillsSrc  = Join-Path $antigravitySrc "skills"
+$antigravitySkillsDst  = Join-Path $antigravityDst "skills"
+$antigravityHooksSrc   = Join-Path $antigravitySrc "hooks"
+$antigravityHooksDst   = Join-Path $antigravityDst "hooks"
+$antigravityMcpSrc     = Join-Path $antigravitySrc "mcp.json"
+$antigravityMcpDst     = Join-Path $antigravityDst "mcp_config.json"
+$antigravitySettSrc    = Join-Path $antigravitySrc "settings.json"
+$antigravitySettDst    = Join-Path $env:APPDATA "antigravity\User\settings.json"
 
 # ============================
 # IDE 自动检测
@@ -97,6 +114,7 @@ $hasVSCode = (Test-Path $vscodeUserDir) -or [bool](Get-Command code -ErrorAction
 $hasCursor = (Test-Path $cursorUserDir) -or (Test-Path $cursorDst) -or [bool](Get-Command cursor -ErrorAction SilentlyContinue)
 $hasCodex  = (Test-Path $codexDst) -or [bool](Get-Command codex -ErrorAction SilentlyContinue)
 $hasClaude = (Test-Path $claudeDst) -or [bool](Get-Command claude -ErrorAction SilentlyContinue)
+$hasAntigravity = (Test-Path $antigravitySettDst) -or (Test-Path $antigravityDst) -or [bool](Get-Command antigravity -ErrorAction SilentlyContinue)
 
 # ============================
 # -Target 参数过滤
@@ -106,6 +124,7 @@ if ($Target -notcontains "All") {
     if ($Target -notcontains "Cursor") { $hasCursor = $false }
     if ($Target -notcontains "Codex")  { $hasCodex  = $false }
     if ($Target -notcontains "Claude") { $hasClaude = $false }
+    if ($Target -notcontains "Antigravity") { $hasAntigravity = $false }
 }
 
 # 同名文件保留最近 N 份备份，避免无限累积
@@ -792,6 +811,106 @@ function Install-ClaudeHooks($settingsDstPath) {
     Write-Host "    + ~/.claude/settings.json（已规范化为单条低噪音 dcg PreToolUse hook）"
 }
 
+function Install-AntigravityHooks($settingsDstPath) {
+    if ($SkipDcg) {
+        Write-Host "    → -SkipDcg 已启用，跳过 Antigravity dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
+        return
+    }
+    if ($DisableDcgHooks) {
+        Write-Host "    → -DisableDcgHooks 已启用，跳过 Antigravity dcg hook 部署。" -ForegroundColor DarkGray
+        return
+    }
+    if (-not (Test-DcgInstalled)) {
+        Write-Host "    → dcg 未安装，跳过 Antigravity PreToolUse hook。" -ForegroundColor DarkGray
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host "    [DryRun] $antigravityHooksSrc -> $antigravityHooksDst" -ForegroundColor Yellow
+        Write-Host "    [DryRun] 向 $settingsDstPath 写入 dcg PreToolUse hook" -ForegroundColor Yellow
+        return
+    }
+
+    if (Test-Path $antigravityHooksSrc) {
+        if ($Force) {
+            Copy-DirReplace $antigravityHooksSrc $antigravityHooksDst
+            Write-Host "    + ~/.gemini/antigravity/hooks/（覆盖，低噪音 dcg 过滤器）"
+        } else {
+            Copy-DirMerge $antigravityHooksSrc $antigravityHooksDst
+            Write-Host "    + ~/.gemini/antigravity/hooks/（增量，低噪音 dcg 过滤器）"
+        }
+    }
+
+    $dcgScriptPath = Join-Path $antigravityHooksDst "dcg_filter.ps1"
+    $hookCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$dcgScriptPath`""
+    $newGroup = [PSCustomObject]@{
+        matcher = "Bash"
+        hooks   = @([PSCustomObject]@{
+            type    = "command"
+            command = $hookCmd
+            timeout = 10
+        })
+    }
+
+    if (-not (Test-Path $settingsDstPath)) {
+        $obj = [PSCustomObject]@{
+            "chat.hooks" = [PSCustomObject]@{ PreToolUse = @($newGroup) }
+        }
+        $dstDir = Split-Path $settingsDstPath -Parent
+        if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Path $dstDir -Force | Out-Null }
+        Write-Utf8NoBomFile $settingsDstPath (Format-Json ($obj | ConvertTo-Json -Depth 10) 2)
+        Write-Host "    + Antigravity settings.json（新建，写入 dcg PreToolUse hook）"
+        return
+    }
+
+    Backup-File $settingsDstPath
+    $raw = Get-Content $settingsDstPath -Raw -Encoding UTF8
+    try {
+        $cfg = ConvertFrom-Jsonc $raw
+    } catch {
+        Write-Warning "  现有 settings.json 解析失败（含语法错误），跳过追加: $settingsDstPath"
+        return
+    }
+
+    if (-not ($cfg.PSObject.Properties.Name -contains "chat.hooks")) {
+        $cfg | Add-Member -MemberType NoteProperty -Name "chat.hooks" -Value ([PSCustomObject]@{}) -Force
+    }
+    if (-not ($cfg."chat.hooks".PSObject.Properties["PreToolUse"])) {
+        $cfg."chat.hooks" | Add-Member -MemberType NoteProperty -Name "PreToolUse" -Value @() -Force
+    }
+
+    $keptGroups = @()
+    foreach ($group in @($cfg."chat.hooks".PreToolUse)) {
+        if (-not ($group.PSObject.Properties.Name -contains "hooks")) {
+            $keptGroups += $group
+            continue
+        }
+
+        $keptHooks = @()
+        foreach ($hook in @($group.hooks)) {
+            $cmd = ""
+            if ($hook.PSObject.Properties.Name -contains "command") {
+                $cmd = [string]$hook.command
+            }
+            $trimmedCmd = $cmd.Trim()
+            $isProjectDcgHook = $cmd -like "*dcg_filter*"
+            $isDirectDcgHook = $trimmedCmd -match '^dcg(\.exe)?$'
+            if (-not ($isProjectDcgHook -or $isDirectDcgHook)) {
+                $keptHooks += $hook
+            }
+        }
+
+        if ($keptHooks.Count -gt 0) {
+            $group.hooks = @($keptHooks)
+            $keptGroups += $group
+        }
+    }
+    $cfg."chat.hooks".PreToolUse = @($keptGroups) + @($newGroup)
+
+    Write-Utf8NoBomFile $settingsDstPath (Format-Json ($cfg | ConvertTo-Json -Depth 20) 2)
+    Write-Host "    + Antigravity settings.json（已规范化为单条低噪音 dcg PreToolUse hook）"
+}
+
 function Install-CursorHooks($hooksJsonDstPath, $hooksDirDstPath) {
     if ($SkipDcg) {
         Write-Host "    → -SkipDcg 已启用，跳过 Cursor dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
@@ -1106,6 +1225,46 @@ if ($hasVSCode) {
 }
 
 # ============================
+# 还原 Antigravity 配置
+# ============================
+if ($hasAntigravity) {
+    $step++
+    Write-Host "[$step/$totalSteps] 还原 Antigravity 配置（GEMINI.md + skills + settings + 低噪音 hooks）..." -ForegroundColor Green
+    if (-not (Test-Path $antigravitySrc)) {
+        Write-Warning "找不到源目录: $antigravitySrc，跳过。"
+    } elseif ($DryRun) {
+        Write-Host "  [DryRun] $antigravityConfigSrc -> $antigravityConfigDst"
+        Write-Host "  [DryRun] $antigravitySkillsSrc -> $antigravitySkillsDst"
+        Write-Host "  [DryRun] $antigravitySettSrc -> $antigravitySettDst"
+        Install-AntigravityHooks $antigravitySettDst
+    } else {
+        $geminiDir = Join-Path $env:USERPROFILE ".gemini"
+        if (-not (Test-Path $geminiDir)) { New-Item -ItemType Directory -Path $geminiDir -Force | Out-Null }
+        if (-not (Test-Path $antigravityDst)) { New-Item -ItemType Directory -Path $antigravityDst -Force | Out-Null }
+        
+        if (Test-Path $antigravityConfigSrc) {
+            Backup-File $antigravityConfigDst
+            Copy-Item $antigravityConfigSrc $antigravityConfigDst -Force
+            Write-Host "  + GEMINI.md"
+        }
+        if (Test-Path $antigravitySkillsSrc) {
+            if ($Force) {
+                Copy-DirReplace $antigravitySkillsSrc $antigravitySkillsDst
+                Write-Host "  + skills/ (覆盖)"
+            } else {
+                Copy-DirMerge $antigravitySkillsSrc $antigravitySkillsDst
+                Write-Host "  + skills/ (增量)"
+            }
+        }
+        if (Test-Path $antigravitySettSrc) {
+            Merge-JsonSettings $antigravitySettSrc $antigravitySettDst
+        }
+        # hooks
+        Install-AntigravityHooks $antigravitySettDst
+    }
+}
+
+# ============================
 # 生成 MCP 配置
 # ============================
 if ($hasMcpTargets) {
@@ -1147,6 +1306,9 @@ if ($hasMcpTargets) {
         }
         if ($hasCodex) {
             Merge-CodexConfig $codexConfigSrc $codexConfigDst $uvPath
+        }
+        if ($hasAntigravity) {
+            Merge-McpJson $antigravityMcpSrc $antigravityMcpDst $uvPath "mcpServers"
         }
     }
 }
@@ -1199,6 +1361,19 @@ if ($hasClaude) {
     }
     $checks = $claudeChecks + $checks
 }
+if ($hasAntigravity) {
+    $agChecks = @(
+        @{ Name = "~/.gemini/GEMINI.md"; Path = $antigravityConfigDst },
+        @{ Name = "~/.gemini/antigravity/skills/"; Path = $antigravitySkillsDst },
+        @{ Name = "~/.gemini/antigravity/skills/destructive-command-guard/"; Path = (Join-Path $antigravitySkillsDst "destructive-command-guard") },
+        @{ Name = "~/.gemini/antigravity/mcp_config.json"; Path = $antigravityMcpDst },
+        @{ Name = "Antigravity settings.json"; Path = $antigravitySettDst }
+    )
+    if (-not $SkipDcg -and -not $DisableDcgHooks) {
+        $agChecks += @{ Name = "~/.gemini/antigravity/hooks/"; Path = $antigravityHooksDst }
+    }
+    $checks = $agChecks + $checks
+}
 foreach ($c in $checks) {
     if (Test-Path $c.Path) {
         Write-Host "  + $($c.Name)" -ForegroundColor Green
@@ -1238,6 +1413,20 @@ if ($hasClaude -and -not $SkipDcg) {
         Write-Host "  ~ Claude Code dcg hook（hooks/ 未找到）" -ForegroundColor Yellow
     }
 }
+if ($hasAntigravity -and -not $SkipDcg) {
+    if (Test-DcgInstalled) {
+        Write-Host "  + dcg 二进制（Antigravity 硬层已启用）" -ForegroundColor Green
+    } else {
+        Write-Host "  ~ dcg 未安装（Antigravity 硬层未启用；软层 SKILL 仍生效）" -ForegroundColor Yellow
+    }
+    if ($DisableDcgHooks) {
+        Write-Host "  + Antigravity dcg hook 已按参数跳过" -ForegroundColor Yellow
+    } elseif (Test-Path $antigravityHooksDst) {
+        Write-Host "  + Antigravity dcg hook（低噪音过滤器）" -ForegroundColor Green
+    } else {
+        Write-Host "  ~ Antigravity dcg hook（hooks/ 未找到）" -ForegroundColor Yellow
+    }
+}
 if ($hasCursor -and -not $SkipDcg) {
     if ($DisableDcgHooks) {
         Write-Host "  + Cursor dcg hook 已按参数跳过" -ForegroundColor Yellow
@@ -1267,4 +1456,5 @@ if ($hasVSCode) { Write-Host "  - 重启 VS Code" }
 if ($hasCursor) { Write-Host "  - 重启 Cursor，验证 MCP Server 是否正常加载" }
 if ($hasCodex)  { Write-Host "  - 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载" }
 if ($hasClaude) { Write-Host "  - 重启 Claude Code" }
+if ($hasAntigravity) { Write-Host "  - 重启 Antigravity" }
 Write-Host "  - 如需其他 MCP（GitHub、Context7 等），在扩展商城中安装"
