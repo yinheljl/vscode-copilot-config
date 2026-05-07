@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     从当前机器同步最新的 Cursor + VS Code Copilot + Codex + Claude + Antigravity 配置到本仓库并推送到 GitHub
 

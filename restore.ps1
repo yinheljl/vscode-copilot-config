@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     还原 Cursor + VS Code GitHub Copilot + Codex + Claude + Antigravity 个人配置到当前机器
 
@@ -1003,7 +1003,7 @@ function Install-CopilotHooks($hooksDirDstPath) {
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  Cursor + VS Code Copilot + Codex + Claude 配置还原" -ForegroundColor Cyan
+Write-Host "  Cursor + VS Code Copilot + Codex + Claude + Antigravity 配置还原" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -1023,19 +1023,22 @@ if ($hasVSCode) { Write-Host "  + VS Code" -ForegroundColor Green }
 if ($hasCursor) { Write-Host "  + Cursor" -ForegroundColor Green }
 if ($hasCodex)  { Write-Host "  + Codex" -ForegroundColor Green }
 if ($hasClaude) { Write-Host "  + Claude" -ForegroundColor Green }
-if (-not $hasVSCode -and -not $hasCursor -and -not $hasCodex -and -not $hasClaude) {
+if ($hasAntigravity) { Write-Host "  + Antigravity" -ForegroundColor Green }
+if (-not $hasVSCode -and -not $hasCursor -and -not $hasCodex -and -not $hasClaude -and -not $hasAntigravity) {
     if ($Target -notcontains "All") {
         Write-Host "  指定的 IDE 未安装，仍将安装配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
         if ($Target -contains "VSCode") { $hasVSCode = $true }
         if ($Target -contains "Cursor") { $hasCursor = $true }
         if ($Target -contains "Codex")  { $hasCodex  = $true }
         if ($Target -contains "Claude") { $hasClaude = $true }
+        if ($Target -contains "Antigravity") { $hasAntigravity = $true }
     } else {
         Write-Host "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
         $hasVSCode = $true
         $hasCursor = $true
         $hasCodex  = $true
         $hasClaude = $true
+        $hasAntigravity = $true
     }
 }
 Write-Host ""
@@ -1051,7 +1054,8 @@ if ($hasVSCode) { $totalSteps += 2 }
 if ($hasCursor) { $totalSteps++ }
 if ($hasCodex)  { $totalSteps++ }
 if ($hasClaude) { $totalSteps++ }
-$hasMcpTargets = $hasVSCode -or $hasCursor -or $hasCodex
+if ($hasAntigravity) { $totalSteps++ }
+$hasMcpTargets = $hasVSCode -or $hasCursor -or $hasCodex -or $hasAntigravity
 if ($hasMcpTargets) { $totalSteps++ }
 $step = 0
 
@@ -1271,7 +1275,7 @@ if ($hasMcpTargets) {
     $step++
     Write-Host "[$step/$totalSteps] 配置 MCP 服务器..." -ForegroundColor Green
     if ($DryRun) {
-        Write-Host "  [DryRun] 将生成 VS Code / Cursor / Codex MCP 配置"
+        Write-Host "  [DryRun] 将生成 VS Code / Cursor / Codex / Antigravity MCP 配置"
     } else {
         $uvPath = Resolve-UvPath
         if (-not $uvPath) {

@@ -126,7 +126,7 @@ if [ -d "$CLAUDE_DST" ] || command -v claude &>/dev/null; then
     HAS_CLAUDE=true
 fi
 
-if [ -d "$ANTIGRAVITY_DST" ] || command -v antigravity &>/dev/null; then
+if [ -d "$ANTIGRAVITY_USER_DIR" ] || [ -d "$ANTIGRAVITY_DST" ] || command -v antigravity &>/dev/null; then
     HAS_ANTIGRAVITY=true
 fi
 
@@ -911,6 +911,7 @@ if [ "$TARGET_ALL" = false ]; then
     [ "$TARGET_CURSOR" = true ] && active_targets="${active_targets:+$active_targets, }Cursor"
     [ "$TARGET_CODEX"  = true ] && active_targets="${active_targets:+$active_targets, }Codex"
     [ "$TARGET_CLAUDE" = true ] && active_targets="${active_targets:+$active_targets, }Claude"
+    [ "$TARGET_ANTIGRAVITY" = true ] && active_targets="${active_targets:+$active_targets, }Antigravity"
     echo "[目标] 仅配置: $active_targets"
 fi
 
