@@ -1470,6 +1470,16 @@ if ($hasAntigravity) {
     }
     $checks = $agChecks + $checks
 }
+if ($hasWindsurf) {
+    $wsChecks = @(
+        @{ Name = "~/.codeium/windsurf/mcp_config.json"; Path = $windsurfMcpDst }
+    )
+    if (-not $SkipDcg -and -not $DisableDcgHooks) {
+        $wsChecks += @{ Name = "~/.codeium/windsurf/hooks.json"; Path = $windsurfHooksJsonDst }
+        $wsChecks += @{ Name = "~/.codeium/windsurf/hooks/"; Path = $windsurfHooksDirDst }
+    }
+    $checks = $wsChecks + $checks
+}
 foreach ($c in $checks) {
     if (Test-Path $c.Path) {
         Write-Host "  + $($c.Name)" -ForegroundColor Green
@@ -1508,16 +1518,6 @@ if ($hasClaude -and -not $SkipDcg) {
     } else {
         Write-Host "  ~ Claude Code dcg hook（hooks/ 未找到）" -ForegroundColor Yellow
     }
-}
-if ($hasWindsurf) {
-    $wsChecks = @(
-        @{ Name = "~/.codeium/windsurf/mcp_config.json"; Path = $windsurfMcpDst }
-    )
-    if (-not $SkipDcg -and -not $DisableDcgHooks) {
-        $wsChecks += @{ Name = "~/.codeium/windsurf/hooks.json"; Path = $windsurfHooksJsonDst }
-        $wsChecks += @{ Name = "~/.codeium/windsurf/hooks/"; Path = $windsurfHooksDirDst }
-    }
-    $checks = $wsChecks + $checks
 }
 if ($hasAntigravity -and -not $SkipDcg) {
     if (Test-DcgInstalled) {
