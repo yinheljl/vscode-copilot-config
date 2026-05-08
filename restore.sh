@@ -13,6 +13,7 @@ TARGET_CURSOR=false
 TARGET_CODEX=false
 TARGET_CLAUDE=false
 TARGET_ANTIGRAVITY=false
+TARGET_WINDSURF=false
 AUTO_INSTALL_DCG=false
 SKIP_DCG=false
 DISABLE_DCG_HOOKS=false
@@ -35,6 +36,7 @@ for arg in "$@"; do
                     codex)  TARGET_CODEX=true ;;
                     claude) TARGET_CLAUDE=true ;;
                     antigravity) TARGET_ANTIGRAVITY=true ;;
+                    windsurf) TARGET_WINDSURF=true ;;
                     all)    TARGET_ALL=true ;;
                 esac
             done
@@ -80,6 +82,14 @@ ANTIGRAVITY_HOOKS_SRC="$ANTIGRAVITY_SRC/hooks"
 ANTIGRAVITY_HOOKS_DST="$ANTIGRAVITY_DST/hooks"
 ANTIGRAVITY_MCP_SRC="$ANTIGRAVITY_SRC/mcp.json"
 ANTIGRAVITY_MCP_DST="$ANTIGRAVITY_DST/mcp_config.json"
+WINDSURF_SRC="$SCRIPT_DIR/windsurf"
+WINDSURF_DST="$HOME/.codeium/windsurf"
+WINDSURF_MCP_SRC="$WINDSURF_SRC/mcp_config.json"
+WINDSURF_MCP_DST="$WINDSURF_DST/mcp_config.json"
+WINDSURF_HOOKS_JSON_SRC="$WINDSURF_SRC/hooks.json"
+WINDSURF_HOOKS_JSON_DST="$WINDSURF_DST/hooks.json"
+WINDSURF_HOOKS_DIR_SRC="$WINDSURF_SRC/hooks"
+WINDSURF_HOOKS_DIR_DST="$WINDSURF_DST/hooks"
 
 # VS Code / Cursor / Antigravity 用户配置目录（macOS 和 Linux 路径不同）
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -109,6 +119,7 @@ HAS_CURSOR=false
 HAS_CODEX=false
 HAS_CLAUDE=false
 HAS_ANTIGRAVITY=false
+HAS_WINDSURF=false
 
 if [ -d "$VSCODE_USER_DIR" ] || command -v code &>/dev/null; then
     HAS_VSCODE=true
@@ -129,6 +140,9 @@ fi
 if [ -d "$ANTIGRAVITY_USER_DIR" ] || [ -d "$ANTIGRAVITY_DST" ] || command -v antigravity &>/dev/null; then
     HAS_ANTIGRAVITY=true
 fi
+if [ -d "$WINDSURF_DST" ] || command -v windsurf &>/dev/null; then
+    HAS_WINDSURF=true
+fi
 
 # ============================
 # --target 参数过滤
@@ -139,6 +153,7 @@ if [ "$TARGET_ALL" = false ]; then
     [ "$TARGET_CODEX"  = false ] && HAS_CODEX=false
     [ "$TARGET_CLAUDE" = false ] && HAS_CLAUDE=false
     [ "$TARGET_ANTIGRAVITY" = false ] && HAS_ANTIGRAVITY=false
+    [ "$TARGET_WINDSURF" = false ] && HAS_WINDSURF=false
 fi
 
 resolve_uv_path() {
@@ -613,6 +628,66 @@ print("    + Antigravity settings.json（已规范化为单条低噪音 dcg PreT
 PY
 }
 
+install_windsurf_hooks() {
+    # Windsurf Cascade Hooks：使用 pre_run_command 事件 + dcg 过滤器；exit 2 = 阻断（与 Claude/Antigravity 协议不同）
+
+    if [ "$SKIP_DCG" = true ]; then
+        echo "    → --skip-dcg 已启用，跳过 Windsurf dcg hook。软层 SKILL 仍生效。"
+        return
+    fi
+    if [ "$DISABLE_DCG_HOOKS" = true ]; then
+        echo "    → --disable-dcg-hooks 已启用，跳过 Windsurf dcg hook 部署。"
+        return
+    fi
+    if ! test_dcg_installed; then
+        echo "    → dcg 未安装，跳过 Windsurf pre_run_command hook。软层 SKILL 仍生效。"
+        return
+    fi
+
+    # 1. 部署 windsurf/hooks/ → ~/.codeium/windsurf/hooks/
+    if [ -d "$WINDSURF_HOOKS_DIR_SRC" ]; then
+        if [ "$FORCE" = true ]; then
+            copy_dir_replace "$WINDSURF_HOOKS_DIR_SRC" "$WINDSURF_HOOKS_DIR_DST"
+            echo "    + ~/.codeium/windsurf/hooks/（覆盖，dcg 过滤器）"
+        else
+            copy_dir_merge "$WINDSURF_HOOKS_DIR_SRC" "$WINDSURF_HOOKS_DIR_DST"
+            echo "    + ~/.codeium/windsurf/hooks/（增量，dcg 过滤器）"
+        fi
+    fi
+
+    # 2. 部署 windsurf/hooks.json，替换 bash/powershell 命令占位符
+    if [ ! -f "$WINDSURF_HOOKS_JSON_SRC" ]; then return; fi
+
+    local hook_cmd_bash=""
+    local hook_cmd_ps=""
+    if [ -f "$WINDSURF_HOOKS_DIR_DST/dcg_filter.py" ]; then
+        hook_cmd_bash="python3 \"$WINDSURF_HOOKS_DIR_DST/dcg_filter.py\""
+    fi
+    if [ -f "$WINDSURF_HOOKS_DIR_DST/dcg_filter.ps1" ]; then
+        hook_cmd_ps="powershell -NoProfile -ExecutionPolicy Bypass -File \"$WINDSURF_HOOKS_DIR_DST/dcg_filter.ps1\""
+    fi
+
+    [ "$FORCE" = false ] && [ -f "$WINDSURF_HOOKS_JSON_DST" ] && cp "$WINDSURF_HOOKS_JSON_DST" "${WINDSURF_HOOKS_JSON_DST}.bak_$(date +%Y%m%d_%H%M%S)"
+
+    if command -v python3 >/dev/null 2>&1; then
+        SRC="$WINDSURF_HOOKS_JSON_SRC" DST="$WINDSURF_HOOKS_JSON_DST" CMD_BASH="$hook_cmd_bash" CMD_PS="$hook_cmd_ps" python3 - <<'PY'
+import json, os
+src = os.environ['SRC']; dst = os.environ['DST']
+cmd_bash = os.environ.get('CMD_BASH', ''); cmd_ps = os.environ.get('CMD_PS', '')
+with open(src, 'r', encoding='utf-8') as f:
+    raw = f.read()
+raw = raw.replace('__WINDSURF_DCG_HOOK_BASH__', json.dumps(cmd_bash)[1:-1])
+raw = raw.replace('__WINDSURF_DCG_HOOK_POWERSHELL__', json.dumps(cmd_ps)[1:-1])
+os.makedirs(os.path.dirname(dst), exist_ok=True)
+with open(dst, 'w', encoding='utf-8') as f:
+    f.write(raw)
+PY
+        echo "    + ~/.codeium/windsurf/hooks.json（pre_run_command → dcg 过滤器）"
+    else
+        echo "    ! 未安装 python3，跳过 Windsurf hooks.json 写入。" >&2
+    fi
+}
+
 install_cursor_hooks() {
     # Cursor 硬层：部署低噪音 dcg beforeShellExecution hook（cursor/hooks.json + cursor/hooks/ → ~/.cursor/）。
     # Cursor 的 preToolUse deny 有已知 bug，因此使用 beforeShellExecution（仅 Shell 命令触发）。
@@ -912,6 +987,7 @@ if [ "$TARGET_ALL" = false ]; then
     [ "$TARGET_CODEX"  = true ] && active_targets="${active_targets:+$active_targets, }Codex"
     [ "$TARGET_CLAUDE" = true ] && active_targets="${active_targets:+$active_targets, }Claude"
     [ "$TARGET_ANTIGRAVITY" = true ] && active_targets="${active_targets:+$active_targets, }Antigravity"
+    [ "$TARGET_WINDSURF" = true ] && active_targets="${active_targets:+$active_targets, }Windsurf"
     echo "[目标] 仅配置: $active_targets"
 fi
 
@@ -922,7 +998,8 @@ if [ "$HAS_CURSOR" = true ]; then echo "  + Cursor"; fi
 if [ "$HAS_CODEX" = true ]; then echo "  + Codex"; fi
 if [ "$HAS_CLAUDE" = true ]; then echo "  + Claude"; fi
 if [ "$HAS_ANTIGRAVITY" = true ]; then echo "  + Antigravity"; fi
-if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ] && [ "$HAS_CODEX" = false ] && [ "$HAS_CLAUDE" = false ] && [ "$HAS_ANTIGRAVITY" = false ]; then
+if [ "$HAS_WINDSURF" = true ]; then echo "  + Windsurf"; fi
+if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ] && [ "$HAS_CODEX" = false ] && [ "$HAS_CLAUDE" = false ] && [ "$HAS_ANTIGRAVITY" = false ] && [ "$HAS_WINDSURF" = false ]; then
     if [ "$TARGET_ALL" = false ]; then
         echo "  指定的 IDE 未安装，仍将安装配置（IDE 安装后即可使用）。"
         [ "$TARGET_VSCODE" = true ] && HAS_VSCODE=true
@@ -930,6 +1007,7 @@ if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ] && [ "$HAS_CODEX" = fa
         [ "$TARGET_CODEX"  = true ] && HAS_CODEX=true
         [ "$TARGET_CLAUDE" = true ] && HAS_CLAUDE=true
         [ "$TARGET_ANTIGRAVITY" = true ] && HAS_ANTIGRAVITY=true
+        [ "$TARGET_WINDSURF" = true ] && HAS_WINDSURF=true
     else
         echo "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。"
         HAS_VSCODE=true
@@ -937,6 +1015,7 @@ if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ] && [ "$HAS_CODEX" = fa
         HAS_CODEX=true
         HAS_CLAUDE=true
         HAS_ANTIGRAVITY=true
+        HAS_WINDSURF=true
     fi
 fi
 echo ""
@@ -1087,8 +1166,19 @@ if [ "$HAS_ANTIGRAVITY" = true ]; then
     fi
 fi
 
+# --- 4.6. 还原 Windsurf 配置（仅 MCP + hooks；skills/rules 由 Cascade 直接读 ~/.claude/）---
+if [ "$HAS_WINDSURF" = true ]; then
+    echo "[4.6] 还原 Windsurf 配置（pre_run_command 低噪音 hooks）..."
+    if [ ! -d "$WINDSURF_SRC" ]; then
+        echo "  警告：找不到源目录: $WINDSURF_SRC" >&2
+    else
+        mkdir -p "$WINDSURF_DST"
+        install_windsurf_hooks
+    fi
+fi
+
 # --- 5. 生成 MCP 配置 ---
-if [ "$HAS_CURSOR" = true ] || [ "$HAS_VSCODE" = true ] || [ "$HAS_CODEX" = true ] || [ "$HAS_ANTIGRAVITY" = true ]; then
+if [ "$HAS_CURSOR" = true ] || [ "$HAS_VSCODE" = true ] || [ "$HAS_CODEX" = true ] || [ "$HAS_ANTIGRAVITY" = true ] || [ "$HAS_WINDSURF" = true ]; then
     echo "[5] 配置 MCP 服务器..."
     UV_PATH=$(resolve_uv_path || true)
     if [ -z "$UV_PATH" ]; then
@@ -1121,6 +1211,9 @@ if [ "$HAS_CURSOR" = true ] || [ "$HAS_VSCODE" = true ] || [ "$HAS_CODEX" = true
     fi
     if [ "$HAS_ANTIGRAVITY" = true ]; then
         install_mcp_json "$ANTIGRAVITY_MCP_SRC" "$ANTIGRAVITY_MCP_DST" "$UV_PATH"
+    fi
+    if [ "$HAS_WINDSURF" = true ]; then
+        install_mcp_json "$WINDSURF_MCP_SRC" "$WINDSURF_MCP_DST" "$UV_PATH"
     fi
     if [ "$HAS_CODEX" = true ]; then
         # 合并 Codex config.toml MCP 服务器配置
@@ -1247,6 +1340,13 @@ if [ "$HAS_ANTIGRAVITY" = true ]; then
         CHECKS="$CHECKS ~/.gemini/antigravity/hooks/:$ANTIGRAVITY_HOOKS_DST"
     fi
 fi
+if [ "$HAS_WINDSURF" = true ]; then
+    CHECKS="$CHECKS ~/.codeium/windsurf/mcp_config.json:$WINDSURF_MCP_DST"
+    if [ "$SKIP_DCG" = false ] && [ "$DISABLE_DCG_HOOKS" = false ]; then
+        CHECKS="$CHECKS ~/.codeium/windsurf/hooks.json:$WINDSURF_HOOKS_JSON_DST"
+        CHECKS="$CHECKS ~/.codeium/windsurf/hooks/:$WINDSURF_HOOKS_DIR_DST"
+    fi
+fi
 for item in $CHECKS; do
     name="${item%%:*}"
     path="${item#*:}"
@@ -1330,4 +1430,5 @@ if [ "$HAS_CURSOR" = true ]; then echo "  - 重启 Cursor，验证 MCP Server �
 if [ "$HAS_CODEX" = true ]; then echo "  - 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载"; fi
 if [ "$HAS_CLAUDE" = true ]; then echo "  - 重启 Claude Code"; fi
 if [ "$HAS_ANTIGRAVITY" = true ]; then echo "  - 重启 Antigravity"; fi
+if [ "$HAS_WINDSURF" = true ]; then echo "  - 重启 Windsurf"; fi
 echo "  - 如需其他 MCP（GitHub、Context7 等），按需手动安装"

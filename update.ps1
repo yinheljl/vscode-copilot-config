@@ -15,6 +15,7 @@
     .\update.ps1 -CheckOnly         # 仅检查更新，不执行
     .\update.ps1 -Target Codex      # 仅更新 Codex 配置
     .\update.ps1 -Target Claude     # 仅更新 Claude 配置
+    .\update.ps1 -Target Windsurf   # 仅更新 Windsurf 配置
     .\update.ps1 -Target Codex -Force  # 仅覆盖 Codex 配置
     .\update.ps1 -DisableDcgHooks   # 还原时跳过所有 dcg hook 部署；Codex 设为 codex_hooks=false
 #>
@@ -25,7 +26,7 @@ param(
     [switch]$AutoInstallDcg,
     [switch]$DisableDcgHooks,
     [switch]$SkipDcg,
-    [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude", "Antigravity")]
+    [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude", "Antigravity", "Windsurf")]
     [string[]]$Target = @("All")
 )
 

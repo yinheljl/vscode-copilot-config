@@ -20,6 +20,7 @@ PURE_JSON = [
     "vscode/mcp.json",
     "cursor/mcp.json",
     "antigravity/mcp.json",
+    "windsurf/mcp_config.json",
     "cursor/hooks.json",
     "codex/hooks.json",
     "copilot/hooks/dcg-guard.json",
@@ -28,6 +29,7 @@ JSONC = [
     "vscode/settings.json",
     "cursor/settings.json",
     "antigravity/settings.json",
+    "windsurf/hooks.json",
 ]
 TOML_FILES = [
     "codex/config.toml",

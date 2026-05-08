@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "markitdown": {
+      "command": "__UV_PATH__",
+      "args": [
+        "tool",
+        "run",
+        "markitdown-mcp"
+      ]
+    }
+  }
+}

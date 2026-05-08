@@ -1,15 +1,15 @@
-# VS Code & Cursor & Codex & Claude & Antigravity 全局配置中心
+# VS Code & Cursor & Codex & Claude & Antigravity & Windsurf 全局配置中心
 
-> **一键配置 VS Code GitHub Copilot、Cursor、Codex、Claude 和 Antigravity 的全局 Rules、Skills、MCP 服务器等。**
+> **一键配置 VS Code GitHub Copilot、Cursor、Codex、Claude、Antigravity 和 Windsurf 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
 
-当前版本：`1.4.10`
+当前版本：`1.5.0`
 
 ---
 
 ## 🤖 AI Agent 操作指南
 
-> **本节内容供 AI Agent（GitHub Copilot、Cursor AI、Codex、Claude 等）直接解析和执行。**
+> **本节内容供 AI Agent（GitHub Copilot、Cursor AI、Codex、Claude、Windsurf Cascade 等）直接解析和执行。**
 > **当用户提到本仓库 URL 或要求配置/更新时，请按以下指令操作。**
 >
 > ⚠️ **重要：必须通过运行 `restore.ps1` / `restore.sh` 脚本来配置，禁止手动复制文件。脚本会自动处理 IDE 检测、路径替换、MCP 安装等所有工作。**
@@ -40,15 +40,15 @@
    bash ~/.copilot-config/restore.sh
    ```
 
-3. **提示用户重启所有已安装的 IDE**（VS Code、Cursor、Codex、Claude、Antigravity 等）
+3. **提示用户重启所有已安装的 IDE**（VS Code、Cursor、Codex、Claude、Antigravity、Windsurf 等）
 
-> **脚本会自动检测并配置所有已安装的 IDE**（VS Code / Cursor / Codex / Claude / Antigravity），无需手动指定。
+> **脚本会自动检测并配置所有已安装的 IDE**（VS Code / Cursor / Codex / Claude / Antigravity / Windsurf），无需手动指定。
 >
 > **可选参数**（仅在用户明确要求时使用）：
 >
 > | 用户意图 | 参数 |
 > |----------|------|
-> | 仅配置指定 IDE | `-Target Codex`、`-Target VSCode,Cursor`、`-Target Claude`、`-Target Antigravity` |
+> | 仅配置指定 IDE | `-Target Codex`、`-Target VSCode,Cursor`、`-Target Claude`、`-Target Antigravity`、`-Target Windsurf` |
 > | 覆盖已有配置 | `-Force` |
 > | 组合使用 | `-Target Codex -Force` |
 >
@@ -58,6 +58,7 @@
 > - "Codex" → `-Target Codex`
 > - "Claude" / "Claude Code" → `-Target Claude`
 > - "Antigravity" → `-Target Antigravity`
+> - "Windsurf" / "Cascade" → `-Target Windsurf`
 > - "覆盖" / "覆盖模式" / "干净安装" → 加 `-Force`
 > - 未指定 → 不传 `-Target`（配置所有 IDE）
 
@@ -118,6 +119,9 @@
 | `antigravity/hooks/` | Antigravity PreToolUse dcg 低噪音过滤器 |
 | `antigravity/mcp.json` | Antigravity MCP 服务器配置模板 |
 | `antigravity/settings.json` | Antigravity 编辑器设置模板 |
+| `windsurf/mcp_config.json` | Windsurf Cascade MCP 服务器配置模板（含路径占位符） |
+| `windsurf/hooks.json` | Windsurf Cascade `pre_run_command` Hooks 配置模板（轻量过滤器先筛选，再按需调用 dcg） |
+| `windsurf/hooks/` | Windsurf Cascade pre_run_command dcg 低噪音过滤器 |
 | `copilot/instructions/` | VS Code Copilot 全局指令（中文规范、Python 虚拟环境、5 条编码准则等） |
 | `copilot/skills/` | VS Code Copilot 自定义 Skill（按分类组织的 9 个，含安全护栏） |
 | `copilot/hooks/` | GitHub Copilot preToolUse dcg 低噪音过滤器 |
@@ -161,10 +165,11 @@
 | `codex/AGENTS.md` | Codex | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
 | `cursor/rules/mcp-feedback.mdc` | Cursor | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
 | `antigravity/GEMINI.md` | Antigravity | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
+| `claude/CLAUDE.md`（共享） | Windsurf | Cascade 通过设置中 `Read Claude Code Config` 直接读 `~/.claude/CLAUDE.md` 与 `~/.claude/skills/`，无需单独同步 |
 
 ## 🛠️ Skills 清单
 
-### 共享 Skills（Cursor + VS Code Copilot + Codex + Claude + Antigravity 五套同源）
+### 共享 Skills（Cursor + VS Code Copilot + Codex + Claude + Antigravity 五套同源；Windsurf 通过 `Read Claude Code Config` 直接复用 Claude 的 skills）
 
 | 分类 | 技能 | 用途 |
 |------|------|------|

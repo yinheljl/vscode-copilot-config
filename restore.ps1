@@ -1,9 +1,9 @@
 ﻿<#
 .SYNOPSIS
-    还原 Cursor + VS Code GitHub Copilot + Codex + Claude + Antigravity 个人配置到当前机器
+    还原 Cursor + VS Code GitHub Copilot + Codex + Claude + Antigravity + Windsurf 个人配置到当前机器
 
 .DESCRIPTION
-    自动检测已安装的 IDE（VS Code、Cursor、Codex、Claude、Antigravity），仅配置已安装的环境。
+    自动检测已安装的 IDE（VS Code、Cursor、Codex、Claude、Antigravity、Windsurf），仅配置已安装的环境。
     默认使用增量模式：仅添加/更新配置，不删除用户已有的自定义内容。
     使用 -Force 参数可切换为完全覆盖模式。
 
@@ -28,6 +28,10 @@
     - antigravity/hooks/ → ~/.gemini/antigravity/hooks/（dcg 轻量过滤器）
     - antigravity/mcp.json → ~/.gemini/antigravity/mcp_config.json（Antigravity MCP）
     - antigravity/settings.json → 合并到 %APPDATA%\antigravity\User\settings.json
+    - windsurf/mcp_config.json → ~/.codeium/windsurf/mcp_config.json（Windsurf Cascade MCP）
+    - windsurf/hooks.json → ~/.codeium/windsurf/hooks.json（注册 pre_run_command dcg hook）
+    - windsurf/hooks/ → ~/.codeium/windsurf/hooks/（dcg 轻量过滤器）
+    注：Windsurf 的 skills/rules 通过其设置中的"Read Claude Code Config"开关直接读 ~/.claude/，无需单独同步。
 
 .EXAMPLE
     .\restore.ps1                        # 增量模式（默认，不覆盖用户已有配置）
@@ -35,6 +39,7 @@
     .\restore.ps1 -DryRun                # 预览模式
     .\restore.ps1 -Target Codex          # 仅配置 Codex
     .\restore.ps1 -Target Claude         # 仅配置 Claude
+    .\restore.ps1 -Target Windsurf       # 仅配置 Windsurf
     .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
     .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
     .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时自动下载并校验上游 release，不再交互询问
@@ -47,7 +52,7 @@ param(
     [switch]$AutoInstallDcg,
     [switch]$DisableDcgHooks,
     [switch]$SkipDcg,
-    [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude", "Antigravity")]
+    [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude", "Antigravity", "Windsurf")]
     [string[]]$Target = @("All")
 )
 
@@ -104,6 +109,14 @@ $antigravityMcpSrc     = Join-Path $antigravitySrc "mcp.json"
 $antigravityMcpDst     = Join-Path $antigravityDst "mcp_config.json"
 $antigravitySettSrc    = Join-Path $antigravitySrc "settings.json"
 $antigravitySettDst    = Join-Path $env:APPDATA "antigravity\User\settings.json"
+$windsurfSrc           = Join-Path $scriptDir "windsurf"
+$windsurfDst           = Join-Path $env:USERPROFILE ".codeium\windsurf"
+$windsurfMcpSrc        = Join-Path $windsurfSrc "mcp_config.json"
+$windsurfMcpDst        = Join-Path $windsurfDst "mcp_config.json"
+$windsurfHooksJsonSrc  = Join-Path $windsurfSrc "hooks.json"
+$windsurfHooksJsonDst  = Join-Path $windsurfDst "hooks.json"
+$windsurfHooksDirSrc   = Join-Path $windsurfSrc "hooks"
+$windsurfHooksDirDst   = Join-Path $windsurfDst "hooks"
 
 # ============================
 # IDE 自动检测
@@ -115,6 +128,7 @@ $hasCursor = (Test-Path $cursorUserDir) -or (Test-Path $cursorDst) -or [bool](Ge
 $hasCodex  = (Test-Path $codexDst) -or [bool](Get-Command codex -ErrorAction SilentlyContinue)
 $hasClaude = (Test-Path $claudeDst) -or [bool](Get-Command claude -ErrorAction SilentlyContinue)
 $hasAntigravity = (Test-Path $antigravitySettDst) -or (Test-Path $antigravityDst) -or [bool](Get-Command antigravity -ErrorAction SilentlyContinue)
+$hasWindsurf = (Test-Path $windsurfDst) -or [bool](Get-Command windsurf -ErrorAction SilentlyContinue)
 
 # ============================
 # -Target 参数过滤
@@ -125,6 +139,7 @@ if ($Target -notcontains "All") {
     if ($Target -notcontains "Codex")  { $hasCodex  = $false }
     if ($Target -notcontains "Claude") { $hasClaude = $false }
     if ($Target -notcontains "Antigravity") { $hasAntigravity = $false }
+    if ($Target -notcontains "Windsurf") { $hasWindsurf = $false }
 }
 
 # 同名文件保留最近 N 份备份，避免无限累积
@@ -911,6 +926,59 @@ function Install-AntigravityHooks($settingsDstPath) {
     Write-Host "    + Antigravity settings.json（已规范化为单条低噪音 dcg PreToolUse hook）"
 }
 
+function Install-WindsurfHooks($hooksJsonDstPath, $hooksDirDstPath) {
+    # Windsurf Cascade Hooks：使用 pre_run_command 事件 + dcg 过滤器，exit 2 阻断危险命令。
+    # 与 Claude/Antigravity 的 PreToolUse permissionDecision JSON 协议不同。
+
+    if ($SkipDcg) {
+        Write-Host "    → -SkipDcg 已启用，跳过 Windsurf dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
+        return
+    }
+    if ($DisableDcgHooks) {
+        Write-Host "    → -DisableDcgHooks 已启用，跳过 Windsurf dcg hook 部署。" -ForegroundColor DarkGray
+        return
+    }
+    if (-not (Test-DcgInstalled)) {
+        Write-Host "    → dcg 未安装，跳过 Windsurf pre_run_command hook。" -ForegroundColor DarkGray
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host "    [DryRun] $windsurfHooksDirSrc -> $hooksDirDstPath" -ForegroundColor Yellow
+        Write-Host "    [DryRun] $windsurfHooksJsonSrc -> $hooksJsonDstPath（注册 pre_run_command hook）" -ForegroundColor Yellow
+        return
+    }
+
+    # 1. 部署 windsurf/hooks/ → ~/.codeium/windsurf/hooks/
+    if (Test-Path $windsurfHooksDirSrc) {
+        if ($Force) {
+            Copy-DirReplace $windsurfHooksDirSrc $hooksDirDstPath
+            Write-Host "    + ~/.codeium/windsurf/hooks/（覆盖，dcg 过滤器）"
+        } else {
+            Copy-DirMerge $windsurfHooksDirSrc $hooksDirDstPath
+            Write-Host "    + ~/.codeium/windsurf/hooks/（增量，dcg 过滤器）"
+        }
+    }
+
+    # 2. 部署 windsurf/hooks.json → ~/.codeium/windsurf/hooks.json，替换占位符
+    if (-not (Test-Path $windsurfHooksJsonSrc)) { return }
+
+    $ps1Path = Join-Path $hooksDirDstPath "dcg_filter.ps1"
+    $pyPath  = Join-Path $hooksDirDstPath "dcg_filter.py"
+    $hookCmdPs   = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$ps1Path`""
+    $hookCmdBash = "python3 `"$pyPath`""
+
+    if ((Test-Path $hooksJsonDstPath) -and -not $Force) {
+        Backup-File $hooksJsonDstPath
+    }
+
+    $hookJson = Get-Content $windsurfHooksJsonSrc -Raw -Encoding UTF8
+    $hookJson = $hookJson.Replace('__WINDSURF_DCG_HOOK_POWERSHELL__', (Escape-JsonString $hookCmdPs))
+    $hookJson = $hookJson.Replace('__WINDSURF_DCG_HOOK_BASH__', (Escape-JsonString $hookCmdBash))
+    Write-Utf8NoBomFile $hooksJsonDstPath $hookJson
+    Write-Host "    + ~/.codeium/windsurf/hooks.json（pre_run_command → dcg 过滤器）"
+}
+
 function Install-CursorHooks($hooksJsonDstPath, $hooksDirDstPath) {
     if ($SkipDcg) {
         Write-Host "    → -SkipDcg 已启用，跳过 Cursor dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
@@ -1003,7 +1071,7 @@ function Install-CopilotHooks($hooksDirDstPath) {
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  Cursor + VS Code Copilot + Codex + Claude + Antigravity 配置还原" -ForegroundColor Cyan
+Write-Host "  Cursor + VS Code Copilot + Codex + Claude + Antigravity + Windsurf 配置还原" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -1024,7 +1092,8 @@ if ($hasCursor) { Write-Host "  + Cursor" -ForegroundColor Green }
 if ($hasCodex)  { Write-Host "  + Codex" -ForegroundColor Green }
 if ($hasClaude) { Write-Host "  + Claude" -ForegroundColor Green }
 if ($hasAntigravity) { Write-Host "  + Antigravity" -ForegroundColor Green }
-if (-not $hasVSCode -and -not $hasCursor -and -not $hasCodex -and -not $hasClaude -and -not $hasAntigravity) {
+if ($hasWindsurf) { Write-Host "  + Windsurf" -ForegroundColor Green }
+if (-not $hasVSCode -and -not $hasCursor -and -not $hasCodex -and -not $hasClaude -and -not $hasAntigravity -and -not $hasWindsurf) {
     if ($Target -notcontains "All") {
         Write-Host "  指定的 IDE 未安装，仍将安装配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
         if ($Target -contains "VSCode") { $hasVSCode = $true }
@@ -1032,6 +1101,7 @@ if (-not $hasVSCode -and -not $hasCursor -and -not $hasCodex -and -not $hasClaud
         if ($Target -contains "Codex")  { $hasCodex  = $true }
         if ($Target -contains "Claude") { $hasClaude = $true }
         if ($Target -contains "Antigravity") { $hasAntigravity = $true }
+        if ($Target -contains "Windsurf") { $hasWindsurf = $true }
     } else {
         Write-Host "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
         $hasVSCode = $true
@@ -1039,6 +1109,7 @@ if (-not $hasVSCode -and -not $hasCursor -and -not $hasCodex -and -not $hasClaud
         $hasCodex  = $true
         $hasClaude = $true
         $hasAntigravity = $true
+        $hasWindsurf = $true
     }
 }
 Write-Host ""
@@ -1055,7 +1126,8 @@ if ($hasCursor) { $totalSteps++ }
 if ($hasCodex)  { $totalSteps++ }
 if ($hasClaude) { $totalSteps++ }
 if ($hasAntigravity) { $totalSteps++ }
-$hasMcpTargets = $hasVSCode -or $hasCursor -or $hasCodex -or $hasAntigravity
+if ($hasWindsurf) { $totalSteps++ }
+$hasMcpTargets = $hasVSCode -or $hasCursor -or $hasCodex -or $hasAntigravity -or $hasWindsurf
 if ($hasMcpTargets) { $totalSteps++ }
 $step = 0
 
@@ -1269,13 +1341,30 @@ if ($hasAntigravity) {
 }
 
 # ============================
+# 还原 Windsurf 配置（仅 MCP + hooks；skills/rules 由 Cascade 直接读 ~/.claude/）
+# ============================
+if ($hasWindsurf) {
+    $step++
+    Write-Host "[$step/$totalSteps] 还原 Windsurf 配置（pre_run_command 低噪音 hooks）..." -ForegroundColor Green
+    if (-not (Test-Path $windsurfSrc)) {
+        Write-Warning "找不到源目录: $windsurfSrc，跳过。"
+    } elseif ($DryRun) {
+        Install-WindsurfHooks $windsurfHooksJsonDst $windsurfHooksDirDst
+    } else {
+        if (-not (Test-Path $windsurfDst)) { New-Item -ItemType Directory -Path $windsurfDst -Force | Out-Null }
+        # hooks（pre_run_command 硬兜底，使用社区方案 dcg）
+        Install-WindsurfHooks $windsurfHooksJsonDst $windsurfHooksDirDst
+    }
+}
+
+# ============================
 # 生成 MCP 配置
 # ============================
 if ($hasMcpTargets) {
     $step++
     Write-Host "[$step/$totalSteps] 配置 MCP 服务器..." -ForegroundColor Green
     if ($DryRun) {
-        Write-Host "  [DryRun] 将生成 VS Code / Cursor / Codex / Antigravity MCP 配置"
+        Write-Host "  [DryRun] 将生成 VS Code / Cursor / Codex / Antigravity / Windsurf MCP 配置"
     } else {
         $uvPath = Resolve-UvPath
         if (-not $uvPath) {
@@ -1313,6 +1402,9 @@ if ($hasMcpTargets) {
         }
         if ($hasAntigravity) {
             Merge-McpJson $antigravityMcpSrc $antigravityMcpDst $uvPath "mcpServers"
+        }
+        if ($hasWindsurf) {
+            Merge-McpJson $windsurfMcpSrc $windsurfMcpDst $uvPath "mcpServers"
         }
     }
 }
@@ -1417,6 +1509,16 @@ if ($hasClaude -and -not $SkipDcg) {
         Write-Host "  ~ Claude Code dcg hook（hooks/ 未找到）" -ForegroundColor Yellow
     }
 }
+if ($hasWindsurf) {
+    $wsChecks = @(
+        @{ Name = "~/.codeium/windsurf/mcp_config.json"; Path = $windsurfMcpDst }
+    )
+    if (-not $SkipDcg -and -not $DisableDcgHooks) {
+        $wsChecks += @{ Name = "~/.codeium/windsurf/hooks.json"; Path = $windsurfHooksJsonDst }
+        $wsChecks += @{ Name = "~/.codeium/windsurf/hooks/"; Path = $windsurfHooksDirDst }
+    }
+    $checks = $wsChecks + $checks
+}
 if ($hasAntigravity -and -not $SkipDcg) {
     if (Test-DcgInstalled) {
         Write-Host "  + dcg 二进制（Antigravity 硬层已启用）" -ForegroundColor Green
@@ -1461,4 +1563,5 @@ if ($hasCursor) { Write-Host "  - 重启 Cursor，验证 MCP Server 是否正常
 if ($hasCodex)  { Write-Host "  - 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载" }
 if ($hasClaude) { Write-Host "  - 重启 Claude Code" }
 if ($hasAntigravity) { Write-Host "  - 重启 Antigravity" }
+if ($hasWindsurf) { Write-Host "  - 重启 Windsurf" }
 Write-Host "  - 如需其他 MCP（GitHub、Context7 等），在扩展商城中安装"
