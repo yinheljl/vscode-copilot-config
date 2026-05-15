@@ -236,11 +236,6 @@ if (Test-Path $codexSkillsSrcLocal) {
         Copy-Item $_.FullName $dstDir -Recurse -Force
         $synced++
     }
-    # 也复制 skills/ 根目录的 README.md（如果用户在本机有改动）
-    $localReadme = Join-Path $codexSkillsSrcLocal "README.md"
-    if (Test-Path $localReadme) {
-        Copy-Item $localReadme (Join-Path $codexSkillsDstRepo "README.md") -Force
-    }
     Write-Host "  + skills/ (同步 $synced 个用户技能，已排除 .system / codex-primary-runtime)"
 } else {
     Write-Host "  未找到 ~/.codex/skills/，跳过" -ForegroundColor Yellow

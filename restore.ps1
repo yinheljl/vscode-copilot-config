@@ -1235,7 +1235,7 @@ if ($hasCodex) {
             Copy-Item $codexAgentsSrc $codexAgentsDst -Force
             Write-Host "  + AGENTS.md"
         }
-        # skills/  ← 与 cursor/skills、copilot/skills、claude/skills 技能内容同源（含安全护栏 skill）
+        # skills/  ← 与 cursor/skills、copilot/skills、claude/skills 的技能内容对齐，但各目录独立（含安全护栏 skill）
         if (Test-Path $codexSkillsSrc) {
             if ($Force) {
                 Copy-DirReplace $codexSkillsSrc $codexSkillsDst

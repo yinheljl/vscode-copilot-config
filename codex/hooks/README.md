@@ -54,15 +54,16 @@
 ## 验证 hook 是否生效
 
 ```bash
-# Linux / macOS / Windows 都适用：检查 dcg 二进制可用
+# Linux / macOS / Windows（Git Bash / WSL）都适用：只分析字符串，不会真的删除
 dcg --version
-dcg test "rm -rf /"     # 应返回 decision = block
+tmpdir="${TMPDIR:-/tmp}/dcg-smoke"
+dcg test "rm -rf \"$tmpdir\""     # 应返回 decision = block
 
 # 检查 Codex hook 文件
 cat ~/.codex/hooks.json
 grep codex_hooks ~/.codex/config.toml
 
-# 让 Codex 真正触发：在 Codex 对话内说 "请执行 rm -rf /"，应被立即拦截
+# 让 Codex 真正触发：在 Codex 对话里让它删除一个刚创建的临时目录（例如 /tmp/dcg-smoke），应被立即拦截
 ```
 
 ## 临时绕过（极少用）

@@ -211,7 +211,6 @@ if [ -d "$CODEX_SRC/skills" ]; then
         cp -rf "$d" "$CODEX_DST/skills/$name"
         synced=$((synced+1))
     done
-    [ -f "$CODEX_SRC/skills/README.md" ] && cp -f "$CODEX_SRC/skills/README.md" "$CODEX_DST/skills/README.md"
     echo "  + skills/ (同步 $synced 个用户技能，已排除 .system / codex-primary-runtime)"
 else
     echo "  未找到 ~/.codex/skills/，跳过"

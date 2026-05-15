@@ -112,10 +112,10 @@
 | 目录/文件 | 说明 |
 |-----------|------|
 | `claude/CLAUDE.md` | Claude 全局行为规范（5 条编码准则） |
-| `claude/skills/` | Claude 全局 Skills（9 个，扁平结构，与其他 IDE 技能内容同源） |
+| `claude/skills/` | Claude 独立 Skills 目录（9 个，扁平结构；内容与其他 Agent 对齐，但目录独立） |
 | `claude/hooks/` | Claude Code PreToolUse dcg 低噪音过滤器 |
 | `antigravity/GEMINI.md` | Antigravity 全局行为规范 |
-| `antigravity/skills/` | Antigravity 全局 Skills |
+| `antigravity/skills/` | Antigravity 独立 Skills 目录（内容与其他 Agent 对齐） |
 | `antigravity/hooks/` | Antigravity PreToolUse dcg 低噪音过滤器 |
 | `antigravity/mcp.json` | Antigravity MCP 服务器配置模板 |
 | `antigravity/settings.json` | Antigravity 编辑器设置模板 |
@@ -123,16 +123,16 @@
 | `windsurf/hooks.json` | Windsurf Cascade `pre_run_command` Hooks 配置模板（轻量过滤器先筛选，再按需调用 dcg） |
 | `windsurf/hooks/` | Windsurf Cascade pre_run_command dcg 低噪音过滤器 |
 | `copilot/instructions/` | VS Code Copilot 全局指令（中文规范、Python 虚拟环境、5 条编码准则等） |
-| `copilot/skills/` | VS Code Copilot 自定义 Skill（按分类组织的 9 个，含安全护栏） |
+| `copilot/skills/` | VS Code Copilot 独立 Skill 目录（按分类组织的 9 个；内容与其他 Agent 对齐，含安全护栏） |
 | `copilot/hooks/` | GitHub Copilot preToolUse dcg 低噪音过滤器 |
 | `codex/AGENTS.md` | Codex 全局指令（AGENTS.md 格式，5 条编码准则） |
 | `codex/config.toml` | Codex MCP 服务器配置模板（默认 `[features] codex_hooks = true`） |
-| `codex/skills/` | **Codex 全局 Skills（9 个，扁平结构，与 Cursor / Copilot / Claude 技能内容同源）** |
+| `codex/skills/` | **Codex 独立 Skills 目录（9 个，扁平结构；内容与 Cursor / Copilot / Claude / Antigravity 对齐，但目录独立）** |
 | `codex/hooks/README.md` | **Codex PreToolUse 低噪音硬兜底说明（restore 脚本检测/安装社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)）** |
 | `codex/hooks.json` | Codex Hooks 配置模板（轻量过滤器先筛选，再按需调用 `dcg`） |
 | `cursor/mcp.json` | Cursor MCP 服务器配置模板（含路径占位符） |
 | `cursor/rules/` | Cursor 全局 Rules（`.mdc` 格式） |
-| `cursor/skills/` | Cursor Skills（按分类组织的 9 个，与 Copilot / Codex / Claude 技能内容同源） |
+| `cursor/skills/` | Cursor Skills（按分类组织的 9 个；内容与 Copilot / Codex / Claude / Antigravity 对齐，但目录独立） |
 | `cursor/settings.json` | Cursor 编辑器设置模板 |
 | `cursor/hooks.json` / `cursor/hooks/` | Cursor beforeShellExecution dcg 低噪音过滤器 |
 | `vscode/mcp.json` | VS Code MCP 服务器配置模板（含路径占位符） |
@@ -165,11 +165,11 @@
 | `codex/AGENTS.md` | Codex | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
 | `cursor/rules/mcp-feedback.mdc` | Cursor | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
 | `antigravity/GEMINI.md` | Antigravity | 中文回复、Python 虚拟环境、5 条编码准则（简洁/精准/目标驱动） |
-| `claude/CLAUDE.md`（共享） | Windsurf | Cascade 通过设置中 `Read Claude Code Config` 直接读 `~/.claude/CLAUDE.md` 与 `~/.claude/skills/`，无需单独同步 |
+| `claude/CLAUDE.md`（Windsurf 可选复用） | Windsurf | 开启 `Read Claude Code Config` 后可直接读 `~/.claude/CLAUDE.md` 与 `~/.claude/skills/`；这是可选复用路径，不是默认共享目录 |
 
 ## 🛠️ Skills 清单
 
-### 共享 Skills（Cursor + VS Code Copilot + Codex + Claude + Antigravity 五套同源；Windsurf 通过 `Read Claude Code Config` 直接复用 Claude 的 skills）
+### 独立 Skills（Cursor + VS Code Copilot + Codex + Claude + Antigravity 五套目录独立，但内容同源；Windsurf 仅在启用 `Read Claude Code Config` 时可选复用 Claude 的 skills）
 
 | 分类 | 技能 | 用途 |
 |------|------|------|
@@ -200,7 +200,7 @@
 | 项 | 详情 |
 |----|------|
 | ✅ 平台 | Windows / macOS / Linux 全部生效 |
-| ✅ IDE | Cursor / VS Code Copilot / Codex / Claude / Antigravity 五家同源 |
+| ✅ IDE | Cursor / VS Code Copilot / Codex / Claude / Antigravity 五家独立目录、内容同源 |
 | 💰 成本 | description 约 200 tokens 注入 system prompt，完整 SKILL.md 仅在触发时加载 |
 | ⚠️ 局限 | 属于 prompt 层，模型在极端情况（上下文严重压缩、`--full-auto` / `--yolo` / `danger-full-access`）可能绕过 |
 
@@ -360,7 +360,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 - [x] VS Code Codex 自动配置
 - [x] sync.sh（Linux/macOS 双向同步）
 - [x] CI 校验 JSON/TOML 模板与版本号同步
-- [x] Codex 全局 Agent Skills（与 Cursor/Copilot/Claude 技能内容同源）
+- [x] Codex 全局 Agent Skills（与 Cursor/Copilot/Claude/Antigravity 技能内容对齐，但目录独立）
 - [x] 破坏性命令双层兜底（软层 SKILL.md + 硬层社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)）
 - [ ] 设置页面内一键更新按钮
 - [ ] 更多 MCP 服务器预配置
