@@ -176,6 +176,15 @@ copy_dir_replace() {
     cp -rf "$src" "$dst"
 }
 
+remove_deprecated_skills_readme() {
+    local skills_dir="$1"
+    local readme="$skills_dir/README.md"
+    if [ -f "$readme" ]; then
+        rm -f -- "$readme"
+        echo "  - skills/README.md (清理废弃说明文件)"
+    fi
+}
+
 test_dcg_installed() {
     command -v dcg >/dev/null 2>&1 && return 0
     [ -x "$HOME/.local/bin/dcg" ] && return 0
@@ -1037,6 +1046,7 @@ if [ "$HAS_VSCODE" = true ]; then
                 fi
             fi
         done
+        remove_deprecated_skills_readme "$COPILOT_DST/skills"
 
         # VS Code settings.json 合并（与 PowerShell 版本对齐）
         if [ -f "$VSCODE_SETT_SRC" ]; then
@@ -1067,6 +1077,7 @@ if [ "$HAS_CURSOR" = true ]; then
                 fi
             fi
         done
+        remove_deprecated_skills_readme "$CURSOR_DST/skills"
 
         # settings.json 合并（与 PowerShell 版本对齐）
         if [ -f "$CURSOR_SETT_SRC" ]; then
@@ -1101,6 +1112,7 @@ if [ "$HAS_CODEX" = true ]; then
                 copy_dir_merge "$CODEX_SKILLS_SRC" "$CODEX_SKILLS_DST"
                 echo "  + skills/ (增量)"
             fi
+            remove_deprecated_skills_readme "$CODEX_SKILLS_DST"
         fi
         # hooks.json + config.toml feature flag（默认启用低噪音硬兜底，使用社区方案 dcg）
         install_codex_hooks

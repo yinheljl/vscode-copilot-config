@@ -219,6 +219,7 @@ git push --force origin main
 dcg --version
 tmpdir="${TMPDIR:-/tmp}/dcg-smoke"
 dcg explain "rm -rf \"$tmpdir\""     # 应输出"会被拦截"的解释
+dcg test "rm -rf \"$tmpdir\""        # 脚本化验证时应返回 decision = block
 
 # 让当前 agent 真正触发：在对应对话里让它删除一个刚创建的临时目录（例如 /tmp/dcg-smoke），应被立即拦截
 ```

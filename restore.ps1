@@ -408,6 +408,14 @@ function Copy-DirReplace($src, $dst) {
     Copy-Item $src $dst -Recurse -Force
 }
 
+function Remove-DeprecatedSkillsReadme([string]$skillsDir) {
+    $readme = Join-Path $skillsDir "README.md"
+    if (Test-Path -LiteralPath $readme -PathType Leaf) {
+        Remove-Item -LiteralPath $readme -Force
+        Write-Host "  - skills/README.md (清理废弃说明文件)"
+    }
+}
+
 function Test-DcgInstalled {
     if (Get-Command dcg -ErrorAction SilentlyContinue) { return $true }
     if (Get-Command dcg.exe -ErrorAction SilentlyContinue) { return $true }
@@ -1159,6 +1167,7 @@ if ($hasVSCode) {
                 }
             }
         }
+        Remove-DeprecatedSkillsReadme (Join-Path $copilotDst "skills")
         # hooks（preToolUse 硬兜底，使用社区方案 dcg）
         Install-CopilotHooks $copilotHooksDst
     }
@@ -1200,6 +1209,7 @@ if ($hasCursor) {
                 Copy-DirMerge $skillsSrc $skillsDst
                 Write-Host "  + skills/ (增量)"
             }
+            Remove-DeprecatedSkillsReadme $skillsDst
         }
 
         # settings.json (始终合并)
@@ -1244,6 +1254,7 @@ if ($hasCodex) {
                 Copy-DirMerge $codexSkillsSrc $codexSkillsDst
                 Write-Host "  + skills/ (增量)"
             }
+            Remove-DeprecatedSkillsReadme $codexSkillsDst
         }
         # hooks.json（低噪音硬兜底，使用社区方案 dcg）
         Install-CodexHooks $codexHooksJsonSrc $codexHooksJsonDst $codexConfigDst
