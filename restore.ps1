@@ -436,7 +436,7 @@ function Get-WebString([string]$url) {
 
 function Invoke-DcgInstaller {
     # 复刻 dcg 官方 install.ps1 的核心步骤（PS 5.1 兼容）：
-    #   1. GitHub API 解析最新 release tag
+    #   1. GitHub API 解析最高稳定 semver release tag
     #   2. 下载 dcg-x86_64-pc-windows-msvc.zip
     #   3. 用上游 .sha256 文件校验（信任链与官方一致）
     #   4. 解压 → 复制到 ~/.local/bin/dcg.exe
@@ -454,22 +454,42 @@ function Invoke-DcgInstaller {
         return $false
     }
 
-    # Step 1: 解析最新版本
-    Write-Host "    → 查询最新 release..." -ForegroundColor DarkGray
+    # Step 1: 解析最高稳定版本。不要只依赖 /releases/latest：上游历史发布中
+    # latest 标记曾滞后于实际可用的稳定 tag。
+    Write-Host "    → 查询最高稳定 release..." -ForegroundColor DarkGray
     $version = $null
     try {
-        $json = Get-WebString "https://api.github.com/repos/$owner/$repo/releases/latest"
-        $rel = $json | ConvertFrom-Json
-        $version = $rel.tag_name
+        $json = Get-WebString "https://api.github.com/repos/$owner/$repo/releases?per_page=50"
+        $rels = @($json | ConvertFrom-Json)
+        $candidates = @()
+        foreach ($rel in $rels) {
+            if ($rel.draft -or $rel.prerelease) { continue }
+            $tag = [string]$rel.tag_name
+            if ($tag -notmatch '^v?(\d+)\.(\d+)\.(\d+)$') { continue }
+            $hasZip = $false
+            $hasSha = $false
+            foreach ($asset in @($rel.assets)) {
+                if ($asset.name -eq "dcg-$target.zip") { $hasZip = $true }
+                if ($asset.name -eq "dcg-$target.zip.sha256") { $hasSha = $true }
+            }
+            if (-not ($hasZip -and $hasSha)) { continue }
+            $candidates += [pscustomobject]@{
+                Tag = $tag
+                SemVer = [version]"$($Matches[1]).$($Matches[2]).$($Matches[3])"
+            }
+        }
+        if ($candidates.Count -gt 0) {
+            $version = ($candidates | Sort-Object SemVer -Descending | Select-Object -First 1).Tag
+        }
     } catch {
         Write-Warning "    GitHub API 调用失败: $_"
         return $false
     }
     if (-not $version) {
-        Write-Warning "    无法解析最新 release tag。"
+        Write-Warning "    无法解析可安装的稳定 release tag。"
         return $false
     }
-    Write-Host "    → 最新版本: $version" -ForegroundColor DarkGray
+    Write-Host "    → 选择版本: $version" -ForegroundColor DarkGray
 
     $zipName = "dcg-$target.zip"
     $zipUrl  = "https://github.com/$owner/$repo/releases/download/$version/$zipName"
@@ -597,6 +617,26 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
         }
         if (-not $verLine) { $verLine = "(已安装)" }
         Write-Host "    ✓ 已检测到 dcg：$verLine" -ForegroundColor Green
+        if ($AutoInstallDcg) {
+            if ($DryRun) {
+                Write-Host "    [DryRun] 将刷新 dcg 到上游最高稳定 release。" -ForegroundColor Yellow
+            } else {
+                Write-Host "    -AutoInstallDcg 已启用，刷新 dcg 到上游最高稳定 release。" -ForegroundColor Cyan
+                if (Invoke-DcgInstaller) {
+                    $prevPref = $ErrorActionPreference
+                    $ErrorActionPreference = "SilentlyContinue"
+                    try {
+                        $rawOut = (& dcg --version 2>&1 | Out-String)
+                        $m = [regex]::Match($rawOut, 'v\d+\.\d+\.\d+(?:[-+][\w\.\-]+)?')
+                        if ($m.Success) { Write-Host "    ✓ dcg 当前版本：$($m.Value)" -ForegroundColor Green }
+                    } catch {} finally {
+                        $ErrorActionPreference = $prevPref
+                    }
+                } else {
+                    Write-Warning "    dcg 刷新失败；继续使用已安装版本。"
+                }
+            }
+        }
     } else {
         Write-Host "    × 未检测到 dcg（社区方案 destructive_command_guard）" -ForegroundColor Yellow
 

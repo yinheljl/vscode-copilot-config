@@ -7,7 +7,7 @@ description: "破坏性命令安全护栏。当将要执行可能导致数据丢
 
 > 本 skill 是**软兜底**（任何 IDE / 任何平台都生效）。可叠加**硬兜底**：
 >
-> - 硬层使用社区方案 [`Dicklesworthstone/destructive_command_guard`（dcg）](https://github.com/Dicklesworthstone/destructive_command_guard)，846+ stars / 49+ packs / Rust 二进制 / sub-millisecond latency / 跨 Linux/macOS/Windows 原生二进制
+> - 硬层使用社区方案 [`Dicklesworthstone/destructive_command_guard`（dcg）](https://github.com/Dicklesworthstone/destructive_command_guard)，关注度较高 / 49+ packs / Rust 二进制 / sub-millisecond latency / 跨 Linux/macOS/Windows 原生二进制
 > - 本仓库的 `restore.ps1` / `restore.sh` 会**自动询问安装** dcg（调用上游官方 install.ps1/install.sh，含 SHA256 校验），并默认启用 Codex PreToolUse 硬层
 > - Codex 当前 PreToolUse matcher 只能按 shell 工具名触发；为兼容 CLI 与 Desktop surface，本仓库默认匹配 `Bash|shell_command`，再运行轻量过滤器，只有疑似高危命令才调用 dcg 本体
 > - 如需关闭硬层 hook，显式运行 `restore.ps1 -DisableDcgHooks` 或 `restore.sh --disable-dcg-hooks`
@@ -203,7 +203,7 @@ git push --force origin main
 
 本 skill 是软层。硬层使用社区方案 [`dcg`](https://github.com/Dicklesworthstone/destructive_command_guard)，由 `restore.ps1` / `restore.sh` 检测/安装并默认启用低噪音 hook：
 
-- **实现方**：[@Dicklesworthstone](https://github.com/Dicklesworthstone)（个人维护，846+ stars，最新 release v0.5.2/2026-05，活跃中）
+- **实现方**：[@Dicklesworthstone](https://github.com/Dicklesworthstone)（个人维护，已验证 release tag v0.5.2/2026-05，活跃中）
 - **协议**：使用 OpenAI Codex 官方 [`PreToolUse` Hook](https://developers.openai.com/codex/hooks)，匹配 shell 工具调用，命中规则时返回阻断决策
 - **规则覆盖**：49+ packs（git / 文件系统 / databases / k8s / docker / cloud / IaC / secrets 等），上游 codecov 覆盖率徽章公开
 - **跨平台**：Linux x86_64/aarch64、macOS Intel/Apple Silicon、**Windows x86_64**（原生 .exe）

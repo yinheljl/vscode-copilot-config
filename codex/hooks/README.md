@@ -4,13 +4,13 @@
 
 ## 这是什么？
 
-[Codex Hooks](https://developers.openai.com/codex/hooks) 是 Codex 在工具调用前后同步触发的外部进程。`PreToolUse` 钩子可以在 Codex 真正执行 Bash 命令前拦下来——这是 prompt 之外的**硬兜底**。
+[Codex Hooks](https://developers.openai.com/codex/hooks) 是 Codex 在工具调用前后同步触发的外部进程。`PreToolUse` 钩子可以在 Codex 真正执行 shell 命令前拦下来——这是 prompt 之外的**硬兜底**。
 
 为了避免重复造轮子，**硬层使用社区项目 [`Dicklesworthstone/destructive_command_guard`（dcg）](https://github.com/Dicklesworthstone/destructive_command_guard)**：
 
 | 维度 | dcg |
 |------|------|
-| 受关注度 | GitHub 846+ stars，活跃维护中；restore 会从 GitHub Releases 解析 latest tag（本机验证为 v0.4.5） |
+| 受关注度 | GitHub 项目活跃维护；已验证上游稳定 release tag `v0.5.2`（2026-05），Windows release 包含 PE32+ 二进制校验修复 |
 | 实现 | Rust 二进制（SIMD 加速，sub-millisecond 延迟） |
 | 包大小 | 49+ 安全 packs（git / 文件系统 / databases / k8s / docker / cloud / terraform 等） |
 | 跨 agent | Codex CLI / Claude Code / Gemini CLI / Copilot CLI / Cursor / OpenCode / Aider / Continue |
@@ -27,8 +27,8 @@
 2. **询问**：未安装时弹出 `[y/N]` 确认（你必须明确同意才会动手）
 3. **下载并校验**：
    - **macOS / Linux**：代理调用上游官方 `install.sh`（含 SHA256 校验 + 可选 cosign）
-   - **Windows**：上游 `install.ps1` 在 Windows PowerShell 5.1（系统默认 shell）下有 bug——它假设 `Invoke-WebRequest -UseBasicParsing` 返回 string，但 PS 5.1 实际返回 byte[]，导致 SHA256 校验逻辑抛 `Checksum file not found`。`restore.ps1` 用 PS 5.1 兼容代码**复刻同样的官方流程**：GitHub API 取 latest tag → 下载 `dcg-x86_64-pc-windows-msvc.zip` → 拉上游 `.sha256` 强制校验 → 解压 → 安装到 `~/.local/bin/dcg.exe` → 写入用户 PATH。**信任锚点完全不变**（artifact 与 hash 都是 dcg 官方发布物，本仓库不参与签名 / 不 host 二进制）
-4. **跳过询问**：加 `-AutoInstallDcg`（PowerShell）/ `--auto-install-dcg`（bash）旗标
+   - **Windows**：上游 `install.ps1` 在 Windows PowerShell 5.1（系统默认 shell）下有 bug——它假设 `Invoke-WebRequest -UseBasicParsing` 返回 string，但 PS 5.1 实际返回 byte[]，导致 SHA256 校验逻辑抛 `Checksum file not found`。`restore.ps1` 用 PS 5.1 兼容代码**复刻同样的官方流程**：GitHub API 选择最高稳定 semver tag → 下载 `dcg-x86_64-pc-windows-msvc.zip` → 拉上游 `.sha256` 强制校验 → 解压 → 安装到 `~/.local/bin/dcg.exe` → 写入用户 PATH。**信任锚点完全不变**（artifact 与 hash 都是 dcg 官方发布物，本仓库不参与签名 / 不 host 二进制）
+4. **跳过询问 / 刷新已安装版本**：加 `-AutoInstallDcg`（PowerShell）/ `--auto-install-dcg`（bash）旗标
 5. **默认低噪音 hook**：部署 `~/.codex/hooks/` 过滤器和 `~/.codex/hooks.json`，并设置 `hooks = true`
 6. **只在高危命令调用 dcg**：过滤器命中删除、危险 git、数据库清空、格式化、云资源销毁等模式时才调用 `dcg`
 7. **关闭 hook**：加 `-DisableDcgHooks`（PowerShell）/ `--disable-dcg-hooks`（bash）

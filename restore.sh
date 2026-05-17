@@ -336,6 +336,19 @@ install_codex_hooks() {
         local dcg_ver
         dcg_ver=$(dcg --version 2>/dev/null | head -n 1 || echo "unknown")
         echo "    ✓ 已检测到 dcg：$dcg_ver"
+        if [ "$AUTO_INSTALL_DCG" = true ]; then
+            if [ "$is_windows_host" = true ]; then
+                echo "    ⚠ 当前是 Git Bash / MSYS / Cygwin。刷新 dcg 请在 PowerShell 内运行：./restore.ps1 -Target Codex -AutoInstallDcg"
+            else
+                echo "    --auto-install-dcg 已启用，按上游官方 install.sh 刷新 dcg。"
+                if invoke_dcg_installer; then
+                    dcg_ver=$(dcg --version 2>/dev/null | head -n 1 || echo "unknown")
+                    echo "    ✓ dcg 当前版本：$dcg_ver"
+                else
+                    echo "    ⚠ dcg 刷新失败；继续使用已安装版本。" >&2
+                fi
+            fi
+        fi
     else
         echo "    × 未检测到 dcg（社区方案 destructive_command_guard）"
         local should_install=false

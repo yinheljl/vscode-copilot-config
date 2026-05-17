@@ -3,7 +3,7 @@
 > **一键配置 VS Code GitHub Copilot、Cursor、Codex、Claude、Antigravity 和 Windsurf 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
 
-当前版本：`1.5.1`
+当前版本：`1.5.2`
 
 ---
 
@@ -193,7 +193,7 @@
 >
 > Codex 当前 PreToolUse hook 的 matcher 只能按工具名匹配 shell 工具，不能只匹配 `rm -rf` / `git reset --hard` 等危险命令。为兼容 CLI 与 Desktop surface，本仓库默认匹配 `Bash|shell_command`，再进入轻量过滤器；只有命令看起来高危时，才调用 `dcg` 本体。
 
-### 软层 — `destructive-command-guard` Skill（跨 4 IDE / 跨平台）
+### 软层 — `destructive-command-guard` Skill（跨 5 IDE / 跨平台）
 
 通过 `SKILL.md` 的 `description` 中的 trigger 关键词，让 Cursor / Copilot / Codex / Claude 在生成 `rm` / `del` / `rmdir` / `Remove-Item` / `git reset --hard` / `DROP TABLE` 等命令前自动加载并强制 `AskQuestion` 二次确认。
 
@@ -210,7 +210,7 @@
 
 | 维度 | 详情 |
 |------|------|
-| ⭐ 关注度 | GitHub **846+ stars**（截至 2026-04），restore 会从 GitHub Releases 解析 latest tag（本机验证为 `v0.4.5`），活跃维护中 |
+| ⭐ 关注度 | GitHub 项目活跃维护；已验证上游稳定 release tag `v0.5.2`（2026-05），Windows release 包含 PE32+ 二进制校验修复 |
 | 🛠 实现 | Rust 二进制（SIMD 加速，sub-millisecond latency）+ codecov 覆盖率徽章 |
 | 📦 规则覆盖 | **49+ 安全 packs**：`core.git` / `core.filesystem` 默认开；`database.postgresql` / `kubernetes.kubectl` / `cloud.aws` / `terraform` / `containers.docker` / `secrets.vault` 等可选开 |
 | 🔗 跨 agent | 同一份配置同时支持 Codex CLI / Claude Code / Gemini CLI / Copilot CLI / Cursor / OpenCode / Aider |
@@ -223,10 +223,10 @@
 **restore 脚本的 dcg 自动配置流程**：
 
 1. **检测**：`dcg` / `dcg.exe` 是否已在 PATH 或 `~/.local/bin/` 下
-2. **询问** `[y/N]`：未安装时弹出确认（你必须明确同意才会动手；或 `-AutoInstallDcg` / `--auto-install-dcg` 跳过询问；或 `-SkipDcg` / `--skip-dcg` 完全跳过）
+2. **询问** `[y/N]`：未安装时弹出确认（你必须明确同意才会动手；或 `-AutoInstallDcg` / `--auto-install-dcg` 跳过询问并刷新已安装的 dcg；或 `-SkipDcg` / `--skip-dcg` 完全跳过）
 3. **下载并校验**：
    - **macOS / Linux**：直接代理调用上游官方 `install.sh`（含 SHA256 校验 + 可选 cosign 签名）
-   - **Windows**：因为上游 `install.ps1` 在 Windows PowerShell 5.1（系统默认 shell）下有兼容 bug（`Invoke-WebRequest -UseBasicParsing` 返回 byte[] 而非 string，导致它的 `.Trim()` 抛异常）—— `restore.ps1` 用 PS 5.1 兼容代码**复刻同样的流程**：从 GitHub Releases 拉 `dcg-x86_64-pc-windows-msvc.zip` + 上游 `.sha256` 强制校验 → 解压 → 写 `~/.local/bin/dcg.exe` → 加用户 PATH。**信任锚点不变**（zip 与 .sha256 都是 dcg 上游发布的 GitHub Release artifact）
+   - **Windows**：因为上游 `install.ps1` 在 Windows PowerShell 5.1（系统默认 shell）下有兼容 bug（`Invoke-WebRequest -UseBasicParsing` 返回 byte[] 而非 string，导致它的 `.Trim()` 抛异常）—— `restore.ps1` 用 PS 5.1 兼容代码**复刻同样的流程**：从 GitHub Releases 选择最高稳定 semver tag，拉 `dcg-x86_64-pc-windows-msvc.zip` + 上游 `.sha256` 强制校验 → 解压 → 写 `~/.local/bin/dcg.exe` → 加用户 PATH。**信任锚点不变**（zip 与 .sha256 都是 dcg 上游发布的 GitHub Release artifact）
 4. **低噪音 hook**：部署 Codex / Claude Code / Cursor / Copilot 对应的过滤器；Codex 额外设置 `hooks = true`
 5. **按需调用 dcg**：过滤器只在命令看起来涉及删除、危险 git、数据库清空、格式化、云资源销毁等高危模式时调用 `dcg`
 6. 重启对应 AI 工具会话
@@ -243,7 +243,7 @@
 | 供应链 | 仅 Markdown 文本，零运行时依赖 | Rust 二进制；MIT 协议；源码可审；官方安装器强制 SHA256 |
 | 安装责任 | 本仓库脚本直接复制文件 | macOS/Linux：代理调用上游 `install.sh`（信任完全归上游）。Windows：因上游 `install.ps1` 在 PS 5.1 下有兼容 bug，本仓库用 PS 5.1 兼容代码**复刻**同样流程（信任锚点不变：仍下载上游 zip + 用上游 `.sha256` 校验） |
 | **Bus factor** | 本仓库维护者团队 | **1（作者明确声明不接受外部 PR）** ← 必须了解的风险 |
-| 升级方式 | `git pull` + `restore` | `dcg update` 或重跑 `restore -AutoInstallDcg` |
+| 升级方式 | `git pull` + `restore` | `dcg update`；如 Windows 上游 updater 校验失败，可重跑 `restore.ps1 -AutoInstallDcg` 走本仓库的 PS 5.1 兼容 SHA256 流程 |
 | 影响面 | 跨 IDE 跨平台 | 全平台 dcg 命令行可用；Codex hook 默认启用轻量过滤器，高危命令才进入 dcg 本体 |
 
 **为什么用 dcg 而不是自研**：
@@ -253,7 +253,7 @@
 
 **为什么不直接 `irm | iex` / `curl | bash` 自动装**：
 - 用户的供应链信任决策必须由用户自己做。restore 默认弹 `[y/N]`；明确同意（或显式 `-AutoInstallDcg` 旗标）后再下载
-- 即使同意，也是**调用上游官方安装器**——SHA256 校验、cosign 验证、PATH 管理 都是 dcg 官方逻辑负责，本仓库不接管这些环节的责任
+- 即使同意，也只使用上游 release artifact 与上游 `.sha256` 作为信任锚点；macOS / Linux 代理调用官方 `install.sh`，Windows 走本仓库 PS 5.1 兼容流程但不托管二进制
 
 **为什么仍然保留软层 SKILL**：
 - 万一 dcg 仓库哪天消失（Bus factor 1），软层 SKILL 仍然 100% 可用
@@ -310,7 +310,7 @@ Copy-Item "C:\Temp\copilot-config\antigravity\settings.json" "$env:APPDATA\antig
 .\restore.ps1 -Target Claude         # 仅配置 Claude
 .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
 .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
-.\restore.ps1 -AutoInstallDcg        # 未装 dcg 时自动下载并校验上游 release，不再交互询问
+.\restore.ps1 -AutoInstallDcg        # 自动下载并校验上游 release；已安装时也会刷新 dcg，不再交互询问
 .\restore.ps1 -DisableDcgHooks       # 安装/检测 dcg，但跳过所有 dcg hook 部署；Codex 设为 hooks=false
 .\restore.ps1 -SkipDcg               # 跳过 dcg 安装与所有 dcg hook 部署；Codex 设为 hooks=false
 ```
@@ -324,7 +324,7 @@ bash restore.sh --target=claude      # 仅配置 Claude
 bash restore.sh --target=antigravity # 仅配置 Antigravity
 bash restore.sh --target=vscode,cursor  # 仅配置 VS Code 和 Cursor
 bash restore.sh --force --target=codex  # 仅覆盖 Codex 配置
-bash restore.sh --auto-install-dcg   # 未装 dcg 时直接调用官方 install.sh，不再交互询问
+bash restore.sh --auto-install-dcg   # 直接调用官方 install.sh；已安装时也会刷新 dcg，不再交互询问
 bash restore.sh --disable-dcg-hooks  # 安装/检测 dcg，但跳过所有 dcg hook 部署；Codex 设为 hooks=false
 bash restore.sh --skip-dcg           # 跳过 dcg 安装与所有 dcg hook 部署；Codex 设为 hooks=false
 ```
