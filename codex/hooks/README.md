@@ -1,6 +1,6 @@
 # Codex Hooks（破坏性命令低噪音硬兜底）
 
-> **默认策略**：`restore.ps1` / `restore.sh` 会检测或安装 `dcg`，并默认启用 Codex PreToolUse hook。由于 Codex 当前 matcher 只能按工具名匹配 `Bash`，本仓库在 hook 中先运行轻量过滤器；只有命令看起来高危时，才调用 `dcg` 本体。
+> **默认策略**：`restore.ps1` / `restore.sh` 会检测或安装 `dcg`，并默认启用 Codex PreToolUse hook。由于 Codex 当前 matcher 只能按工具名匹配 shell 工具，本仓库默认匹配 `Bash|shell_command` 并先运行轻量过滤器；只有命令看起来高危时，才调用 `dcg` 本体。
 
 ## 这是什么？
 
@@ -91,7 +91,7 @@ custom_paths = [".dcg/packs/*.yaml"]
 ## 已知限制（来自上游与 Codex 引擎）
 
 - **版本依赖**：需要当前 Codex 支持 hooks feature flag。OpenAI 当前文档包含 Windows hooks 配置项；如果你使用旧版 Codex，请先升级。
-- **只拦 Bash，且按工具名触发**：Codex 当前 `PreToolUse` matcher 只能覆盖 `Bash` 工具，不能只匹配危险命令。因此过滤器仍会被 Codex 调起，但 `dcg` 本体只在疑似高危命令时运行。
+- **按 shell 工具名触发**：Codex 当前 `PreToolUse` matcher 只能按工具名匹配，不能只匹配危险命令。本仓库默认匹配 `Bash|shell_command`，因此过滤器仍会被 Codex 调起，但 `dcg` 本体只在疑似高危命令时运行。
 - **可被绕过**：模型可以把命令写到磁盘脚本里再执行；hook 是有用的护栏但不是绝对的强制边界（dcg 与官方文档都承认这点）
 - **dcg Bus factor = 1**：单人维护项目，作者明确不接受外部 PR。如果 dcg 仓库哪天消失，可以无缝切回纯软层 SKILL（仍然有效）
 

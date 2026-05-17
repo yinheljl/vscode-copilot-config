@@ -568,7 +568,7 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
     # 设计原则：
     #   1) Windows 上复刻官方 install.ps1 的下载 + SHA256 校验流程，避免 PS 5.1 兼容问题
     #   2) 不默默 irm|iex；首次安装需用户交互式确认（Y/N），或通过 -AutoInstallDcg 旗标显式同意
-    #   3) Codex PreToolUse matcher 当前按 Bash 工具名触发；默认使用轻量过滤器，只在疑似高危命令时调用 dcg
+    #   3) Codex PreToolUse matcher 当前按 shell 工具名触发；默认使用轻量过滤器，只在疑似高危命令时调用 dcg
 
     Write-Host "  Codex 硬层（破坏性命令防护 dcg）：" -ForegroundColor DarkCyan
 

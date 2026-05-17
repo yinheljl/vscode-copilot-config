@@ -312,7 +312,7 @@ install_codex_hooks() {
     # 设计原则：
     #   1) 调用官方 install.sh，不自己实现下载/SHA256/cosign 校验逻辑
     #   2) 不默默 curl|bash；首次安装需用户交互式确认（Y/N），或通过 --auto-install-dcg 旗标显式同意
-    #   3) Codex PreToolUse matcher 当前按 Bash 工具名触发；默认使用轻量过滤器，只在疑似高危命令时调用 dcg
+    #   3) Codex PreToolUse matcher 当前按 shell 工具名触发；默认使用轻量过滤器，只在疑似高危命令时调用 dcg
 
     echo "  Codex 硬层（破坏性命令防护 dcg）："
 

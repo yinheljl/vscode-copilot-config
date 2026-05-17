@@ -191,7 +191,7 @@
 
 > ### ⚠️ Windows 用户必读（不影响一键配置，但要知情）
 >
-> Codex 当前 PreToolUse hook 的 matcher 只能按工具名匹配 `Bash`，不能只匹配 `rm -rf` / `git reset --hard` 等危险命令。为减少 token / 上下文噪音，本仓库默认让 hook 先进入轻量过滤器；只有命令看起来高危时，才调用 `dcg` 本体。
+> Codex 当前 PreToolUse hook 的 matcher 只能按工具名匹配 shell 工具，不能只匹配 `rm -rf` / `git reset --hard` 等危险命令。为兼容 CLI 与 Desktop surface，本仓库默认匹配 `Bash|shell_command`，再进入轻量过滤器；只有命令看起来高危时，才调用 `dcg` 本体。
 
 ### 软层 — `destructive-command-guard` Skill（跨 4 IDE / 跨平台）
 

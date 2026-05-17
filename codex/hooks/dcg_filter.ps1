@@ -94,7 +94,20 @@ if ($command -notmatch $riskPattern) {
 $localBlockPattern = @'
 (?isx)
 (
-  \b(sdelete|sdelete64)\b
+  ^\s*(Remove-Item|ri|rm|del|rd|rmdir|erase)\b
+| ^\s*git\s+(reset\b[\s\S]*\s--hard\b|checkout\b[\s\S]*\s--\s+|restore\b(?![\s\S]*\s--staged\b)|clean\b|branch\b[\s\S]*\s-D\b|stash\s+(drop|clear)\b|push\b[\s\S]*\s--force(?=\s|$)|filter-branch\b|filter-repo\b|rebase\b)
+| ^\s*(powershell|pwsh)(\.exe)?\b[\s\S]*\b(Remove-Item|ri|rm|del|rd|rmdir|erase|Format-Volume|diskpart|Set-ExecutionPolicy\s+Unrestricted)\b
+| ^\s*cmd(\.exe)?\s+/[cq]\s*["']?\s*(del|rd|rmdir|erase)\b
+| ^\s*(Format-Volume|diskpart|sdelete|sdelete64|vssadmin\s+delete\s+shadows|wevtutil\s+cl)\b
+| ^\s*bcdedit\b[\s\S]*\s/delete\b
+| ^\s*(DROP\s+(DATABASE|SCHEMA|TABLE)|TRUNCATE\s+TABLE|DELETE\s+FROM)\b
+| ^\s*(kubectl|oc)\s+delete\b
+| ^\s*terraform\s+destroy\b
+| ^\s*(cdk|pulumi)\s+destroy\b
+| ^\s*(docker|podman)\s+(system\s+prune|volume\s+rm|volume\s+prune|network\s+prune|container\s+prune|image\s+prune)\b
+| ^\s*(aws\s+s3\s+rb|gcloud\s+projects\s+delete)\b
+| ^\s*(chmod\s+-R\s+777|npm\s+uninstall\s+-g|pip\s+uninstall\s+-y)\b
+| \b(sdelete|sdelete64)\b
 | \bvssadmin\s+delete\s+shadows\b
 | \bbcdedit\b[\s\S]*\s/delete\b
 | \bwevtutil\s+cl\b
@@ -107,7 +120,7 @@ $localBlockPattern = @'
 '@
 
 if ($command -match $localBlockPattern) {
-    Deny-Hook "BLOCKED by local destructive command guard. This Windows destructive command is not safely handled by dcg on this machine. Ask the user to run it manually if truly needed."
+    Deny-Hook "BLOCKED by local destructive command guard. This command matches a local destructive pattern. Ask the user to run it manually if truly needed."
 }
 
 $dcg = Get-Command dcg -ErrorAction SilentlyContinue

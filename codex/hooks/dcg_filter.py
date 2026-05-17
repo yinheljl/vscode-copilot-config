@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Low-noise Codex PreToolUse gate for dcg.
 
-Codex currently matches PreToolUse by tool name, so a Bash hook is invoked for
-every shell command. This script only invokes dcg for commands that look
+Codex currently matches PreToolUse by tool name, so a shell hook is invoked for
+every matched shell command. This script only invokes dcg for commands that look
 potentially destructive; otherwise it approves immediately.
 """
 
@@ -54,7 +54,20 @@ RISK_RE = re.compile(
 LOCAL_BLOCK_RE = re.compile(
     r"""
     (
-      \b(sdelete|sdelete64)\b
+      ^\s*(Remove-Item|ri|rm|del|rd|rmdir|erase)\b
+    | ^\s*git\s+(reset\b[\s\S]*\s--hard\b|checkout\b[\s\S]*\s--\s+|restore\b(?![\s\S]*\s--staged\b)|clean\b|branch\b[\s\S]*\s-D\b|stash\s+(drop|clear)\b|push\b[\s\S]*\s--force(?=\s|$)|filter-branch\b|filter-repo\b|rebase\b)
+    | ^\s*(powershell|pwsh)(\.exe)?\b[\s\S]*\b(Remove-Item|ri|rm|del|rd|rmdir|erase|Format-Volume|diskpart|Set-ExecutionPolicy\s+Unrestricted)\b
+    | ^\s*cmd(\.exe)?\s+/[cq]\s*["']?\s*(del|rd|rmdir|erase)\b
+    | ^\s*(Format-Volume|diskpart|sdelete|sdelete64|vssadmin\s+delete\s+shadows|wevtutil\s+cl)\b
+    | ^\s*bcdedit\b[\s\S]*\s/delete\b
+    | ^\s*(DROP\s+(DATABASE|SCHEMA|TABLE)|TRUNCATE\s+TABLE|DELETE\s+FROM)\b
+    | ^\s*(kubectl|oc)\s+delete\b
+    | ^\s*terraform\s+destroy\b
+    | ^\s*(cdk|pulumi)\s+destroy\b
+    | ^\s*(docker|podman)\s+(system\s+prune|volume\s+rm|volume\s+prune|network\s+prune|container\s+prune|image\s+prune)\b
+    | ^\s*(aws\s+s3\s+rb|gcloud\s+projects\s+delete)\b
+    | ^\s*(chmod\s+-R\s+777|npm\s+uninstall\s+-g|pip\s+uninstall\s+-y)\b
+    | \b(sdelete|sdelete64)\b
     | \bvssadmin\s+delete\s+shadows\b
     | \bbcdedit\b[\s\S]*\s/delete\b
     | \bwevtutil\s+cl\b
@@ -109,7 +122,7 @@ def main() -> int:
     if not command or not RISK_RE.search(command):
         return approve()
     if LOCAL_BLOCK_RE.search(command):
-        return deny("BLOCKED by local destructive command guard. This Windows destructive command is not safely handled by dcg on this machine. Ask the user to run it manually if truly needed.")
+        return deny("BLOCKED by local destructive command guard. This command matches a local destructive pattern. Ask the user to run it manually if truly needed.")
 
     dcg = shutil.which("dcg") or shutil.which("dcg.exe")
     if not dcg:
@@ -131,7 +144,8 @@ def main() -> int:
                 return 0
         except (json.JSONDecodeError, AttributeError):
             pass
-    # dcg allowed or didn't flag — explicitly approve
+    # dcg allowed or didn't flag — explicitly approve. Local-only false negatives are
+    # handled above by LOCAL_BLOCK_RE before delegating to dcg.
     print(json.dumps({"continue": True}, separators=(",", ":")))
     return 0
 

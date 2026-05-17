@@ -1,11 +1,11 @@
 {
-  "_comment": "Codex Hooks 模板：使用社区方案 dcg（Destructive Command Guard）作为默认硬层防护。Codex 当前 PreToolUse matcher 按工具名匹配 Bash，无法只匹配危险命令；因此本模板指向轻量过滤器，只有命令看起来高危时才调用 dcg 本体。",
+  "_comment": "Codex Hooks 模板：使用社区方案 dcg（Destructive Command Guard）作为默认硬层防护。Codex 当前 PreToolUse matcher 按工具名匹配 shell 工具，无法只匹配危险命令；因此本模板指向轻量过滤器，只有命令看起来高危时才调用 dcg 本体。",
   "_doc": "https://developers.openai.com/codex/hooks",
   "_dcg": "https://github.com/Dicklesworthstone/destructive_command_guard",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|shell_command",
         "hooks": [
           {
             "type": "command",
