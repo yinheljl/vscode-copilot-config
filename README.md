@@ -9,10 +9,10 @@
 
 ## 🤖 AI Agent 操作指南
 
-> **本节内容供 AI Agent（GitHub Copilot、Cursor AI、Codex、Claude、Windsurf Cascade 等）直接解析和执行。**
+> **本节内容供 AI Agent（GitHub Copilot、Cursor AI、Codex、Claude、Antigravity、Windsurf Cascade 等）直接解析和执行。**
 > **当用户提到本仓库 URL 或要求配置/更新时，请按以下指令操作。**
 >
-> ⚠️ **重要：必须通过运行 `restore.ps1` / `restore.sh` 脚本来配置，禁止手动复制文件。脚本会自动处理 IDE 检测、路径替换、MCP 安装等所有工作。**
+> ⚠️ **重要：必须通过运行 `restore.ps1` / `restore.sh` 脚本来配置，禁止手动复制文件。脚本会自动处理 IDE 检测、路径替换、MCP 配置生成、hooks 部署等工作。**
 
 ### 场景一：首次配置
 
@@ -30,7 +30,7 @@
    git clone https://github.com/yinheljl/vscode-copilot-config.git ~/.copilot-config
    ```
 
-2. **运行还原脚本**（脚本会自动安装 uv、克隆 MCP 项目、生成配置，无需手动安装任何依赖）
+2. **运行还原脚本**（脚本会检测或安装 `uv`，生成 MCP 配置，并按需部署低噪音 hooks）
    ```powershell
    # Windows
    & "$env:USERPROFILE\.copilot-config\restore.ps1"
@@ -75,6 +75,7 @@
    # Windows — 仅更新指定 IDE
    & "$env:USERPROFILE\.copilot-config\update.ps1" -Target Codex
    & "$env:USERPROFILE\.copilot-config\update.ps1" -Target Claude
+   & "$env:USERPROFILE\.copilot-config\update.ps1" -Target Windsurf
    ```
    ```bash
    # Linux / macOS
@@ -82,6 +83,7 @@
    # Linux / macOS — 仅更新指定 IDE
    bash ~/.copilot-config/update.sh --target=codex
    bash ~/.copilot-config/update.sh --target=claude
+   bash ~/.copilot-config/update.sh --target=windsurf
    ```
    > 如果持久目录不存在，update 脚本会自动克隆仓库到 `~/.copilot-config`。
 
@@ -151,7 +153,7 @@
 
 | 服务器 | 用途 | 安装位置 |
 |--------|------|----------|
-| markitdown (Microsoft) | 将 Word/PDF/PPT/Excel 等文件转换为 Markdown，AI 可直接读取 | 通过 `uvx tool run` 按需启动，无需本地安装 |
+| markitdown (Microsoft) | 将 Word/PDF/PPT/Excel 等文件转换为 Markdown，AI 可直接读取 | 通过 `uv tool run markitdown-mcp` 按需启动，无需单独克隆 MCP 项目 |
 
 > 其他 MCP 服务（GitHub、Context7 等）不由本仓库自动安装，按需手动配置。
 > mcp.json 模板不包含任何 API Key 或 Token，路径使用占位符，由还原脚本自动替换。
@@ -195,7 +197,7 @@
 
 ### 软层 — `destructive-command-guard` Skill（跨多 IDE / 跨平台）
 
-通过 `SKILL.md` 的 `description` 中的 trigger 关键词，让 Cursor / Copilot / Codex / Claude 在生成 `rm` / `del` / `rmdir` / `Remove-Item` / `git reset --hard` / `DROP TABLE` 等命令前自动加载并强制 `AskQuestion` 二次确认。
+通过 `SKILL.md` 的 `description` 中的 trigger 关键词，让 Cursor / Copilot / Codex / Claude / Antigravity 在生成 `rm` / `del` / `rmdir` / `Remove-Item` / `git reset --hard` / `DROP TABLE` 等命令前自动加载并强制 `AskQuestion` 二次确认。Windsurf 可在启用 `Read Claude Code Config` 后复用 Claude 的 skills。
 
 | 项 | 详情 |
 |----|------|
@@ -227,7 +229,7 @@
 3. **下载并校验**：
    - **macOS / Linux**：直接代理调用上游官方 `install.sh`（含 SHA256 校验 + 可选 cosign 签名）
    - **Windows**：因为上游 `install.ps1` 在 Windows PowerShell 5.1（系统默认 shell）下有兼容 bug（`Invoke-WebRequest -UseBasicParsing` 返回 byte[] 而非 string，导致它的 `.Trim()` 抛异常）—— `restore.ps1` 用 PS 5.1 兼容代码**复刻同样的流程**：从 GitHub Releases 选择最高稳定 semver tag，拉 `dcg-x86_64-pc-windows-msvc.zip` + 上游 `.sha256` 强制校验 → 解压 → 写 `~/.local/bin/dcg.exe` → 加用户 PATH。**信任锚点不变**（zip 与 .sha256 都是 dcg 上游发布的 GitHub Release artifact）
-4. **低噪音 hook**：部署 Codex / Claude Code / Cursor / Copilot 对应的过滤器；Codex 额外设置 `hooks = true`
+4. **低噪音 hook**：部署 Codex / Claude Code / Cursor / Copilot / Antigravity / Windsurf 对应的过滤器；Codex 额外设置 `hooks = true`
 5. **按需调用 dcg**：过滤器只在命令看起来涉及删除、危险 git、数据库清空、格式化、云资源销毁等高危模式时调用 `dcg`
 6. 重启对应 AI 工具会话
 
@@ -244,7 +246,7 @@
 | 安装责任 | 本仓库脚本直接复制文件 | macOS/Linux：代理调用上游 `install.sh`（信任完全归上游）。Windows：因上游 `install.ps1` 在 PS 5.1 下有兼容 bug，本仓库用 PS 5.1 兼容代码**复刻**同样流程（信任锚点不变：仍下载上游 zip + 用上游 `.sha256` 校验） |
 | **Bus factor** | 本仓库维护者团队 | **1（作者明确声明不接受外部 PR）** ← 必须了解的风险 |
 | 升级方式 | `git pull` + `restore` | `dcg update`；如 Windows 上游 updater 校验失败，可重跑 `restore.ps1 -AutoInstallDcg` 走本仓库的 PS 5.1 兼容 SHA256 流程 |
-| 影响面 | 跨 IDE 跨平台 | 全平台 dcg 命令行可用；Codex hook 默认启用轻量过滤器，高危命令才进入 dcg 本体 |
+| 影响面 | 跨 IDE 跨平台 | 全平台 dcg 命令行可用；支持 hooks 的 IDE 默认启用轻量过滤器，高危命令才进入 dcg 本体 |
 
 **为什么用 dcg 而不是自研**：
 - 自研 hook 等同重新发明轮子；dcg 已有 49 个 packs 覆盖 git / 数据库 / k8s / 云厂商 / IaC 等，单仓库难以维护到这个广度
@@ -259,9 +261,9 @@
 - 万一 dcg 仓库哪天消失（Bus factor 1），软层 SKILL 仍然 100% 可用
 - 硬层 hook 使用轻量过滤器，尽量避免每次 shell 调用都产生 dcg 校验噪音；高危命令仍进入 dcg 本体
 
-## 🔧 手动安装
+## 🔧 手动安装（不推荐）
 
-如果不想使用 AI Agent 或脚本，可以手动操作：
+建议始终使用 `restore.ps1` / `restore.sh`。下面的步骤只说明基础 rules / instructions / skills 的文件落点，不会自动合并 MCP 配置、部署 dcg hooks、处理备份或替换路径占位符。
 
 ### Windows
 
@@ -296,9 +298,11 @@ Copy-Item -Recurse "C:\Temp\copilot-config\antigravity\skills" "$env:USERPROFILE
 New-Item -ItemType Directory -Path "$env:APPDATA\antigravity\User" -Force
 Copy-Item "C:\Temp\copilot-config\antigravity\settings.json" "$env:APPDATA\antigravity\User\settings.json" -Force
 
+# 7. Windsurf：无独立 rules/skills 目录；建议通过 restore 脚本部署 MCP 与 pre_run_command hooks
+#    如需复用 Claude 配置，请在 Windsurf 中开启 Read Claude Code Config。
 ```
 
-> 手动安装时需自行处理 mcp.json 和 config.toml 模板中的路径占位符替换，详见 `vscode/mcp.json`、`cursor/mcp.json` 和 `codex/config.toml`。本仓库不再自动安装或配置 Interactive-Feedback-MCP。
+> 手动安装时需自行处理 `mcp.json` / `config.toml` / `hooks.json` 模板中的路径占位符替换，详见 `vscode/mcp.json`、`cursor/mcp.json`、`codex/config.toml`、`windsurf/mcp_config.json` 等模板。本仓库不再自动安装或配置 Interactive-Feedback-MCP。
 
 ### 可选参数（脚本安装）
 
@@ -308,6 +312,8 @@ Copy-Item "C:\Temp\copilot-config\antigravity\settings.json" "$env:APPDATA\antig
 .\restore.ps1 -DryRun                # 预览模式，不实际修改
 .\restore.ps1 -Target Codex          # 仅配置 Codex
 .\restore.ps1 -Target Claude         # 仅配置 Claude
+.\restore.ps1 -Target Antigravity    # 仅配置 Antigravity
+.\restore.ps1 -Target Windsurf       # 仅配置 Windsurf
 .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
 .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
 .\restore.ps1 -AutoInstallDcg        # 自动下载并校验上游 release；已安装时也会刷新 dcg，不再交互询问
@@ -322,6 +328,7 @@ bash restore.sh --force              # 完全覆盖模式
 bash restore.sh --target=codex       # 仅配置 Codex
 bash restore.sh --target=claude      # 仅配置 Claude
 bash restore.sh --target=antigravity # 仅配置 Antigravity
+bash restore.sh --target=windsurf    # 仅配置 Windsurf
 bash restore.sh --target=vscode,cursor  # 仅配置 VS Code 和 Cursor
 bash restore.sh --force --target=codex  # 仅覆盖 Codex 配置
 bash restore.sh --auto-install-dcg   # 直接调用官方 install.sh；已安装时也会刷新 dcg，不再交互询问
@@ -347,11 +354,11 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 ### 格式差异说明
 
-| 特性 | Cursor | VS Code | Codex | Claude | Antigravity |
-|------|--------|---------|-------|--------|-------------|
-| MCP 配置格式 | `mcp.json` (`mcpServers`) | `mcp.json` (`servers`) | `config.toml` (`[mcp_servers]`) | 不由本仓库配置 | `mcp_config.json` (`mcpServers`) |
-| MCP 条目格式 | 无需 `type` 字段 | 需要 `type: "stdio"` | TOML 表格式 | 不适用 | 无需 `type` 字段 |
-| 规则格式 | `.mdc` + YAML frontmatter | `.instructions.md` + YAML frontmatter | `AGENTS.md`（纯 Markdown） | `CLAUDE.md`（纯 Markdown） | `GEMINI.md`（纯 Markdown） |
+| 特性 | Cursor | VS Code | Codex | Claude | Antigravity | Windsurf |
+|------|--------|---------|-------|--------|-------------|----------|
+| MCP 配置格式 | `mcp.json` (`mcpServers`) | `mcp.json` (`servers`) | `config.toml` (`[mcp_servers]`) | 不由本仓库配置 | `mcp_config.json` (`mcpServers`) | `mcp_config.json` (`mcpServers`) |
+| MCP 条目格式 | 无需 `type` 字段 | 需要 `type: "stdio"` | TOML 表格式 | 不适用 | 无需 `type` 字段 | 无需 `type` 字段 |
+| 规则格式 | `.mdc` + YAML frontmatter | `.instructions.md` + YAML frontmatter | `AGENTS.md`（纯 Markdown） | `CLAUDE.md`（纯 Markdown） | `GEMINI.md`（纯 Markdown） | 可选复用 Claude 配置；本仓库仅部署 MCP 与 hooks |
 
 ## 🗺️ 路线图
 
