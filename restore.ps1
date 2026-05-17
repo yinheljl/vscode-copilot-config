@@ -459,7 +459,7 @@ function Invoke-DcgInstaller {
     Write-Host "    → 查询最高稳定 release..." -ForegroundColor DarkGray
     $version = $null
     try {
-        $json = Get-WebString "https://api.github.com/repos/$owner/$repo/releases?per_page=50"
+        $json = Get-WebString "https://api.github.com/repos/$owner/$repo/releases?per_page=20"
         $rels = @($json | ConvertFrom-Json)
         $candidates = @()
         foreach ($rel in $rels) {
@@ -562,6 +562,7 @@ function Set-CodexHooksFeature($configTomlPath, [bool]$enabled) {
     }
     $cfg = Get-Content $configTomlPath -Raw -Encoding UTF8
     $newCfg = $cfg
+    $hadLegacyKey = [regex]::IsMatch($cfg, '(?m)^\s*codex_hooks\s*=\s*(true|false)\b')
 
     $m = [regex]::Match($newCfg, '(?m)^(\s*hooks\s*=\s*)(true|false)\b')
     if ($m.Success) {
@@ -580,6 +581,9 @@ function Set-CodexHooksFeature($configTomlPath, [bool]$enabled) {
         Backup-File $configTomlPath
         Write-Utf8NoBomFile $configTomlPath $newCfg
         Write-Host "    + config.toml 设置 [features] hooks = $value"
+        if ($hadLegacyKey) {
+            Write-Host "    ℹ 已将旧键 codex_hooks 迁移为 hooks" -ForegroundColor DarkGray
+        }
     }
 }
 

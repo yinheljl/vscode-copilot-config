@@ -91,22 +91,17 @@ if ($command -notmatch $riskPattern) {
     exit 0
 }
 
+# Local hard-blocks are intentionally limited to Windows commands and dcg false
+# negatives seen on this surface. Cross-platform cases stay delegated to dcg so
+# its allowlist and bypass mechanisms still work.
 $localBlockPattern = @'
 (?isx)
 (
-  ^\s*(Remove-Item|ri|rm|del|rd|rmdir|erase)\b
-| ^\s*git\s+(reset\b[\s\S]*\s--hard\b|checkout\b[\s\S]*\s--\s+|restore\b(?![\s\S]*\s--staged\b)|clean\b|branch\b[\s\S]*\s-D\b|stash\s+(drop|clear)\b|push\b[\s\S]*\s--force(?=\s|$)|filter-branch\b|filter-repo\b|rebase\b)
-| ^\s*(powershell|pwsh)(\.exe)?\b[\s\S]*\b(Remove-Item|ri|rm|del|rd|rmdir|erase|Format-Volume|diskpart|Set-ExecutionPolicy\s+Unrestricted)\b
+  ^\s*(Remove-Item|ri)\b
+| ^\s*(powershell|pwsh)(\.exe)?\b[\s\S]*\b(Remove-Item|ri|Format-Volume|diskpart|Set-ExecutionPolicy\s+Unrestricted)\b
 | ^\s*cmd(\.exe)?\s+/[cq]\s*["']?\s*(del|rd|rmdir|erase)\b
 | ^\s*(Format-Volume|diskpart|sdelete|sdelete64|vssadmin\s+delete\s+shadows|wevtutil\s+cl)\b
 | ^\s*bcdedit\b[\s\S]*\s/delete\b
-| ^\s*(DROP\s+(DATABASE|SCHEMA|TABLE)|TRUNCATE\s+TABLE|DELETE\s+FROM)\b
-| ^\s*(kubectl|oc)\s+delete\b
-| ^\s*terraform\s+destroy\b
-| ^\s*(cdk|pulumi)\s+destroy\b
-| ^\s*(docker|podman)\s+(system\s+prune|volume\s+rm|volume\s+prune|network\s+prune|container\s+prune|image\s+prune)\b
-| ^\s*(aws\s+s3\s+rb|gcloud\s+projects\s+delete)\b
-| ^\s*(chmod\s+-R\s+777|npm\s+uninstall\s+-g|pip\s+uninstall\s+-y)\b
 | \b(sdelete|sdelete64)\b
 | \bvssadmin\s+delete\s+shadows\b
 | \bbcdedit\b[\s\S]*\s/delete\b
@@ -132,11 +127,10 @@ if (-not $dcg) {
     exit 0
 }
 
-if (($event.PSObject.Properties.Name -notcontains "tool_name") -and
-    ($event.PSObject.Properties.Name -notcontains "toolName")) {
-    $event | Add-Member -MemberType NoteProperty -Name "tool_name" -Value "Bash" -Force
-    $payload = $event | ConvertTo-Json -Depth 20 -Compress
-}
+# dcg's hook protocol still keys shell execution off the Bash tool name. Codex
+# Desktop reaches this filter as shell_command, so normalize the delegated copy.
+$event | Add-Member -MemberType NoteProperty -Name "tool_name" -Value "Bash" -Force
+$payload = $event | ConvertTo-Json -Depth 20 -Compress
 
 # dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
 $dcgOutput = $payload | & $dcg.Source

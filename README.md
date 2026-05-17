@@ -3,7 +3,7 @@
 > **一键配置 VS Code GitHub Copilot、Cursor、Codex、Claude、Antigravity 和 Windsurf 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
 
-当前版本：`1.5.2`
+当前版本：`1.5.3`
 
 ---
 
@@ -193,14 +193,14 @@
 >
 > Codex 当前 PreToolUse hook 的 matcher 只能按工具名匹配 shell 工具，不能只匹配 `rm -rf` / `git reset --hard` 等危险命令。为兼容 CLI 与 Desktop surface，本仓库默认匹配 `Bash|shell_command`，再进入轻量过滤器；只有命令看起来高危时，才调用 `dcg` 本体。
 
-### 软层 — `destructive-command-guard` Skill（跨 5 IDE / 跨平台）
+### 软层 — `destructive-command-guard` Skill（跨多 IDE / 跨平台）
 
 通过 `SKILL.md` 的 `description` 中的 trigger 关键词，让 Cursor / Copilot / Codex / Claude 在生成 `rm` / `del` / `rmdir` / `Remove-Item` / `git reset --hard` / `DROP TABLE` 等命令前自动加载并强制 `AskQuestion` 二次确认。
 
 | 项 | 详情 |
 |----|------|
 | ✅ 平台 | Windows / macOS / Linux 全部生效 |
-| ✅ IDE | Cursor / VS Code Copilot / Codex / Claude / Antigravity 五家独立目录、内容同源 |
+| ✅ IDE | Cursor / VS Code Copilot / Codex / Claude / Antigravity 五套独立目录、内容同源；Windsurf 可选复用 Claude skills |
 | 💰 成本 | description 约 200 tokens 注入 system prompt，完整 SKILL.md 仅在触发时加载 |
 | ⚠️ 局限 | 属于 prompt 层，模型在极端情况（上下文严重压缩、`--full-auto` / `--yolo` / `danger-full-access`）可能绕过 |
 

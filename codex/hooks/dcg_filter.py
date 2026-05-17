@@ -54,19 +54,11 @@ RISK_RE = re.compile(
 LOCAL_BLOCK_RE = re.compile(
     r"""
     (
-      ^\s*(Remove-Item|ri|rm|del|rd|rmdir|erase)\b
-    | ^\s*git\s+(reset\b[\s\S]*\s--hard\b|checkout\b[\s\S]*\s--\s+|restore\b(?![\s\S]*\s--staged\b)|clean\b|branch\b[\s\S]*\s-D\b|stash\s+(drop|clear)\b|push\b[\s\S]*\s--force(?=\s|$)|filter-branch\b|filter-repo\b|rebase\b)
-    | ^\s*(powershell|pwsh)(\.exe)?\b[\s\S]*\b(Remove-Item|ri|rm|del|rd|rmdir|erase|Format-Volume|diskpart|Set-ExecutionPolicy\s+Unrestricted)\b
+      ^\s*(Remove-Item|ri)\b
+    | ^\s*(powershell|pwsh)(\.exe)?\b[\s\S]*\b(Remove-Item|ri|Format-Volume|diskpart|Set-ExecutionPolicy\s+Unrestricted)\b
     | ^\s*cmd(\.exe)?\s+/[cq]\s*["']?\s*(del|rd|rmdir|erase)\b
     | ^\s*(Format-Volume|diskpart|sdelete|sdelete64|vssadmin\s+delete\s+shadows|wevtutil\s+cl)\b
     | ^\s*bcdedit\b[\s\S]*\s/delete\b
-    | ^\s*(DROP\s+(DATABASE|SCHEMA|TABLE)|TRUNCATE\s+TABLE|DELETE\s+FROM)\b
-    | ^\s*(kubectl|oc)\s+delete\b
-    | ^\s*terraform\s+destroy\b
-    | ^\s*(cdk|pulumi)\s+destroy\b
-    | ^\s*(docker|podman)\s+(system\s+prune|volume\s+rm|volume\s+prune|network\s+prune|container\s+prune|image\s+prune)\b
-    | ^\s*(aws\s+s3\s+rb|gcloud\s+projects\s+delete)\b
-    | ^\s*(chmod\s+-R\s+777|npm\s+uninstall\s+-g|pip\s+uninstall\s+-y)\b
     | \b(sdelete|sdelete64)\b
     | \bvssadmin\s+delete\s+shadows\b
     | \bbcdedit\b[\s\S]*\s/delete\b
@@ -121,6 +113,10 @@ def main() -> int:
     command = extract_command(event)
     if not command or not RISK_RE.search(command):
         return approve()
+
+    # Local hard-blocks are intentionally limited to Windows commands and dcg
+    # false negatives seen on this surface. Cross-platform cases stay delegated
+    # to dcg so its allowlist and bypass mechanisms still work.
     if LOCAL_BLOCK_RE.search(command):
         return deny("BLOCKED by local destructive command guard. This command matches a local destructive pattern. Ask the user to run it manually if truly needed.")
 
@@ -128,7 +124,10 @@ def main() -> int:
     if not dcg:
         return approve()
 
-    if isinstance(event, dict) and "tool_name" not in event and "toolName" not in event:
+    if isinstance(event, dict):
+        # dcg's hook protocol still keys shell execution off the Bash tool name.
+        # Codex Desktop reaches this filter as shell_command, so normalize the
+        # delegated copy.
         event["tool_name"] = "Bash"
         payload = json.dumps(event, separators=(",", ":"))
 
@@ -144,8 +143,7 @@ def main() -> int:
                 return 0
         except (json.JSONDecodeError, AttributeError):
             pass
-    # dcg allowed or didn't flag — explicitly approve. Local-only false negatives are
-    # handled above by LOCAL_BLOCK_RE before delegating to dcg.
+    # dcg allowed or didn't flag — explicitly approve.
     print(json.dumps({"continue": True}, separators=(",", ":")))
     return 0
 

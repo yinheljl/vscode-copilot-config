@@ -217,6 +217,10 @@ set_codex_hooks_feature() {
         echo "    + config.toml 设置 [features] hooks = $enabled"
         return
     fi
+    local had_legacy_key=false
+    if grep -qE '^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$' "$cfg_dst"; then
+        had_legacy_key=true
+    fi
     if command -v python3 >/dev/null 2>&1; then
         local result
         result=$(CFG="$cfg_dst" VALUE="$enabled" python3 - <<'PY'
@@ -246,6 +250,9 @@ PY
 )
         if [ "$result" = "changed" ]; then
             echo "    + config.toml 设置 [features] hooks = $enabled"
+            if [ "$had_legacy_key" = true ]; then
+                echo "    ℹ 已将旧键 codex_hooks 迁移为 hooks"
+            fi
         fi
     else
         local tmp
@@ -300,6 +307,9 @@ PY
             trap - RETURN
             mv "$tmp" "$cfg_dst"
             echo "    + config.toml 设置 [features] hooks = $enabled"
+            if [ "$had_legacy_key" = true ]; then
+                echo "    ℹ 已将旧键 codex_hooks 迁移为 hooks"
+            fi
         else
             rm -f "$tmp"
             trap - RETURN
