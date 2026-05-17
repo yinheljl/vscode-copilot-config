@@ -213,8 +213,8 @@ set_codex_hooks_feature() {
     local cfg_dst="$CODEX_DST/config.toml"
     if [ ! -f "$cfg_dst" ]; then
         mkdir -p "$CODEX_DST"
-        printf '[features]\ncodex_hooks = %s\n' "$enabled" > "$cfg_dst"
-        echo "    + config.toml 设置 [features] codex_hooks = $enabled"
+        printf '[features]\nhooks = %s\n' "$enabled" > "$cfg_dst"
+        echo "    + config.toml 设置 [features] hooks = $enabled"
         return
     fi
     if command -v python3 >/dev/null 2>&1; then
@@ -225,12 +225,16 @@ p = os.environ['CFG']
 v = os.environ['VALUE']
 with open(p, 'r', encoding='utf-8') as f:
     s = f.read()
-if re.search(r'(?m)^\s*codex_hooks\s*=\s*(true|false)\b', s):
-    s2 = re.sub(r'(?m)^(\s*codex_hooks\s*=\s*)(true|false)\b', r'\g<1>' + v, s, count=1)
+if re.search(r'(?m)^\s*hooks\s*=\s*(true|false)\b', s):
+    s2 = re.sub(r'(?m)^(\s*hooks\s*=\s*)(true|false)\b', r'\g<1>' + v, s, count=1)
+    s2 = re.sub(r'(?m)^\s*codex_hooks\s*=\s*(true|false)\b[^\n]*(?:\n|$)', '', s2)
+elif re.search(r'(?m)^\s*codex_hooks\s*=\s*(true|false)\b', s):
+    s2 = re.sub(r'(?m)^(\s*)codex_hooks(\s*=\s*)(true|false)\b[^\n]*', r'\g<1>hooks\g<2>' + v, s, count=1)
+    s2 = re.sub(r'(?m)^\s*codex_hooks\s*=\s*(true|false)\b[^\n]*(?:\n|$)', '', s2)
 elif re.search(r'(?m)^\[features\]\s*$', s):
-    s2 = re.sub(r'(?m)^\[features\]\s*$', '[features]\ncodex_hooks = ' + v, s, count=1)
+    s2 = re.sub(r'(?m)^\[features\]\s*$', '[features]\nhooks = ' + v, s, count=1)
 else:
-    s2 = s.rstrip() + '\n\n[features]\ncodex_hooks = ' + v + '\n'
+    s2 = s.rstrip() + '\n\n[features]\nhooks = ' + v + '\n'
 if s2 != s:
     shutil.copy2(p, p + '.bak_' + time.strftime('%Y%m%d_%H%M%S'))
     with open(p, 'w', encoding='utf-8') as f:
@@ -241,19 +245,37 @@ else:
 PY
 )
         if [ "$result" = "changed" ]; then
-            echo "    + config.toml 设置 [features] codex_hooks = $enabled"
+            echo "    + config.toml 设置 [features] hooks = $enabled"
         fi
     else
         local tmp
         tmp=$(mktemp)
         trap 'rm -f "$tmp"' RETURN
-        if grep -qE '^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$' "$cfg_dst"; then
+        if grep -qE '^[[:space:]]*hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$' "$cfg_dst"; then
+            awk -v value="$enabled" '
+                BEGIN { updated = 0 }
+                {
+                    if ($0 ~ /^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$/) {
+                        next
+                    }
+                    if (!updated && $0 ~ /^[[:space:]]*hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$/) {
+                        sub(/true|false/, value)
+                        updated = 1
+                    }
+                    print
+                }
+            ' "$cfg_dst" > "$tmp"
+        elif grep -qE '^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$' "$cfg_dst"; then
             awk -v value="$enabled" '
                 BEGIN { updated = 0 }
                 {
                     if (!updated && $0 ~ /^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$/) {
-                        sub(/true|false/, value)
+                        print "hooks = " value
                         updated = 1
+                        next
+                    }
+                    if ($0 ~ /^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$/) {
+                        next
                     }
                     print
                 }
@@ -264,20 +286,20 @@ PY
                 {
                     print
                     if (!inserted && $0 ~ /^\[features\][[:space:]]*$/) {
-                        print "codex_hooks = " value
+                        print "hooks = " value
                         inserted = 1
                     }
                 }
             ' "$cfg_dst" > "$tmp"
         else
             cat "$cfg_dst" > "$tmp"
-            printf '\n[features]\ncodex_hooks = %s\n' "$enabled" >> "$tmp"
+            printf '\n[features]\nhooks = %s\n' "$enabled" >> "$tmp"
         fi
         if ! cmp -s "$cfg_dst" "$tmp"; then
             cp "$cfg_dst" "${cfg_dst}.bak_$(date +%Y%m%d_%H%M%S)"
             trap - RETURN
             mv "$tmp" "$cfg_dst"
-            echo "    + config.toml 设置 [features] codex_hooks = $enabled"
+            echo "    + config.toml 设置 [features] hooks = $enabled"
         else
             rm -f "$tmp"
             trap - RETURN

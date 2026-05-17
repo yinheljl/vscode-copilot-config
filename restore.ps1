@@ -43,8 +43,8 @@
     .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
     .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
     .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时自动下载并校验上游 release，不再交互询问
-    .\restore.ps1 -DisableDcgHooks       # 安装/检测 dcg，但跳过所有 dcg hook 部署；Codex 设为 codex_hooks=false
-    .\restore.ps1 -SkipDcg               # 跳过 dcg 安装与所有 dcg hook 部署；Codex 设为 codex_hooks=false
+    .\restore.ps1 -DisableDcgHooks       # 安装/检测 dcg，但跳过所有 dcg hook 部署；Codex 设为 hooks=false
+    .\restore.ps1 -SkipDcg               # 跳过 dcg 安装与所有 dcg hook 部署；Codex 设为 hooks=false
 #>
 param(
     [switch]$DryRun,
@@ -536,26 +536,30 @@ function Set-CodexHooksFeature($configTomlPath, [bool]$enabled) {
     if (-not (Test-Path $configTomlPath)) {
         $dir = Split-Path $configTomlPath -Parent
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-        Write-Utf8NoBomFile $configTomlPath "[features]`r`ncodex_hooks = $value`r`n"
-        Write-Host "    + config.toml 设置 [features] codex_hooks = $value"
+        Write-Utf8NoBomFile $configTomlPath "[features]`r`nhooks = $value`r`n"
+        Write-Host "    + config.toml 设置 [features] hooks = $value"
         return
     }
     $cfg = Get-Content $configTomlPath -Raw -Encoding UTF8
     $newCfg = $cfg
 
-    $m = [regex]::Match($newCfg, '(?m)^(\s*codex_hooks\s*=\s*)(true|false)\b')
+    $m = [regex]::Match($newCfg, '(?m)^(\s*hooks\s*=\s*)(true|false)\b')
     if ($m.Success) {
         $newCfg = $newCfg.Substring(0, $m.Index) + $m.Groups[1].Value + $value + $newCfg.Substring($m.Index + $m.Length)
+        $newCfg = [regex]::Replace($newCfg, '(?m)^\s*codex_hooks\s*=\s*(true|false)\b[^\r\n]*(\r?\n)?', '')
+    } elseif ([regex]::IsMatch($newCfg, '(?m)^\s*codex_hooks\s*=\s*(true|false)\b')) {
+        $newCfg = [regex]::Replace($newCfg, '(?m)^(\s*)codex_hooks(\s*=\s*)(true|false)\b[^\r\n]*', "`${1}hooks`${2}$value", 1)
+        $newCfg = [regex]::Replace($newCfg, '(?m)^\s*codex_hooks\s*=\s*(true|false)\b[^\r\n]*(\r?\n)?', '')
     } elseif ($newCfg -match '(?m)^\[features\]\s*$') {
-        $newCfg = [regex]::Replace($newCfg, '(?m)^\[features\]\s*$', "[features]`r`ncodex_hooks = $value", 1)
+        $newCfg = [regex]::Replace($newCfg, '(?m)^\[features\]\s*$', "[features]`r`nhooks = $value", 1)
     } else {
-        $newCfg = $newCfg.TrimEnd() + "`r`n`r`n[features]`r`ncodex_hooks = $value`r`n"
+        $newCfg = $newCfg.TrimEnd() + "`r`n`r`n[features]`r`nhooks = $value`r`n"
     }
 
     if ($newCfg -ne $cfg) {
         Backup-File $configTomlPath
         Write-Utf8NoBomFile $configTomlPath $newCfg
-        Write-Host "    + config.toml 设置 [features] codex_hooks = $value"
+        Write-Host "    + config.toml 设置 [features] hooks = $value"
     }
 }
 
@@ -571,7 +575,7 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
     if ($SkipDcg) {
         Write-Host "    → -SkipDcg 已启用，跳过 dcg 全部步骤，并关闭 Codex hooks。软层 SKILL 仍生效。" -ForegroundColor DarkGray
         if ($DryRun) {
-            Write-Host "    [DryRun] 将在 $configTomlPath 设置 codex_hooks = false" -ForegroundColor Yellow
+            Write-Host "    [DryRun] 将在 $configTomlPath 设置 hooks = false" -ForegroundColor Yellow
         } else {
             Set-CodexHooksFeature $configTomlPath $false
         }
@@ -635,7 +639,7 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
     if ($DisableDcgHooks) {
         Write-Host "    → -DisableDcgHooks 已启用：保留 dcg 二进制，但关闭 Codex PreToolUse hook。" -ForegroundColor DarkGray
         if ($DryRun) {
-            Write-Host "    [DryRun] 将在 $configTomlPath 设置 codex_hooks = false" -ForegroundColor Yellow
+            Write-Host "    [DryRun] 将在 $configTomlPath 设置 hooks = false" -ForegroundColor Yellow
         } else {
             Set-CodexHooksFeature $configTomlPath $false
         }
@@ -651,7 +655,7 @@ function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
     if ($DryRun) {
         Write-Host "    [DryRun] $jsonSrcPath -> $jsonDstPath" -ForegroundColor Yellow
         Write-Host "    [DryRun] $codexHooksSrc -> $codexHooksDst" -ForegroundColor Yellow
-        Write-Host "    [DryRun] 在 $configTomlPath 设置 [features] codex_hooks = true" -ForegroundColor Yellow
+        Write-Host "    [DryRun] 在 $configTomlPath 设置 [features] hooks = true" -ForegroundColor Yellow
         return
     }
     if (Test-Path $codexHooksSrc) {

@@ -10,7 +10,7 @@
 # Codex 当前 PreToolUse matcher 只能按工具名匹配 Bash。
 # hooks.json 默认指向一个轻量过滤器：只有命令看起来高危时才调用 dcg 本体。
 [features]
-codex_hooks = true
+hooks = true
 
 # ----------------------------------------------------------------
 # MCP servers

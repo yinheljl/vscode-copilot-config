@@ -29,14 +29,14 @@
    - **macOS / Linux**：代理调用上游官方 `install.sh`（含 SHA256 校验 + 可选 cosign）
    - **Windows**：上游 `install.ps1` 在 Windows PowerShell 5.1（系统默认 shell）下有 bug——它假设 `Invoke-WebRequest -UseBasicParsing` 返回 string，但 PS 5.1 实际返回 byte[]，导致 SHA256 校验逻辑抛 `Checksum file not found`。`restore.ps1` 用 PS 5.1 兼容代码**复刻同样的官方流程**：GitHub API 取 latest tag → 下载 `dcg-x86_64-pc-windows-msvc.zip` → 拉上游 `.sha256` 强制校验 → 解压 → 安装到 `~/.local/bin/dcg.exe` → 写入用户 PATH。**信任锚点完全不变**（artifact 与 hash 都是 dcg 官方发布物，本仓库不参与签名 / 不 host 二进制）
 4. **跳过询问**：加 `-AutoInstallDcg`（PowerShell）/ `--auto-install-dcg`（bash）旗标
-5. **默认低噪音 hook**：部署 `~/.codex/hooks/` 过滤器和 `~/.codex/hooks.json`，并设置 `codex_hooks = true`
+5. **默认低噪音 hook**：部署 `~/.codex/hooks/` 过滤器和 `~/.codex/hooks.json`，并设置 `hooks = true`
 6. **只在高危命令调用 dcg**：过滤器命中删除、危险 git、数据库清空、格式化、云资源销毁等模式时才调用 `dcg`
 7. **关闭 hook**：加 `-DisableDcgHooks`（PowerShell）/ `--disable-dcg-hooks`（bash）
 8. **完全跳过**：加 `-SkipDcg`（PowerShell）/ `--skip-dcg`（bash）旗标
 
 非交互式 stdin（CI、管道）默认**不会**安装 dcg——必须显式传入 `--auto-install-dcg` 才会装。
 
-| 操作系统 | 装 dcg 二进制 | 默认 `codex_hooks` | 默认 hook 行为 |
+| 操作系统 | 装 dcg 二进制 | 默认 `hooks` | 默认 hook 行为 |
 |---------|---------------|---------------------|----------------|
 | Windows（PowerShell） | ✅ 自动询问安装 | `true` | 先进入 PowerShell 过滤器，高危命令再调用 `dcg.exe` |
 | macOS / Linux | ✅ 自动询问安装 | `true` | 先进入 Python 过滤器，高危命令再调用 `dcg` |
@@ -46,7 +46,7 @@
 ## 启用条件清单
 
 1. `dcg` 命令在 PATH（restore 询问后自动安装）
-2. `~/.codex/config.toml` 里有 `[features]\ncodex_hooks = true`
+2. `~/.codex/config.toml` 里有 `[features]\nhooks = true`
 3. `~/.codex/hooks.json` 文件存在且 JSON 合法
 4. `~/.codex/hooks/` 中存在 `dcg_filter.ps1`（Windows）或 `dcg_filter.py`（macOS / Linux）
 5. **重启 Codex 会话**
@@ -61,7 +61,7 @@ dcg test "rm -rf \"$tmpdir\""     # 应返回 decision = block
 
 # 检查 Codex hook 文件
 cat ~/.codex/hooks.json
-grep codex_hooks ~/.codex/config.toml
+grep 'hooks =' ~/.codex/config.toml
 
 # 让 Codex 真正触发：在 Codex 对话里让它删除一个刚创建的临时目录（例如 /tmp/dcg-smoke），应被立即拦截
 ```
@@ -75,7 +75,7 @@ dcg 内置完整的绕过机制，详见上游文档：
 | 环境变量 | 单条命令 | `DCG_BYPASS=1 <command>` |
 | 一次性放行码 | 单条命令 | 复制 block 提示里的短码，`dcg allow-once <code>` |
 | 永久白名单 | 规则 / 命令 | `dcg allowlist add core.git:reset-hard -r "reason"` |
-| 完全禁用 | 全部命令 | 在 `~/.codex/config.toml` 设置 `codex_hooks = false` |
+| 完全禁用 | 全部命令 | 在 `~/.codex/config.toml` 设置 `hooks = false` |
 
 ## 自定义规则
 

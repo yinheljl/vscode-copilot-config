@@ -126,7 +126,7 @@
 | `copilot/skills/` | VS Code Copilot 独立 Skill 目录（按分类组织的 9 个；内容与其他 Agent 对齐，含安全护栏） |
 | `copilot/hooks/` | GitHub Copilot preToolUse dcg 低噪音过滤器 |
 | `codex/AGENTS.md` | Codex 全局指令（AGENTS.md 格式，5 条编码准则） |
-| `codex/config.toml` | Codex MCP 服务器配置模板（默认 `[features] codex_hooks = true`） |
+| `codex/config.toml` | Codex MCP 服务器配置模板（默认 `[features] hooks = true`） |
 | `codex/skills/` | **Codex 独立 Skills 目录（9 个，扁平结构；内容与 Cursor / Copilot / Claude / Antigravity 对齐，但目录独立）** |
 | `codex/hooks/README.md` | **Codex PreToolUse 低噪音硬兜底说明（restore 脚本检测/安装社区方案 [dcg](https://github.com/Dicklesworthstone/destructive_command_guard)）** |
 | `codex/hooks.json` | Codex Hooks 配置模板（轻量过滤器先筛选，再按需调用 `dcg`） |
@@ -227,7 +227,7 @@
 3. **下载并校验**：
    - **macOS / Linux**：直接代理调用上游官方 `install.sh`（含 SHA256 校验 + 可选 cosign 签名）
    - **Windows**：因为上游 `install.ps1` 在 Windows PowerShell 5.1（系统默认 shell）下有兼容 bug（`Invoke-WebRequest -UseBasicParsing` 返回 byte[] 而非 string，导致它的 `.Trim()` 抛异常）—— `restore.ps1` 用 PS 5.1 兼容代码**复刻同样的流程**：从 GitHub Releases 拉 `dcg-x86_64-pc-windows-msvc.zip` + 上游 `.sha256` 强制校验 → 解压 → 写 `~/.local/bin/dcg.exe` → 加用户 PATH。**信任锚点不变**（zip 与 .sha256 都是 dcg 上游发布的 GitHub Release artifact）
-4. **低噪音 hook**：部署 Codex / Claude Code / Cursor / Copilot 对应的过滤器；Codex 额外设置 `codex_hooks = true`
+4. **低噪音 hook**：部署 Codex / Claude Code / Cursor / Copilot 对应的过滤器；Codex 额外设置 `hooks = true`
 5. **按需调用 dcg**：过滤器只在命令看起来涉及删除、危险 git、数据库清空、格式化、云资源销毁等高危模式时调用 `dcg`
 6. 重启对应 AI 工具会话
 
@@ -311,8 +311,8 @@ Copy-Item "C:\Temp\copilot-config\antigravity\settings.json" "$env:APPDATA\antig
 .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
 .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
 .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时自动下载并校验上游 release，不再交互询问
-.\restore.ps1 -DisableDcgHooks       # 安装/检测 dcg，但跳过所有 dcg hook 部署；Codex 设为 codex_hooks=false
-.\restore.ps1 -SkipDcg               # 跳过 dcg 安装与所有 dcg hook 部署；Codex 设为 codex_hooks=false
+.\restore.ps1 -DisableDcgHooks       # 安装/检测 dcg，但跳过所有 dcg hook 部署；Codex 设为 hooks=false
+.\restore.ps1 -SkipDcg               # 跳过 dcg 安装与所有 dcg hook 部署；Codex 设为 hooks=false
 ```
 
 ```bash
@@ -325,8 +325,8 @@ bash restore.sh --target=antigravity # 仅配置 Antigravity
 bash restore.sh --target=vscode,cursor  # 仅配置 VS Code 和 Cursor
 bash restore.sh --force --target=codex  # 仅覆盖 Codex 配置
 bash restore.sh --auto-install-dcg   # 未装 dcg 时直接调用官方 install.sh，不再交互询问
-bash restore.sh --disable-dcg-hooks  # 安装/检测 dcg，但跳过所有 dcg hook 部署；Codex 设为 codex_hooks=false
-bash restore.sh --skip-dcg           # 跳过 dcg 安装与所有 dcg hook 部署；Codex 设为 codex_hooks=false
+bash restore.sh --disable-dcg-hooks  # 安装/检测 dcg，但跳过所有 dcg hook 部署；Codex 设为 hooks=false
+bash restore.sh --skip-dcg           # 跳过 dcg 安装与所有 dcg hook 部署；Codex 设为 hooks=false
 ```
 
 ## ❓ 常见问题
