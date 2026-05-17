@@ -59,7 +59,12 @@ RISK_RE = re.compile(
 LOCAL_BLOCK_RE = re.compile(
     r"""
     (
-      \b(sdelete|sdelete64)\b
+      ^\s*(Remove-Item|ri)\b
+    | ^\s*(powershell|pwsh)(\.exe)?\b[\s\S]*\b(Remove-Item|ri|Format-Volume|diskpart|Set-ExecutionPolicy\s+Unrestricted)\b
+    | ^\s*cmd(\.exe)?\s+/[cq]\s*["']?\s*(del|rd|rmdir|erase)\b
+    | ^\s*(Format-Volume|diskpart|sdelete|sdelete64|vssadmin\s+delete\s+shadows|wevtutil\s+cl)\b
+    | ^\s*bcdedit\b[\s\S]*\s/delete\b
+    | \b(sdelete|sdelete64)\b
     | \bvssadmin\s+delete\s+shadows\b
     | \bbcdedit\b[\s\S]*\s/delete\b
     | \bwevtutil\s+cl\b
@@ -119,7 +124,7 @@ def main() -> int:
     if not dcg:
         return approve()
 
-    if isinstance(event, dict) and "tool_name" not in event and "toolName" not in event:
+    if isinstance(event, dict):
         event["tool_name"] = "Bash"
         payload = json.dumps(event, separators=(",", ":"))
 

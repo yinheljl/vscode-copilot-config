@@ -3,7 +3,7 @@
 > **一键配置 VS Code GitHub Copilot、Cursor、Codex、Claude、Antigravity 和 Windsurf 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
 
-当前版本：`1.5.3`
+当前版本：`1.5.4`
 
 ---
 

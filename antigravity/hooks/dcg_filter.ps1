@@ -91,7 +91,12 @@ if ($command -notmatch $riskPattern) {
 $localBlockPattern = @'
 (?isx)
 (
-  \b(sdelete|sdelete64)\b
+  ^\s*(Remove-Item|ri)\b
+| ^\s*(powershell|pwsh)(\.exe)?\b[\s\S]*\b(Remove-Item|ri|Format-Volume|diskpart|Set-ExecutionPolicy\s+Unrestricted)\b
+| ^\s*cmd(\.exe)?\s+/[cq]\s*["']?\s*(del|rd|rmdir|erase)\b
+| ^\s*(Format-Volume|diskpart|sdelete|sdelete64|vssadmin\s+delete\s+shadows|wevtutil\s+cl)\b
+| ^\s*bcdedit\b[\s\S]*\s/delete\b
+| \b(sdelete|sdelete64)\b
 | \bvssadmin\s+delete\s+shadows\b
 | \bbcdedit\b[\s\S]*\s/delete\b
 | \bwevtutil\s+cl\b
@@ -115,11 +120,8 @@ if (-not $dcg) {
     Approve-Hook
 }
 
-if (($event.PSObject.Properties.Name -notcontains "tool_name") -and
-    ($event.PSObject.Properties.Name -notcontains "toolName")) {
-    $event | Add-Member -MemberType NoteProperty -Name "tool_name" -Value "Bash" -Force
-    $payload = $event | ConvertTo-Json -Depth 20 -Compress
-}
+$event | Add-Member -MemberType NoteProperty -Name "tool_name" -Value "Bash" -Force
+$payload = $event | ConvertTo-Json -Depth 20 -Compress
 
 # Claude Code can process PreToolUse permissionDecision JSON on exit 0.
 # dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
