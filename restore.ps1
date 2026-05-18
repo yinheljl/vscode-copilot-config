@@ -460,7 +460,12 @@ function Invoke-DcgInstaller {
     $version = $null
     try {
         $json = Get-WebString "https://api.github.com/repos/$owner/$repo/releases?per_page=20"
-        $rels = @($json | ConvertFrom-Json)
+        $rels = $json | ConvertFrom-Json
+        if ($null -eq $rels) {
+            $rels = @()
+        } elseif ($rels -isnot [System.Array]) {
+            $rels = @($rels)
+        }
         $candidates = @()
         foreach ($rel in $rels) {
             if ($rel.draft -or $rel.prerelease) { continue }
