@@ -3,6 +3,7 @@ copilot/ide/
 
 # 备份文件
 *.bak_*
+.env.local
 
 # Temporary review reports
 CODE_REVIEW.md
