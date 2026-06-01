@@ -1,4 +1,4 @@
-# VS Code & Cursor & Codex & Claude & Antigravity & Windsurf 全局配置中心
+# AI Agent 全局配置中心
 
 > **一键配置 VS Code GitHub Copilot、Cursor、Codex、Claude、Antigravity 和 Windsurf 的全局 Rules、Skills、MCP 服务器等。**
 > **支持 AI Agent 自动配置、增量更新。**
@@ -13,21 +13,23 @@
 > **当用户提到本仓库 URL 或要求配置/更新时，请按以下指令操作。**
 >
 > ⚠️ **重要：必须通过运行 `restore.ps1` / `restore.sh` 脚本来配置，禁止手动复制文件。脚本会自动处理 IDE 检测、路径替换、MCP 配置生成、hooks 部署等工作。**
+>
+> ℹ️ **兼容说明**：仓库名已统一为 `ai-agent-config`；本地持久目录仍使用 `~/.copilot-config`，用于兼容已安装用户的更新路径。
 
 ### 场景一：首次配置
 
-**触发条件**：用户说 _"请按照 https://github.com/yinheljl/vscode-copilot-config 帮我配置"_ 或类似表述。
+**触发条件**：用户说 _"请按照 https://github.com/yinheljl/ai-agent-config 帮我配置"_ 或类似表述。
 
 **操作步骤（按顺序执行，不可跳过）**：
 
 1. **克隆仓库**（如 `~/.copilot-config` 已存在则跳过）
    ```powershell
    # Windows
-   git clone https://github.com/yinheljl/vscode-copilot-config.git "$env:USERPROFILE\.copilot-config"
+   git clone https://github.com/yinheljl/ai-agent-config.git "$env:USERPROFILE\.copilot-config"
    ```
    ```bash
    # Linux / macOS
-   git clone https://github.com/yinheljl/vscode-copilot-config.git ~/.copilot-config
+   git clone https://github.com/yinheljl/ai-agent-config.git ~/.copilot-config
    ```
 
 2. **运行还原脚本**（脚本会检测或安装 `uv`，生成 MCP 配置，并按需部署低噪音 hooks）
@@ -64,7 +66,7 @@
 
 ### 场景二：更新配置
 
-**触发条件**：用户说 _"vscode-copilot-config 有更新，请帮我更新"_ 或类似表述。
+**触发条件**：用户说 _"ai-agent-config 有更新，请帮我更新"_ 或类似表述。
 
 **操作步骤**：
 
@@ -105,7 +107,7 @@
 ~/.copilot-config/update.sh
 ```
 
-或直接对 AI 说：_"帮我更新 copilot 全局配置"_
+或直接对 AI 说：_"帮我更新 AI Agent 全局配置"_
 
 ---
 
@@ -269,34 +271,34 @@
 
 ```powershell
 # 1. 克隆仓库
-git clone https://github.com/yinheljl/vscode-copilot-config.git C:\Temp\copilot-config
+git clone https://github.com/yinheljl/ai-agent-config.git C:\Temp\ai-agent-config
 
 # 2. VS Code Copilot：仅复制 instructions 与 skills 两个子目录
 foreach ($sub in "instructions","skills") {
-    Copy-Item -Recurse "C:\Temp\copilot-config\copilot\$sub" "$env:USERPROFILE\.copilot\" -Force
+    Copy-Item -Recurse "C:\Temp\ai-agent-config\copilot\$sub" "$env:USERPROFILE\.copilot\" -Force
 }
 
 # 3. Cursor：rules / skills
 foreach ($sub in "rules","skills") {
-    Copy-Item -Recurse "C:\Temp\copilot-config\cursor\$sub" "$env:USERPROFILE\.cursor\" -Force
+    Copy-Item -Recurse "C:\Temp\ai-agent-config\cursor\$sub" "$env:USERPROFILE\.cursor\" -Force
 }
 
 # 4. Codex：AGENTS.md + skills（dcg 低噪音 hook 由 restore 脚本部署）
 New-Item -ItemType Directory -Path "$env:USERPROFILE\.codex" -Force
-Copy-Item "C:\Temp\copilot-config\codex\AGENTS.md" "$env:USERPROFILE\.codex\AGENTS.md" -Force
-Copy-Item -Recurse "C:\Temp\copilot-config\codex\skills" "$env:USERPROFILE\.codex\" -Force
+Copy-Item "C:\Temp\ai-agent-config\codex\AGENTS.md" "$env:USERPROFILE\.codex\AGENTS.md" -Force
+Copy-Item -Recurse "C:\Temp\ai-agent-config\codex\skills" "$env:USERPROFILE\.codex\" -Force
 
 # 5. Claude：CLAUDE.md + skills
 New-Item -ItemType Directory -Path "$env:USERPROFILE\.claude" -Force
-Copy-Item "C:\Temp\copilot-config\claude\CLAUDE.md" "$env:USERPROFILE\.claude\CLAUDE.md" -Force
-Copy-Item -Recurse "C:\Temp\copilot-config\claude\skills" "$env:USERPROFILE\.claude\" -Force
+Copy-Item "C:\Temp\ai-agent-config\claude\CLAUDE.md" "$env:USERPROFILE\.claude\CLAUDE.md" -Force
+Copy-Item -Recurse "C:\Temp\ai-agent-config\claude\skills" "$env:USERPROFILE\.claude\" -Force
 
 # 6. Antigravity：GEMINI.md + skills + settings.json
 New-Item -ItemType Directory -Path "$env:USERPROFILE\.gemini\antigravity" -Force
-Copy-Item "C:\Temp\copilot-config\antigravity\GEMINI.md" "$env:USERPROFILE\.gemini\GEMINI.md" -Force
-Copy-Item -Recurse "C:\Temp\copilot-config\antigravity\skills" "$env:USERPROFILE\.gemini\antigravity\" -Force
+Copy-Item "C:\Temp\ai-agent-config\antigravity\GEMINI.md" "$env:USERPROFILE\.gemini\GEMINI.md" -Force
+Copy-Item -Recurse "C:\Temp\ai-agent-config\antigravity\skills" "$env:USERPROFILE\.gemini\antigravity\" -Force
 New-Item -ItemType Directory -Path "$env:APPDATA\antigravity\User" -Force
-Copy-Item "C:\Temp\copilot-config\antigravity\settings.json" "$env:APPDATA\antigravity\User\settings.json" -Force
+Copy-Item "C:\Temp\ai-agent-config\antigravity\settings.json" "$env:APPDATA\antigravity\User\settings.json" -Force
 
 # 7. Windsurf：无独立 rules/skills 目录；建议通过 restore 脚本部署 MCP 与 pre_run_command hooks
 #    如需复用 Claude 配置，请在 Windsurf 中开启 Read Claude Code Config。
@@ -349,7 +351,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 无 Git 时，脚本会自动通过 ZIP 下载。也可手动：
 
-1. 下载 https://github.com/yinheljl/vscode-copilot-config/archive/refs/heads/main.zip
+1. 下载 https://github.com/yinheljl/ai-agent-config/archive/refs/heads/main.zip
 2. 解压后运行 `restore.ps1`
 
 ### 格式差异说明

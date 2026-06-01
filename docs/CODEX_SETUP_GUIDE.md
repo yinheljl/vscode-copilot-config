@@ -2,7 +2,9 @@
 
 本文面向公司内部同事，目标是让新用户能按步骤完成 Codex 安装、登录、公司统一配置导入、验证和后续更新。
 
-本文基于当前仓库 `vscode-copilot-config` 编写，推荐优先使用本仓库脚本完成 Codex 配置，不建议手工复制配置文件。
+本文基于当前仓库 `ai-agent-config` 编写，推荐优先使用本仓库脚本完成 Codex 配置，不建议手工复制配置文件。
+
+兼容说明：仓库名已统一为 `ai-agent-config`；本地持久目录仍使用 `~/.copilot-config`，用于兼容已安装用户的更新路径。
 
 ## 1. 适用范围
 
@@ -86,7 +88,7 @@ wsl
 首次配置：
 
 ```powershell
-git clone https://github.com/yinheljl/vscode-copilot-config.git "$env:USERPROFILE\.copilot-config"
+git clone https://github.com/yinheljl/ai-agent-config.git "$env:USERPROFILE\.copilot-config"
 Set-ExecutionPolicy -Scope Process Bypass -Force
 & "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex
 ```
@@ -115,7 +117,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 首次配置：
 
 ```bash
-git clone https://github.com/yinheljl/vscode-copilot-config.git ~/.copilot-config
+git clone https://github.com/yinheljl/ai-agent-config.git ~/.copilot-config
 bash ~/.copilot-config/restore.sh --target=codex
 ```
 

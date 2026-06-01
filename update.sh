@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/REPO_URL" ]; then
     REPO_URL=$(tr -d '[:space:]' < "$SCRIPT_DIR/REPO_URL")
 else
-    REPO_URL="https://github.com/yinheljl/vscode-copilot-config.git"
+    REPO_URL="https://github.com/yinheljl/ai-agent-config.git"
 fi
 
 if [ -f "$SCRIPT_DIR/VERSION" ]; then
@@ -35,7 +35,7 @@ get_remote_version() {
 }
 
 echo "========================================"
-echo "  Copilot 配置更新工具"
+echo "  AI Agent 配置更新工具"
 echo "========================================"
 echo ""
 
@@ -92,8 +92,8 @@ else
     else
         echo "  未安装 git，使用 ZIP 下载..."
         ZIP_URL="${REPO_URL%.git}/archive/refs/heads/main.zip"
-        ZIP_PATH="/tmp/copilot-config.zip"
-        EXTRACT_DIR="/tmp/copilot-config-extract"
+        ZIP_PATH="/tmp/ai-agent-config.zip"
+        EXTRACT_DIR="/tmp/ai-agent-config-extract"
         curl -fsSL "$ZIP_URL" -o "$ZIP_PATH"
         rm -rf "$EXTRACT_DIR"
         unzip -q "$ZIP_PATH" -d "$EXTRACT_DIR"
