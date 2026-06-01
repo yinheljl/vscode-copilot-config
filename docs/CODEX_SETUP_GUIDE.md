@@ -145,7 +145,7 @@ bash ~/.ai-agent-config/restore.sh --disable-dcg-hooks
 可以。建议对 AI Agent 这样说：
 
 ```text
-请按照 https://github.com/yinheljl/ai-agent-config/tree/codex/codex-setup-doc 的 README，帮我在当前设备安装或更新 Codex 全局配置。如果 ~/.ai-agent-config 已存在，请先确认它在 codex/codex-setup-doc 分支并拉取最新代码，或直接运行 update 脚本；如果不存在再 clone。先 dry-run，再让我确认是否正式执行。不要同步或覆盖 Codex 自带的 .system skills；只处理本仓库管理的 ~/.codex/AGENTS.md、~/.codex/skills/、MCP 和 hooks。
+请按照 https://github.com/yinheljl/ai-agent-config/tree/codex/codex-setup-doc 的 README，帮我在当前设备安装或更新 Codex 全局配置。如果 ~/.ai-agent-config 已存在，必须先检查它是否在 codex/codex-setup-doc 分支；已经在该分支时运行 update 脚本，不在该分支时先 fetch origin codex/codex-setup-doc，再 switch/create 到 FETCH_HEAD 并 pull --ff-only origin codex/codex-setup-doc，切换不了就把旧目录改名备份后重新 clone。直接运行 restore，并使用 -AutoInstallDcg / --auto-install-dcg 自动安装或刷新安全 hooks；不要让我判断 dry-run 输出。不要同步或覆盖 Codex 自带的 .system skills；只处理本仓库管理的 ~/.codex/AGENTS.md、~/.codex/skills/、MCP 和 hooks。完成后告诉我安装结果、dcg 版本号、MCP 列表，以及是否需要重启 Codex。只有遇到登录、权限、网络失败、git 冲突这类无法自动处理的问题时，才停下来说明原因和下一步。
 ```
 
 ### PowerShell 拦截脚本

@@ -94,7 +94,12 @@ if (Test-Path (Join-Path $repoDir ".git")) {
             $currentBranch = (git rev-parse --abbrev-ref HEAD).Trim()
             if ($currentBranch -ne $repoBranch) {
                 git fetch origin $repoBranch
-                git switch $repoBranch
+                git show-ref --verify --quiet "refs/heads/$repoBranch"
+                if ($LASTEXITCODE -eq 0) {
+                    git switch $repoBranch
+                } else {
+                    git switch -c $repoBranch FETCH_HEAD
+                }
             }
             git pull --ff-only origin $repoBranch
         }

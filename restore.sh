@@ -45,6 +45,23 @@ resolve_uv_path() {
     return 1
 }
 
+python_cmd() {
+    for candidate in python3 python; do
+        if command -v "$candidate" >/dev/null 2>&1 && "$candidate" - <<'PY' >/dev/null 2>&1
+import sys
+
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+        then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    echo "python3 or python 3.11+ is required to merge Codex config." >&2
+    return 1
+}
+
 install_uv_if_missing() {
     if uv_path=$(resolve_uv_path); then
         printf '%s\n' "$uv_path"
@@ -131,13 +148,15 @@ merge_codex_config() {
     local hooks_enabled="$2"
     local config_src="$CODEX_SRC/config.toml"
     local config_dst="$CODEX_DST/config.toml"
+    local py_cmd
 
     if [ "$DRY_RUN" = true ]; then
         echo "  [DryRun] would merge $config_src -> $config_dst"
         return
     fi
 
-    CONFIG_SRC="$config_src" CONFIG_DST="$config_dst" UV_PATH="$uv_path" HOOKS_ENABLED="$hooks_enabled" FORCE="$FORCE" python3 - <<'PY'
+    py_cmd="$(python_cmd)"
+    CONFIG_SRC="$config_src" CONFIG_DST="$config_dst" UV_PATH="$uv_path" HOOKS_ENABLED="$hooks_enabled" FORCE="$FORCE" "$py_cmd" - <<'PY'
 from __future__ import annotations
 
 import os
@@ -194,6 +213,7 @@ PY
 
 install_hooks() {
     local hooks_enabled="$1"
+    local py_cmd
     if [ "$hooks_enabled" != true ]; then
         echo "  Codex hard hooks disabled."
         return
@@ -204,6 +224,7 @@ install_hooks() {
         return
     fi
 
+    py_cmd="$(python_cmd)"
     mkdir -p "$CODEX_DST/hooks"
     if [ "$FORCE" = true ]; then
         rm -rf "$CODEX_DST/hooks"
@@ -213,7 +234,7 @@ install_hooks() {
     fi
 
     local hook_script="$CODEX_DST/hooks/dcg_filter.py"
-    HOOKS_JSON_SRC="$CODEX_SRC/hooks.json" HOOKS_JSON_DST="$CODEX_DST/hooks.json" HOOK_COMMAND="python3 \"$hook_script\"" python3 - <<'PY'
+    HOOKS_JSON_SRC="$CODEX_SRC/hooks.json" HOOKS_JSON_DST="$CODEX_DST/hooks.json" HOOK_COMMAND="$py_cmd \"$hook_script\"" "$py_cmd" - <<'PY'
 from __future__ import annotations
 
 import json

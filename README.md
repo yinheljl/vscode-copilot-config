@@ -2,7 +2,7 @@
 
 > 面向 OpenAI Codex 的全局 `AGENTS.md`、Skills、MCP 和安全 hooks 配置仓库。
 
-当前版本：`1.5.7`
+当前版本：`1.5.8`
 
 本分支是 **Codex-only** 分支，只保留 Codex 相关内容。`main` 分支仍保留原来的多 Agent 配置。
 
@@ -39,18 +39,18 @@ bash ~/.ai-agent-config/restore.sh --auto-install-dcg
 
 ## AI Agent 辅助配置
 
-如果同事已经能打开 Codex 或其他本地 AI Agent，建议直接把下面这段话发给 Agent，让它按文档执行。首次配置时建议先 dry-run，再正式写入。
+如果使用者已经能打开 Codex 或其他本地 AI Agent，建议直接把下面这段话发给 Agent，让它按文档自动执行。
 
 ```text
 请按照 https://github.com/yinheljl/ai-agent-config/tree/codex/codex-setup-doc 的 README，帮我在当前设备安装或更新 Codex 全局配置。
 
 要求：
-1. 如果配置仓库目录不存在，克隆 codex/codex-setup-doc 分支到 ~/.ai-agent-config（Windows PowerShell 用 $env:USERPROFILE\.ai-agent-config）；如果目录已存在，先确认它在 codex/codex-setup-doc 分支并拉取最新代码，或直接运行 update 脚本。
-2. 先执行 restore 的 dry-run，让我确认将写入哪些文件。
-3. 确认后执行 restore，写入 ~/.codex/AGENTS.md、~/.codex/skills/、MCP 和安全 hooks。
-4. 不要同步或覆盖 Codex 自带的 .system skills；只处理本仓库管理的用户侧配置。
-5. 如需安装或刷新 dcg，请先说明它的用途和来源，再让我确认。
-6. 完成后运行验证命令，并告诉我是否需要重启 Codex。
+1. 如果配置仓库目录不存在，克隆 codex/codex-setup-doc 分支到 ~/.ai-agent-config（Windows PowerShell 用 $env:USERPROFILE\.ai-agent-config）。如果目录已存在，必须先检查当前分支；已经在 codex/codex-setup-doc 时运行 update 脚本，不在该分支时先 fetch origin codex/codex-setup-doc，再 switch/create 到 FETCH_HEAD 并 pull --ff-only origin codex/codex-setup-doc。切换不了就把旧目录改名备份后重新 clone。
+2. 直接运行 restore，并使用 -AutoInstallDcg / --auto-install-dcg 自动安装或刷新安全 hooks；不要让用户判断 dry-run 输出。
+3. 不要同步或覆盖 Codex 自带的 .system skills；只处理本仓库管理的用户侧配置。
+4. 完成后运行验证命令，确认 ~/.codex/AGENTS.md、~/.codex/skills/、MCP 和 hooks 已写入。
+5. 最后告诉我安装结果、dcg 版本号、MCP 列表，以及是否需要重启 Codex。
+6. 只有遇到登录、权限、网络失败、git 冲突这类无法自动处理的问题时，才停下来说明原因和下一步。
 ```
 
 ## 仓库结构
@@ -62,7 +62,7 @@ bash ~/.ai-agent-config/restore.sh --auto-install-dcg
 | `codex/hooks.json` | Codex `PreToolUse` hook 模板 |
 | `codex/hooks/` | 低噪音 `dcg` 过滤器和说明 |
 | `codex/skills/` | Codex Skills，包含文档处理、代码审查、MCP 构建、安全护栏等 |
-| `docs/CODEX_SETUP_GUIDE.md` | 面向同事的 Codex 安装、搭建、配置操作文档 |
+| `docs/CODEX_SETUP_GUIDE.md` | 面向使用者的 Codex 安装、搭建、配置操作文档 |
 | `restore.ps1` / `restore.sh` | 首次安装或重新写入 Codex 配置 |
 | `update.ps1` / `update.sh` | 拉取仓库更新并重新执行 restore |
 | `sync.ps1` / `sync.sh` | 从本机 `~/.codex` 同步自定义 `AGENTS.md` 和 skills 回仓库 |
