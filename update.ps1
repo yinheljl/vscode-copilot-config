@@ -33,14 +33,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$repoName  = "ai-agent-config"
+$repoName  = "vscode-copilot-config"
 
 # 优先从 REPO_URL 文件读取仓库 URL（便于 fork 后只改一处）
 $repoUrlFileLocal = if ($PSScriptRoot) { Join-Path $PSScriptRoot "REPO_URL" } else { $null }
 if ($repoUrlFileLocal -and (Test-Path $repoUrlFileLocal)) {
     $repoUrl = (Get-Content $repoUrlFileLocal -Raw).Trim()
 } else {
-    $repoUrl = "https://github.com/yinheljl/ai-agent-config.git"
+    $repoUrl = "https://github.com/yinheljl/vscode-copilot-config.git"
 }
 
 # 确定仓库目录：如果当前目录就是仓库，就用当前目录；否则用临时目录
@@ -50,7 +50,7 @@ if ($scriptDir -and (Test-Path (Join-Path $scriptDir "VERSION"))) {
 } elseif (Test-Path (Join-Path $PWD "VERSION")) {
     $repoDir = $PWD.Path
 } else {
-    $repoDir = Join-Path $env:USERPROFILE ".ai-agent-config"
+    $repoDir = Join-Path $env:USERPROFILE ".copilot-config"
 }
 
 function Get-LocalVersion($dir) {
@@ -77,7 +77,7 @@ function Get-RemoteVersion {
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  AI Agent 配置更新工具" -ForegroundColor Cyan
+Write-Host "  Copilot 配置更新工具" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -152,8 +152,8 @@ if (Test-Path (Join-Path $repoDir ".git")) {
         Write-Host "  未安装 git，使用 ZIP 下载..." -ForegroundColor Yellow
         if (-not $DryRun) {
             $zipUrl = ($repoUrl -replace '\.git$','') + "/archive/refs/heads/main.zip"
-            $zipPath = Join-Path $env:TEMP "ai-agent-config.zip"
-            $extractDir = Join-Path $env:TEMP "ai-agent-config-extract"
+            $zipPath = Join-Path $env:TEMP "copilot-config.zip"
+            $extractDir = Join-Path $env:TEMP "copilot-config-extract"
             Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
             if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
             Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force

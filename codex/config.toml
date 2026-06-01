@@ -1,5 +1,5 @@
 # Codex MCP 服务器配置模板
-# 由 ai-agent-config 自动生成，路径占位符由 restore 脚本替换
+# 由 vscode-copilot-config 自动生成，路径占位符由 restore 脚本替换
 #
 # 此文件包含 MCP 服务器配置 + hooks feature flag 默认值。
 # 其他 Codex 设置（model、sandbox 等）请参考: https://developers.openai.com/codex/config-basic
