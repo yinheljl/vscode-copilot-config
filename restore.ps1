@@ -1,377 +1,80 @@
-﻿<#
+<#
 .SYNOPSIS
-    还原 Cursor + VS Code GitHub Copilot + Codex + Claude + Antigravity + Windsurf 个人配置到当前机器
+    Restore Codex global configuration from this repository.
 
 .DESCRIPTION
-    自动检测已安装的 IDE（VS Code、Cursor、Codex、Claude、Antigravity、Windsurf），仅配置已安装的环境。
-    默认使用增量模式：仅添加/更新配置，不删除用户已有的自定义内容。
-    使用 -Force 参数可切换为完全覆盖模式。
-
-    还原内容：
-    - copilot (instructions, skills) → ~/.copilot/（VS Code）
-    - cursor/rules/ → ~/.cursor/rules/（Cursor）
-    - cursor/skills/ → ~/.cursor/skills/（Cursor）
-    - cursor/settings.json → 合并到 Cursor settings.json（Cursor）
-    - vscode/mcp.json → 合并到 VS Code mcp.json（VS Code）
-    - vscode/settings.json → 合并到 VS Code settings.json（VS Code）
-    - codex/AGENTS.md → ~/.codex/AGENTS.md（Codex）
-    - codex/config.toml → 合并到 ~/.codex/config.toml（Codex）
-    - codex/skills/ → ~/.codex/skills/（Codex 全局 Agent Skills，含安全护栏 skill）
-    - codex/hooks.json → ~/.codex/hooks.json（注册低噪音 dcg PreToolUse hook 到 Codex）
-    - codex/hooks/ → ~/.codex/hooks/（dcg 轻量过滤器）
-    - claude/CLAUDE.md → ~/.claude/CLAUDE.md（Claude）
-    - claude/skills/ → ~/.claude/skills/（Claude Skills，含安全护栏 skill）
-    - claude/hooks/ → ~/.claude/hooks/（dcg 轻量过滤器，Claude Code 硬层）
-    - claude/hooks → ~/.claude/settings.json（注册低噪音 dcg PreToolUse hook 到 Claude Code）
-    - antigravity/GEMINI.md → ~/.gemini/GEMINI.md（Antigravity）
-    - antigravity/skills/ → ~/.gemini/antigravity/skills/（Antigravity Skills，含安全护栏 skill）
-    - antigravity/hooks/ → ~/.gemini/antigravity/hooks/（dcg 轻量过滤器）
-    - antigravity/mcp.json → ~/.gemini/antigravity/mcp_config.json（Antigravity MCP）
-    - antigravity/settings.json → 合并到 %APPDATA%\antigravity\User\settings.json
-    - windsurf/mcp_config.json → ~/.codeium/windsurf/mcp_config.json（Windsurf Cascade MCP）
-    - windsurf/hooks.json → ~/.codeium/windsurf/hooks.json（注册 pre_run_command dcg hook）
-    - windsurf/hooks/ → ~/.codeium/windsurf/hooks/（dcg 轻量过滤器）
-    注：Windsurf 的 skills/rules 通过其设置中的"Read Claude Code Config"开关直接读 ~/.claude/，无需单独同步。
+    Installs the Codex-only assets managed by this repository:
+    - codex/AGENTS.md -> ~/.codex/AGENTS.md
+    - codex/skills/ -> ~/.codex/skills/
+    - codex/config.toml -> merged into ~/.codex/config.toml
+    - codex/hooks.json and codex/hooks/ -> ~/.codex/ when dcg hooks are enabled
 
 .EXAMPLE
-    .\restore.ps1                        # 增量模式（默认，不覆盖用户已有配置）
-    .\restore.ps1 -Force                 # 完全覆盖模式
-    .\restore.ps1 -DryRun                # 预览模式
-    .\restore.ps1 -Target Codex          # 仅配置 Codex
-    .\restore.ps1 -Target Claude         # 仅配置 Claude
-    .\restore.ps1 -Target Windsurf       # 仅配置 Windsurf
-    .\restore.ps1 -Target VSCode,Cursor  # 仅配置 VS Code 和 Cursor
-    .\restore.ps1 -Target Codex -Force   # 仅覆盖 Codex 配置
-    .\restore.ps1 -AutoInstallDcg        # 未装 dcg 时自动下载并校验上游 release，不再交互询问
-    .\restore.ps1 -DisableDcgHooks       # 安装/检测 dcg，但跳过所有 dcg hook 部署；Codex 设为 hooks=false
-    .\restore.ps1 -SkipDcg               # 跳过 dcg 安装与所有 dcg hook 部署；Codex 设为 hooks=false
+    .\restore.ps1
+    .\restore.ps1 -DryRun
+    .\restore.ps1 -Force
+    .\restore.ps1 -AutoInstallDcg
+    .\restore.ps1 -SkipDcg
 #>
 param(
     [switch]$DryRun,
     [switch]$Force,
     [switch]$AutoInstallDcg,
     [switch]$DisableDcgHooks,
-    [switch]$SkipDcg,
-    [ValidateSet("All", "VSCode", "Cursor", "Codex", "Claude", "Antigravity", "Windsurf")]
-    [string[]]$Target = @("All")
+    [switch]$SkipDcg
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$scriptDir       = $PSScriptRoot
-$copilotSrc        = Join-Path $scriptDir "copilot"
-$copilotDst        = Join-Path $env:USERPROFILE ".copilot"
-$copilotHooksSrc   = Join-Path $copilotSrc "hooks"
-$copilotHooksDst   = Join-Path $copilotDst "hooks"
-$cursorSrc       = Join-Path $scriptDir "cursor"
-$cursorDst       = Join-Path $env:USERPROFILE ".cursor"
-$claudeSrc       = Join-Path $scriptDir "claude"
-$claudeDst       = Join-Path $env:USERPROFILE ".claude"
-$claudeConfigSrc  = Join-Path $claudeSrc "CLAUDE.md"
-$claudeConfigDst  = Join-Path $claudeDst "CLAUDE.md"
-$claudeSkillsSrc  = Join-Path $claudeSrc "skills"
-$claudeSkillsDst  = Join-Path $claudeDst "skills"
-$claudeHooksSrc   = Join-Path $claudeSrc "hooks"
-$claudeHooksDst   = Join-Path $claudeDst "hooks"
-$claudeSettingsDst = Join-Path $claudeDst "settings.json"
-$vscodeMcpSrc    = Join-Path $scriptDir "vscode\mcp.json"
-$vscodeMcpDst    = Join-Path $env:APPDATA "Code\User\mcp.json"
-$vscodeSettSrc   = Join-Path $scriptDir "vscode\settings.json"
-$vscodeSettDst   = Join-Path $env:APPDATA "Code\User\settings.json"
-$cursorSettSrc   = Join-Path $scriptDir "cursor\settings.json"
-$cursorSettDst   = Join-Path $env:APPDATA "Cursor\User\settings.json"
-$cursorHooksSrc  = Join-Path $cursorSrc "hooks.json"
-$cursorHooksDst  = Join-Path $cursorDst "hooks.json"
-$cursorHooksDirSrc = Join-Path $cursorSrc "hooks"
-$cursorHooksDirDst = Join-Path $cursorDst "hooks"
-$codexSrc        = Join-Path $scriptDir "codex"
-$codexDst        = Join-Path $env:USERPROFILE ".codex"
-$codexConfigSrc  = Join-Path $codexSrc "config.toml"
-$codexConfigDst  = Join-Path $codexDst "config.toml"
-$codexAgentsSrc  = Join-Path $codexSrc "AGENTS.md"
-$codexAgentsDst  = Join-Path $codexDst "AGENTS.md"
-$codexSkillsSrc  = Join-Path $codexSrc "skills"
-$codexSkillsDst  = Join-Path $codexDst "skills"
-$codexHooksSrc   = Join-Path $codexSrc "hooks"
-$codexHooksDst   = Join-Path $codexDst "hooks"
-$codexHooksJsonSrc = Join-Path $codexSrc "hooks.json"
-$codexHooksJsonDst = Join-Path $codexDst "hooks.json"
-$antigravitySrc        = Join-Path $scriptDir "antigravity"
-$antigravityDst        = Join-Path $env:USERPROFILE ".gemini\antigravity"
-$antigravityConfigSrc  = Join-Path $antigravitySrc "GEMINI.md"
-$antigravityConfigDst  = Join-Path $env:USERPROFILE ".gemini\GEMINI.md"
-$antigravitySkillsSrc  = Join-Path $antigravitySrc "skills"
-$antigravitySkillsDst  = Join-Path $antigravityDst "skills"
-$antigravityHooksSrc   = Join-Path $antigravitySrc "hooks"
-$antigravityHooksDst   = Join-Path $antigravityDst "hooks"
-$antigravityMcpSrc     = Join-Path $antigravitySrc "mcp.json"
-$antigravityMcpDst     = Join-Path $antigravityDst "mcp_config.json"
-$antigravitySettSrc    = Join-Path $antigravitySrc "settings.json"
-$antigravitySettDst    = Join-Path $env:APPDATA "antigravity\User\settings.json"
-$windsurfSrc           = Join-Path $scriptDir "windsurf"
-$windsurfDst           = Join-Path $env:USERPROFILE ".codeium\windsurf"
-$windsurfMcpSrc        = Join-Path $windsurfSrc "mcp_config.json"
-$windsurfMcpDst        = Join-Path $windsurfDst "mcp_config.json"
-$windsurfHooksJsonSrc  = Join-Path $windsurfSrc "hooks.json"
-$windsurfHooksJsonDst  = Join-Path $windsurfDst "hooks.json"
-$windsurfHooksDirSrc   = Join-Path $windsurfSrc "hooks"
-$windsurfHooksDirDst   = Join-Path $windsurfDst "hooks"
+$repoDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+$codexSrc = Join-Path $repoDir "codex"
+$codexDst = Join-Path $env:USERPROFILE ".codex"
 
-# ============================
-# IDE 自动检测
-# ============================
-$vscodeUserDir = Join-Path $env:APPDATA "Code\User"
-$cursorUserDir = Join-Path $env:APPDATA "Cursor\User"
-$hasVSCode = (Test-Path $vscodeUserDir) -or [bool](Get-Command code -ErrorAction SilentlyContinue)
-$hasCursor = (Test-Path $cursorUserDir) -or (Test-Path $cursorDst) -or [bool](Get-Command cursor -ErrorAction SilentlyContinue)
-$hasCodex  = (Test-Path $codexDst) -or [bool](Get-Command codex -ErrorAction SilentlyContinue)
-$hasClaude = (Test-Path $claudeDst) -or [bool](Get-Command claude -ErrorAction SilentlyContinue)
-$hasAntigravity = (Test-Path $antigravitySettDst) -or (Test-Path $antigravityDst) -or [bool](Get-Command antigravity -ErrorAction SilentlyContinue)
-$hasWindsurf = (Test-Path $windsurfDst) -or [bool](Get-Command windsurf -ErrorAction SilentlyContinue)
+$agentsSrc = Join-Path $codexSrc "AGENTS.md"
+$agentsDst = Join-Path $codexDst "AGENTS.md"
+$skillsSrc = Join-Path $codexSrc "skills"
+$skillsDst = Join-Path $codexDst "skills"
+$configSrc = Join-Path $codexSrc "config.toml"
+$configDst = Join-Path $codexDst "config.toml"
+$hooksSrc = Join-Path $codexSrc "hooks"
+$hooksDst = Join-Path $codexDst "hooks"
+$hooksJsonSrc = Join-Path $codexSrc "hooks.json"
+$hooksJsonDst = Join-Path $codexDst "hooks.json"
 
-# ============================
-# -Target 参数过滤
-# ============================
-if ($Target -notcontains "All") {
-    if ($Target -notcontains "VSCode") { $hasVSCode = $false }
-    if ($Target -notcontains "Cursor") { $hasCursor = $false }
-    if ($Target -notcontains "Codex")  { $hasCodex  = $false }
-    if ($Target -notcontains "Claude") { $hasClaude = $false }
-    if ($Target -notcontains "Antigravity") { $hasAntigravity = $false }
-    if ($Target -notcontains "Windsurf") { $hasWindsurf = $false }
+function Write-Utf8NoBomFile([string]$Path, [string]$Content) {
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $encoding)
 }
 
-# 同名文件保留最近 N 份备份，避免无限累积
-$BackupKeepCount = 5
+function Escape-TomlString([string]$Value) {
+    return $Value.Replace('\', '\\').Replace('"', '\"')
+}
 
-function Backup-File($path) {
-    if (Test-Path $path) {
-        $backup = $path + ".bak_" + (Get-Date -Format "yyyyMMdd_HHmmss")
-        Copy-Item $path $backup
-        Write-Host "  已备份: $backup" -ForegroundColor DarkGray
-        # 轮转：仅保留最新 $BackupKeepCount 份
-        $dir = Split-Path $path -Parent
-        $name = Split-Path $path -Leaf
-        $old = Get-ChildItem -Path $dir -Filter ($name + ".bak_*") -File -ErrorAction SilentlyContinue |
-               Sort-Object LastWriteTime -Descending |
-               Select-Object -Skip $BackupKeepCount
-        foreach ($f in $old) {
-            try {
-                Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
-                Write-Host "  已清理旧备份: $($f.Name)" -ForegroundColor DarkGray
-            } catch {}
-        }
+function Escape-JsonString([string]$Value) {
+    return $Value.Replace('\', '\\').Replace('"', '\"').Replace("`r", '\r').Replace("`n", '\n')
+}
+
+function Backup-File([string]$Path) {
+    if ((Test-Path $Path) -and -not $Force) {
+        $backup = "$Path.bak_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+        Copy-Item $Path $backup -Force
+        Write-Host "  backup: $backup"
     }
 }
 
-function Write-Utf8NoBomFile($path, $content) {
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($path, $content, $utf8NoBom)
+function Copy-DirMerge([string]$Src, [string]$Dst) {
+    if (-not (Test-Path $Dst)) {
+        New-Item -ItemType Directory -Path $Dst -Force | Out-Null
+    }
+    Copy-Item (Join-Path $Src '*') $Dst -Recurse -Force
 }
 
-# 把 PowerShell ConvertTo-Json 的"对齐式缩进"输出重新格式化为标准 2 空格缩进
-function Format-Json([string]$json, [int]$indent = 2) {
-    if ([string]::IsNullOrWhiteSpace($json)) { return $json }
-    $indentStr = ' ' * $indent
-    $sb = New-Object System.Text.StringBuilder
-    $level = 0
-    $inString = $false
-    $escaped = $false
-    for ($i = 0; $i -lt $json.Length; $i++) {
-        $c = $json[$i]
-        if ($inString) {
-            [void]$sb.Append($c)
-            if ($escaped) {
-                $escaped = $false
-            } elseif ($c -eq '\') {
-                $escaped = $true
-            } elseif ($c -eq '"') {
-                $inString = $false
-            }
-            continue
-        }
-        switch ($c) {
-            '"' { $inString = $true; [void]$sb.Append($c); break }
-            '{' { [void]$sb.Append($c); $level++; [void]$sb.Append("`r`n" + ($indentStr * $level)); break }
-            '[' { [void]$sb.Append($c); $level++; [void]$sb.Append("`r`n" + ($indentStr * $level)); break }
-            '}' { $level--; [void]$sb.Append("`r`n" + ($indentStr * $level)); [void]$sb.Append($c); break }
-            ']' { $level--; [void]$sb.Append("`r`n" + ($indentStr * $level)); [void]$sb.Append($c); break }
-            ',' { [void]$sb.Append($c); [void]$sb.Append("`r`n" + ($indentStr * $level)); break }
-            ':' { [void]$sb.Append(': '); break }
-            default {
-                if ($c -ne ' ' -and $c -ne "`n" -and $c -ne "`r" -and $c -ne "`t") {
-                    [void]$sb.Append($c)
-                }
-            }
-        }
+function Copy-DirReplace([string]$Src, [string]$Dst) {
+    if (Test-Path $Dst) {
+        Remove-Item $Dst -Recurse -Force
     }
-    return $sb.ToString()
-}
-
-function ConvertFrom-Jsonc([string]$raw) {
-    if ([string]::IsNullOrWhiteSpace($raw)) { return [PSCustomObject]@{} }
-    # 保护字符串内的 // 和 /*：把所有字符串字面量先替换成占位符
-    $strings = New-Object System.Collections.Generic.List[string]
-    $stripped = [regex]::Replace($raw, '"(\\.|[^"\\])*"', {
-        param($m)
-        $i = $strings.Count
-        [void]$strings.Add($m.Value)
-        return "__JSONC_STR_${i}__"
-    })
-    # 删除单行注释 //...
-    $stripped = [regex]::Replace($stripped, '(?m)//[^\r\n]*', '')
-    # 删除多行注释 /* ... */
-    $stripped = [regex]::Replace($stripped, '(?s)/\*.*?\*/', '')
-    # 删除尾随逗号
-    $stripped = [regex]::Replace($stripped, ',(\s*[}\]])', '$1')
-    # 还原字符串
-    for ($i = 0; $i -lt $strings.Count; $i++) {
-        $stripped = $stripped.Replace("__JSONC_STR_${i}__", $strings[$i])
-    }
-    return $stripped | ConvertFrom-Json
-}
-
-function Merge-JsonSettings($srcPath, $dstPath) {
-    if (-not (Test-Path $srcPath)) { return }
-    # 显式 UTF8 读取，避免中文乱码
-    $srcRaw = Get-Content $srcPath -Raw -Encoding UTF8
-    try {
-        $srcObj = ConvertFrom-Jsonc $srcRaw
-    } catch {
-        Write-Warning "  源 settings 解析失败，跳过: $srcPath"
-        return
-    }
-
-    if (-not (Test-Path $dstPath)) {
-        # 目标不存在：直接复制源（保留原始格式 + 注释）
-        $dstDir = Split-Path $dstPath -Parent
-        if (-not (Test-Path $dstDir)) {
-            New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
-        }
-        Write-Utf8NoBomFile $dstPath $srcRaw
-        Write-Host "  + 已创建 $dstPath"
-        return
-    }
-
-    # 目标存在：增量只补缺，最大限度保留原始 JSONC 注释和格式
-    $dstRaw = Get-Content $dstPath -Raw -Encoding UTF8
-    try {
-        $dstObj = ConvertFrom-Jsonc $dstRaw
-    } catch {
-        Write-Warning "  现有 settings.json 解析失败（含语法错误），跳过合并: $dstPath"
-        return
-    }
-
-    $existingKeys = @{}
-    foreach ($p in $dstObj.PSObject.Properties) { $existingKeys[$p.Name] = $true }
-
-    $missingProps = @()
-    foreach ($prop in $srcObj.PSObject.Properties) {
-        if (-not $existingKeys.ContainsKey($prop.Name)) {
-            $missingProps += $prop
-        }
-    }
-
-    if ($missingProps.Count -eq 0) {
-        Write-Host "  + settings.json (所有键已存在，未修改，注释保留)"
-        return
-    }
-
-    Backup-File $dstPath
-    # 把缺失的键以 JSON 片段形式插入到结尾的 } 之前，原文其他部分保持不动
-    $additions = @()
-    foreach ($p in $missingProps) {
-        $valueJson = ($p.Value | ConvertTo-Json -Depth 20 -Compress:$false)
-        $additions += "  ""$($p.Name)"": $valueJson"
-    }
-    $insertion = ($additions -join ",`r`n")
-
-    $trimmed = $dstRaw.TrimEnd()
-    if ($trimmed.EndsWith('}')) {
-        $body = $trimmed.Substring(0, $trimmed.Length - 1).TrimEnd()
-        if ($body.EndsWith(',') -or $body.EndsWith('{')) {
-            $newRaw = "$body`r`n$insertion`r`n}`r`n"
-        } else {
-            $newRaw = "$body,`r`n$insertion`r`n}`r`n"
-        }
-        Write-Utf8NoBomFile $dstPath $newRaw
-        Write-Host "  + settings.json (追加 $($missingProps.Count) 个缺失键，原注释保留)"
-    } else {
-        Write-Warning "  目标 settings.json 不以 '}' 结尾，跳过追加"
-    }
-}
-
-function Remove-LegacyFeedbackServers($serversObj) {
-    if (-not $serversObj) { return $false }
-    $changed = $false
-    foreach ($name in @("interactiveFeedback", "interactive-feedback")) {
-        if ($serversObj.PSObject.Properties.Name -contains $name) {
-            $serversObj.PSObject.Properties.Remove($name)
-            $changed = $true
-        }
-    }
-    return $changed
-}
-
-function Remove-LegacyFeedbackCodexBlocks([string]$toml) {
-    return [regex]::Replace(
-        $toml,
-        '(?ms)^\[mcp_servers\.(?:interactiveFeedback|interactive-feedback)(?:\.[^\]]+)?\]\s*.*?(?=^\[|\z)',
-        ''
-    )
-}
-
-function Merge-McpJson($srcPath, $dstPath, $uvPath, $serverKey) {
-    if (-not (Test-Path $srcPath)) { return }
-    $content = Get-Content $srcPath -Raw -Encoding UTF8
-    $content = $content.Replace('__UV_PATH__', (Escape-JsonString $uvPath))
-    try {
-        $srcObj = $content | ConvertFrom-Json
-    } catch {
-        throw "模板 mcp.json 不是合法 JSON: $($_.Exception.Message)"
-    }
-    $dstDir = Split-Path $dstPath -Parent
-    if (-not (Test-Path $dstDir)) {
-        New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
-    }
-    if ((Test-Path $dstPath) -and -not $Force) {
-        # 增量模式：合并 MCP 服务器配置
-        Backup-File $dstPath
-        try {
-            $dstObj = Get-Content $dstPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        } catch {
-            Write-Warning "  现有 mcp.json 格式错误，将使用新配置覆盖"
-            $dstObj = $null
-        }
-        if ($dstObj) {
-            # 确保目标有 servers/mcpServers 键
-            if (-not ($dstObj.PSObject.Properties.Name -contains $serverKey)) {
-                $dstObj | Add-Member -MemberType NoteProperty -Name $serverKey -Value ([PSCustomObject]@{}) -Force
-            }
-            $removedLegacy = Remove-LegacyFeedbackServers $dstObj.$serverKey
-            # 从源中合并每个 server 到目标
-            $srcServers = $srcObj.$serverKey
-            if ($srcServers) {
-                foreach ($prop in $srcServers.PSObject.Properties) {
-                    $dstObj.$serverKey | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value -Force
-                }
-            }
-            $json = $dstObj | ConvertTo-Json -Depth 20 -Compress
-            $json = Format-Json $json 2
-            Write-Utf8NoBomFile $dstPath $json
-            if ($removedLegacy) {
-                Write-Host "  + mcp.json (增量合并，已移除旧 interactive-feedback 服务器)"
-            } else {
-                Write-Host "  + mcp.json (增量合并，保留已有服务器)"
-            }
-            return
-        }
-    }
-    # 覆盖模式或目标不存在
-    Backup-File $dstPath
-    Write-Utf8NoBomFile $dstPath $content
-    Write-Host "  + mcp.json (已替换路径)"
+    Copy-Item $Src $Dst -Recurse -Force
 }
 
 function Resolve-UvPath {
@@ -379,1253 +82,220 @@ function Resolve-UvPath {
         (Join-Path $env:USERPROFILE ".local\bin\uv.exe"),
         (Join-Path $env:USERPROFILE ".cargo\bin\uv.exe")
     )
-    foreach ($p in $candidates) {
-        if (Test-Path $p) { return $p }
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) { return $candidate }
     }
     $cmd = Get-Command uv -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
     return $null
 }
 
-function Escape-JsonString($value) {
-    if ($null -eq $value) { return '' }
-    # 使用 ConvertTo-Json 做完整转义（处理 \、"、控制字符等），再剥掉外层引号
-    $json = ConvertTo-Json -InputObject ([string]$value) -Compress
-    return $json.Substring(1, $json.Length - 2)
-}
+function Install-UvIfMissing {
+    $uv = Resolve-UvPath
+    if ($uv) { return $uv }
 
-function Copy-DirMerge($src, $dst) {
-    # 增量复制：只添加/更新文件，不删除目标中已有的其他文件
-    if (-not (Test-Path $dst)) {
-        New-Item -ItemType Directory -Path $dst -Force | Out-Null
-    }
-    Copy-Item "$src\*" $dst -Recurse -Force
-}
-
-function Copy-DirReplace($src, $dst) {
-    # 完全覆盖：先删除目标目录再复制
-    if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
-    Copy-Item $src $dst -Recurse -Force
-}
-
-function Remove-DeprecatedSkillsReadme([string]$skillsDir) {
-    $readme = Join-Path $skillsDir "README.md"
-    if (Test-Path -LiteralPath $readme -PathType Leaf) {
-        Remove-Item -LiteralPath $readme -Force
-        Write-Host "  - skills/README.md (清理废弃说明文件)"
-    }
-}
-
-function Test-DcgInstalled {
-    if (Get-Command dcg -ErrorAction SilentlyContinue) { return $true }
-    if (Get-Command dcg.exe -ErrorAction SilentlyContinue) { return $true }
-    $defaultBin = Join-Path $env:USERPROFILE ".local\bin\dcg.exe"
-    if (Test-Path $defaultBin) { return $true }
-    return $false
-}
-
-function Get-WebString([string]$url) {
-    # PS 5.1 与 PS 7 兼容：拉远端文本。-UseBasicParsing 在 PS 5.1 下 .Content 可能是 byte[]。
-    $wr = Invoke-WebRequest -Uri $url -UseBasicParsing -ErrorAction Stop
-    $content = $wr.Content
-    if ($content -is [byte[]]) {
-        return [System.Text.Encoding]::UTF8.GetString($content)
-    }
-    return [string]$content
-}
-
-function Invoke-DcgInstaller {
-    # 复刻 dcg 官方 install.ps1 的核心步骤（PS 5.1 兼容）：
-    #   1. GitHub API 解析最高稳定 semver release tag
-    #   2. 下载 dcg-x86_64-pc-windows-msvc.zip
-    #   3. 用上游 .sha256 文件校验（信任链与官方一致）
-    #   4. 解压 → 复制到 ~/.local/bin/dcg.exe
-    #   5. 把 ~/.local/bin 加到用户 PATH
-    # 之所以不直接调用上游 install.ps1：在 Windows PowerShell 5.1 下 -UseBasicParsing 返回 byte[]
-    # 导致上游 .Content.Trim() 抛 "Checksum file not found"。本仓库只是"复刻流程"，
-    # 真正的信任锚点（GitHub release zip 与上游 .sha256）完全没变。
-    $owner = "Dicklesworthstone"
-    $repo  = "destructive_command_guard"
-    $target = "x86_64-pc-windows-msvc"
-    $userBin = Join-Path $env:USERPROFILE ".local\bin"
-
-    if (-not [Environment]::Is64BitOperatingSystem) {
-        Write-Warning "    当前不是 64-bit Windows，dcg 不支持。"
-        return $false
+    Write-Host "  uv not found; installing uv for markitdown MCP..." -ForegroundColor Yellow
+    if ($DryRun) {
+        return (Join-Path $env:USERPROFILE ".local\bin\uv.exe")
     }
 
-    # Step 1: 解析最高稳定版本。不要只依赖 /releases/latest：上游历史发布中
-    # latest 标记曾滞后于实际可用的稳定 tag。
-    Write-Host "    → 查询最高稳定 release..." -ForegroundColor DarkGray
-    $version = $null
     try {
-        $json = Get-WebString "https://api.github.com/repos/$owner/$repo/releases?per_page=20"
-        $rels = $json | ConvertFrom-Json
-        if ($null -eq $rels) {
-            $rels = @()
-        } elseif ($rels -isnot [System.Array]) {
-            $rels = @($rels)
-        }
-        $candidates = @()
-        foreach ($rel in $rels) {
-            if ($rel.draft -or $rel.prerelease) { continue }
-            $tag = [string]$rel.tag_name
-            if ($tag -notmatch '^v?(\d+)\.(\d+)\.(\d+)$') { continue }
-            $hasZip = $false
-            $hasSha = $false
-            foreach ($asset in @($rel.assets)) {
-                if ($asset.name -eq "dcg-$target.zip") { $hasZip = $true }
-                if ($asset.name -eq "dcg-$target.zip.sha256") { $hasSha = $true }
-            }
-            if (-not ($hasZip -and $hasSha)) { continue }
-            $candidates += [pscustomobject]@{
-                Tag = $tag
-                SemVer = [version]"$($Matches[1]).$($Matches[2]).$($Matches[3])"
-            }
-        }
-        if ($candidates.Count -gt 0) {
-            $version = ($candidates | Sort-Object SemVer -Descending | Select-Object -First 1).Tag
-        }
+        $installScript = Invoke-RestMethod "https://astral.sh/uv/install.ps1"
+        Invoke-Expression $installScript
     } catch {
-        Write-Warning "    GitHub API 调用失败: $_"
+        Write-Warning "uv install failed: $($_.Exception.Message)"
+    }
+
+    $uv = Resolve-UvPath
+    if (-not $uv) {
+        Write-Warning "uv is still unavailable. markitdown MCP will be configured with the default user path."
+        $uv = Join-Path $env:USERPROFILE ".local\bin\uv.exe"
+    }
+    return $uv
+}
+
+function Resolve-DcgPath {
+    $cmd = Get-Command dcg -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $cmd = Get-Command dcg.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $candidate = Join-Path $env:USERPROFILE ".local\bin\dcg.exe"
+    if (Test-Path $candidate) { return $candidate }
+    return $null
+}
+
+function Install-DcgIfRequested {
+    if ($SkipDcg) {
+        Write-Host "  dcg skipped; Codex hooks will be disabled."
         return $false
     }
-    if (-not $version) {
-        Write-Warning "    无法解析可安装的稳定 release tag。"
-        return $false
-    }
-    Write-Host "    → 选择版本: $version" -ForegroundColor DarkGray
 
-    $zipName = "dcg-$target.zip"
-    $zipUrl  = "https://github.com/$owner/$repo/releases/download/$version/$zipName"
-    $shaUrl  = "$zipUrl.sha256"
-
-    $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dcg_install_$(Get-Random)"
-    New-Item -ItemType Directory -Path $tmpRoot -Force | Out-Null
-    $zipPath = Join-Path $tmpRoot $zipName
-
-    try {
-        # Step 2: 下载 zip
-        Write-Host "    → 下载: $zipUrl" -ForegroundColor DarkGray
-        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop
-
-        # Step 3: 校验 SHA256
-        Write-Host "    → 拉取上游 .sha256 并校验..." -ForegroundColor DarkGray
-        $shaText = Get-WebString $shaUrl
-        $expected = ($shaText -split '\s+')[0].Trim().ToLower()
-        if (-not $expected -or $expected.Length -ne 64) {
-            Write-Warning "    上游 .sha256 内容异常: '$shaText'"
-            return $false
-        }
-        $actual = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
-        if ($actual -ne $expected) {
-            Write-Warning "    SHA256 不匹配！expected=$expected actual=$actual"
-            return $false
-        }
-        Write-Host "    ✓ SHA256 校验通过 ($expected)" -ForegroundColor Green
-
-        # Step 4: 解压并安装
-        Write-Host "    → 解压并复制到 $userBin\dcg.exe" -ForegroundColor DarkGray
-        $extractDir = Join-Path $tmpRoot "extract"
-        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $extractDir)
-        $bin = Get-ChildItem -Path $extractDir -Recurse -Filter "dcg.exe" | Select-Object -First 1
-        if (-not $bin) {
-            Write-Warning "    zip 内未找到 dcg.exe"
-            return $false
-        }
-        if (-not (Test-Path $userBin)) { New-Item -ItemType Directory -Path $userBin -Force | Out-Null }
-        Copy-Item $bin.FullName (Join-Path $userBin "dcg.exe") -Force
-
-        # Step 5: 加 PATH（持久化到 User scope）
-        $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-        if (-not $userPath) { $userPath = "" }
-        if ($userPath -notlike "*$userBin*") {
-            $newPath = if ($userPath) { "$userPath;$userBin" } else { $userBin }
-            [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
-            Write-Host "    ✓ 已把 $userBin 加入用户 PATH" -ForegroundColor Green
-        }
-        # 当前 session 也立即可用
-        if ($env:PATH -notlike "*$userBin*") { $env:PATH = "$env:PATH;$userBin" }
+    $dcg = Resolve-DcgPath
+    if ($dcg) {
+        Write-Host "  dcg found: $dcg"
         return $true
-    } catch {
-        Write-Warning "    安装失败: $_"
-        return $false
-    } finally {
-        Remove-Item $tmpRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
-function Set-CodexHooksFeature($configTomlPath, [bool]$enabled) {
-    $value = if ($enabled) { "true" } else { "false" }
-    if (-not (Test-Path $configTomlPath)) {
-        $dir = Split-Path $configTomlPath -Parent
-        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-        Write-Utf8NoBomFile $configTomlPath "[features]`r`nhooks = $value`r`n"
-        Write-Host "    + config.toml 设置 [features] hooks = $value"
-        return
-    }
-    $cfg = Get-Content $configTomlPath -Raw -Encoding UTF8
-    $newCfg = $cfg
-    $hadLegacyKey = [regex]::IsMatch($cfg, '(?m)^\s*codex_hooks\s*=\s*(true|false)\b')
-
-    $m = [regex]::Match($newCfg, '(?m)^(\s*hooks\s*=\s*)(true|false)\b')
-    if ($m.Success) {
-        $newCfg = $newCfg.Substring(0, $m.Index) + $m.Groups[1].Value + $value + $newCfg.Substring($m.Index + $m.Length)
-        $newCfg = [regex]::Replace($newCfg, '(?m)^\s*codex_hooks\s*=\s*(true|false)\b[^\r\n]*(\r?\n)?', '')
-    } elseif ([regex]::IsMatch($newCfg, '(?m)^\s*codex_hooks\s*=\s*(true|false)\b')) {
-        $newCfg = [regex]::Replace($newCfg, '(?m)^(\s*)codex_hooks(\s*=\s*)(true|false)\b[^\r\n]*', "`${1}hooks`${2}$value", 1)
-        $newCfg = [regex]::Replace($newCfg, '(?m)^\s*codex_hooks\s*=\s*(true|false)\b[^\r\n]*(\r?\n)?', '')
-    } elseif ($newCfg -match '(?m)^\[features\]\s*$') {
-        $newCfg = [regex]::Replace($newCfg, '(?m)^\[features\]\s*$', "[features]`r`nhooks = $value", 1)
-    } else {
-        $newCfg = $newCfg.TrimEnd() + "`r`n`r`n[features]`r`nhooks = $value`r`n"
     }
 
-    if ($newCfg -ne $cfg) {
-        Backup-File $configTomlPath
-        Write-Utf8NoBomFile $configTomlPath $newCfg
-        Write-Host "    + config.toml 设置 [features] hooks = $value"
-        if ($hadLegacyKey) {
-            Write-Host "    ℹ 已将旧键 codex_hooks 迁移为 hooks" -ForegroundColor DarkGray
-        }
-    }
-}
-
-function Install-CodexHooks($jsonSrcPath, $jsonDstPath, $configTomlPath) {
-    # 硬层防护使用社区方案 dcg（Dicklesworthstone/destructive_command_guard）。
-    # 设计原则：
-    #   1) Windows 上复刻官方 install.ps1 的下载 + SHA256 校验流程，避免 PS 5.1 兼容问题
-    #   2) 不默默 irm|iex；首次安装需用户交互式确认（Y/N），或通过 -AutoInstallDcg 旗标显式同意
-    #   3) Codex PreToolUse matcher 当前按 shell 工具名触发；默认使用轻量过滤器，只在疑似高危命令时调用 dcg
-
-    Write-Host "  Codex 硬层（破坏性命令防护 dcg）：" -ForegroundColor DarkCyan
-
-    if ($SkipDcg) {
-        Write-Host "    → -SkipDcg 已启用，跳过 dcg 全部步骤，并关闭 Codex hooks。软层 SKILL 仍生效。" -ForegroundColor DarkGray
-        if ($DryRun) {
-            Write-Host "    [DryRun] 将在 $configTomlPath 设置 hooks = false" -ForegroundColor Yellow
-        } else {
-            Set-CodexHooksFeature $configTomlPath $false
-        }
-        return
-    }
-
-    # Step 1: 检测 dcg
-    $alreadyInstalled = Test-DcgInstalled
-    if ($alreadyInstalled) {
-        $verLine = ""
-        $prevPref = $ErrorActionPreference
-        $ErrorActionPreference = "SilentlyContinue"
+    $shouldInstall = $false
+    if ($AutoInstallDcg) {
+        $shouldInstall = $true
+    } elseif (-not $DryRun) {
         try {
-            $rawOut = (& dcg --version 2>&1 | Out-String)
-            $m = [regex]::Match($rawOut, 'v\d+\.\d+\.\d+(?:[-+][\w\.\-]+)?')
-            if ($m.Success) { $verLine = $m.Value }
-        } catch {} finally {
-            $ErrorActionPreference = $prevPref
-        }
-        if (-not $verLine) { $verLine = "(已安装)" }
-        Write-Host "    ✓ 已检测到 dcg：$verLine" -ForegroundColor Green
-        if ($AutoInstallDcg) {
-            if ($DryRun) {
-                Write-Host "    [DryRun] 将刷新 dcg 到上游最高稳定 release。" -ForegroundColor Yellow
-            } else {
-                Write-Host "    -AutoInstallDcg 已启用，刷新 dcg 到上游最高稳定 release。" -ForegroundColor Cyan
-                if (Invoke-DcgInstaller) {
-                    $prevPref = $ErrorActionPreference
-                    $ErrorActionPreference = "SilentlyContinue"
-                    try {
-                        $rawOut = (& dcg --version 2>&1 | Out-String)
-                        $m = [regex]::Match($rawOut, 'v\d+\.\d+\.\d+(?:[-+][\w\.\-]+)?')
-                        if ($m.Success) { Write-Host "    ✓ dcg 当前版本：$($m.Value)" -ForegroundColor Green }
-                    } catch {} finally {
-                        $ErrorActionPreference = $prevPref
-                    }
-                } else {
-                    Write-Warning "    dcg 刷新失败；继续使用已安装版本。"
-                }
-            }
-        }
-    } else {
-        Write-Host "    × 未检测到 dcg（社区方案 destructive_command_guard）" -ForegroundColor Yellow
-
-        $shouldInstall = $false
-        if ($DryRun) {
-            Write-Host "    [DryRun] 将下载并校验上游 release，把 dcg.exe 安装到 ~/.local/bin/" -ForegroundColor Yellow
-        } elseif ($AutoInstallDcg) {
-            $shouldInstall = $true
-            Write-Host "    -AutoInstallDcg 已启用，自动安装。" -ForegroundColor Cyan
-        } elseif ([Console]::IsInputRedirected) {
-            # 与 restore.sh 的 `[ -t 0 ]` 检测对齐：非交互式 stdin（CI / 管道）下默认不安装。
-            # 同时兑现 codex/hooks/README.md 的承诺："非交互式 stdin（CI、管道）默认不会安装 dcg"。
-            Write-Host "    （非交互式 stdin，未安装 dcg。下次加 -AutoInstallDcg 自动安装。）" -ForegroundColor DarkGray
-        } else {
-            Write-Host ""
-            Write-Host "    将下载并校验上游 release 安装 dcg：" -ForegroundColor Cyan
-            Write-Host "      源:    https://github.com/Dicklesworthstone/destructive_command_guard"
-            Write-Host "      安装到: $env:USERPROFILE\.local\bin\dcg.exe"
-            Write-Host "      校验:   官方安装器内置 SHA256（强制） + cosign（如果你装了）"
-            $resp = Read-Host "    是否安装 dcg？[y/N]"
-            if ($resp -match '^(y|Y|yes|YES)$') { $shouldInstall = $true }
-        }
-
-        if ($shouldInstall) {
-            if (Invoke-DcgInstaller) {
-                Start-Sleep -Milliseconds 200
-                $alreadyInstalled = Test-DcgInstalled
-                if ($alreadyInstalled) {
-                    Write-Host "    ✓ dcg 安装成功" -ForegroundColor Green
-                } else {
-                    Write-Warning "    安装脚本结束但仍找不到 dcg，请手动确认 PATH 是否包含 $env:USERPROFILE\.local\bin"
-                }
-            }
-        } elseif (-not $DryRun) {
-            Write-Host "    → 跳过 dcg 安装。软层 SKILL 仍生效；如需启用硬层，重跑 -AutoInstallDcg。" -ForegroundColor DarkGray
+            $answer = Read-Host "  dcg is not installed. Install it now? [y/N]"
+            $shouldInstall = $answer -match '^(y|yes)$'
+        } catch {
+            $shouldInstall = $false
         }
     }
 
-    # Step 2: 用户显式关闭时，仅保留 dcg 二进制。
-    if ($DisableDcgHooks) {
-        Write-Host "    → -DisableDcgHooks 已启用：保留 dcg 二进制，但关闭 Codex PreToolUse hook。" -ForegroundColor DarkGray
-        if ($DryRun) {
-            Write-Host "    [DryRun] 将在 $configTomlPath 设置 hooks = false" -ForegroundColor Yellow
-        } else {
-            Set-CodexHooksFeature $configTomlPath $false
-        }
-        return
-    }
-
-    # Step 3: 默认启用低噪音 hook，部署 hooks.json + 过滤器 + config.toml feature flag
-    if (-not $alreadyInstalled) {
-        Write-Host "    → dcg 未安装，无法启用 hooks.json。" -ForegroundColor DarkGray
-        if (-not $DryRun) { Set-CodexHooksFeature $configTomlPath $false }
-        return
-    }
-    if ($DryRun) {
-        Write-Host "    [DryRun] $jsonSrcPath -> $jsonDstPath" -ForegroundColor Yellow
-        Write-Host "    [DryRun] $codexHooksSrc -> $codexHooksDst" -ForegroundColor Yellow
-        Write-Host "    [DryRun] 在 $configTomlPath 设置 [features] hooks = true" -ForegroundColor Yellow
-        return
-    }
-    if (Test-Path $codexHooksSrc) {
-        if ($Force) {
-            Copy-DirReplace $codexHooksSrc $codexHooksDst
-            Write-Host "    + ~/.codex/hooks/（覆盖，低噪音 dcg 过滤器）"
-        } else {
-            Copy-DirMerge $codexHooksSrc $codexHooksDst
-            Write-Host "    + ~/.codex/hooks/（增量，低噪音 dcg 过滤器）"
-        }
-    }
-    if (Test-Path $jsonSrcPath) {
-        $dstDir = Split-Path $jsonDstPath -Parent
-        if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Path $dstDir -Force | Out-Null }
-        if ((Test-Path $jsonDstPath) -and -not $Force) {
-            Backup-File $jsonDstPath
-        }
-        $hookScript = Join-Path $codexHooksDst "dcg_filter.ps1"
-        $hookCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File ""$hookScript"""
-        $hookJson = Get-Content $jsonSrcPath -Raw -Encoding UTF8
-        $hookJson = $hookJson.Replace('__DCG_HOOK_COMMAND__', (Escape-JsonString $hookCommand))
-        Write-Utf8NoBomFile $jsonDstPath $hookJson
-        Write-Host "    + ~/.codex/hooks.json（低噪音过滤器 → dcg）"
-    }
-    Set-CodexHooksFeature $configTomlPath $true
-}
-
-function Merge-CodexConfig($srcPath, $dstPath, $uvPath) {
-    if (-not (Test-Path $srcPath)) { return }
-    $content = Get-Content $srcPath -Raw -Encoding UTF8
-    $content = $content.Replace('__UV_PATH__', (Escape-JsonString $uvPath))
-
-    $dstDir = Split-Path $dstPath -Parent
-    if (-not (Test-Path $dstDir)) {
-        New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
-    }
-
-    if ((Test-Path $dstPath) -and -not $Force) {
-        # 增量模式：检查已有配置，追加缺失的 MCP 服务器
-        Backup-File $dstPath
-        $existingOriginal = Get-Content $dstPath -Raw -Encoding UTF8
-        $existing = Remove-LegacyFeedbackCodexBlocks $existingOriginal
-        $removedLegacy = ($existing -ne $existingOriginal)
-        $serversToAdd = @()
-
-        # 提取模板中的 MCP 服务器段落
-        $blocks = [regex]::Split($content, '(?m)(?=^\[mcp_servers\.\w+\])')
-        foreach ($block in $blocks) {
-            $block = $block.Trim()
-            if ($block -match '^\[mcp_servers\.(\w+)\]') {
-                $serverName = $Matches[1]
-                if (-not $existing.Contains("[mcp_servers.$serverName]")) {
-                    $serversToAdd += $block
-                }
-            }
-        }
-
-        if ($serversToAdd.Count -gt 0 -or $removedLegacy) {
-            $result = $existing.TrimEnd()
-            if ($serversToAdd.Count -gt 0) {
-                $result = $result + "`n`n" + ($serversToAdd -join "`n`n")
-            }
-            $result = $result.TrimEnd() + "`n"
-            Write-Utf8NoBomFile $dstPath $result
-            if ($removedLegacy) {
-                Write-Host "  + config.toml (增量合并，已移除旧 interactiveFeedback 服务器)"
-            } else {
-                Write-Host "  + config.toml (增量合并，追加 MCP 服务器)"
-            }
-        } else {
-            Write-Host "  + config.toml (MCP 服务器已存在，无需修改)"
-        }
-    } else {
-        # 覆盖模式或目标不存在
-        Backup-File $dstPath
-        Write-Utf8NoBomFile $dstPath $content
-        Write-Host "  + config.toml (已替换路径)"
-    }
-}
-
-function Install-ClaudeHooks($settingsDstPath) {
-    if ($SkipDcg) {
-        Write-Host "    → -SkipDcg 已启用，跳过 Claude Code dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
-        return
-    }
-    if ($DisableDcgHooks) {
-        Write-Host "    → -DisableDcgHooks 已启用，跳过 Claude Code dcg hook 部署。" -ForegroundColor DarkGray
-        return
-    }
-    if (-not (Test-DcgInstalled)) {
-        Write-Host "    → dcg 未安装，跳过 Claude Code PreToolUse hook。" -ForegroundColor DarkGray
-        return
+    if (-not $shouldInstall) {
+        Write-Host "  dcg not installed; soft skill still applies, hard hook disabled."
+        return $false
     }
 
     if ($DryRun) {
-        Write-Host "    [DryRun] $claudeHooksSrc -> $claudeHooksDst" -ForegroundColor Yellow
-        Write-Host "    [DryRun] 向 $settingsDstPath 写入 dcg PreToolUse hook" -ForegroundColor Yellow
-        return
+        Write-Host "  [DryRun] would install dcg from upstream installer."
+        return $true
     }
 
-    # 1. 部署 claude/hooks/ → ~/.claude/hooks/
-    if (Test-Path $claudeHooksSrc) {
-        if ($Force) {
-            Copy-DirReplace $claudeHooksSrc $claudeHooksDst
-            Write-Host "    + ~/.claude/hooks/（覆盖，低噪音 dcg 过滤器）"
-        } else {
-            Copy-DirMerge $claudeHooksSrc $claudeHooksDst
-            Write-Host "    + ~/.claude/hooks/（增量，低噪音 dcg 过滤器）"
-        }
-    }
-
-    # 2. 合并 hooks.PreToolUse 条目到 ~/.claude/settings.json
-    $dcgScriptPath = Join-Path $claudeHooksDst "dcg_filter.ps1"
-    $hookCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$dcgScriptPath`""
-    $newGroup = [PSCustomObject]@{
-        matcher = "Bash"
-        hooks   = @([PSCustomObject]@{
-            type    = "command"
-            command = $hookCmd
-            timeout = 10
-        })
-    }
-
-    if (-not (Test-Path $settingsDstPath)) {
-        $obj = [PSCustomObject]@{
-            hooks = [PSCustomObject]@{ PreToolUse = @($newGroup) }
-        }
-        $dstDir = Split-Path $settingsDstPath -Parent
-        if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Path $dstDir -Force | Out-Null }
-        Write-Utf8NoBomFile $settingsDstPath (Format-Json ($obj | ConvertTo-Json -Depth 10) 2)
-        Write-Host "    + ~/.claude/settings.json（新建，写入 dcg PreToolUse hook）"
-        return
-    }
-
-    Backup-File $settingsDstPath
-    $raw = Get-Content $settingsDstPath -Raw -Encoding UTF8
     try {
-        $cfg = ConvertFrom-Jsonc $raw
+        $url = "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.ps1?$(Get-Date -Format yyyyMMddHHmmss)"
+        $installScript = Invoke-RestMethod $url
+        Invoke-Expression $installScript
     } catch {
-        Write-Warning "  现有 settings.json 解析失败（含语法错误），跳过追加: $settingsDstPath"
-        return
+        Write-Warning "dcg install failed: $($_.Exception.Message)"
     }
 
-    if (-not ($cfg.PSObject.Properties.Name -contains "hooks")) {
-        $cfg | Add-Member -MemberType NoteProperty -Name "hooks" -Value ([PSCustomObject]@{}) -Force
-    }
-    if (-not ($cfg.hooks.PSObject.Properties["PreToolUse"])) {
-        $cfg.hooks | Add-Member -MemberType NoteProperty -Name "PreToolUse" -Value @() -Force
-    }
-
-    $keptGroups = @()
-    foreach ($group in @($cfg.hooks.PreToolUse)) {
-        if (-not ($group.PSObject.Properties.Name -contains "hooks")) {
-            $keptGroups += $group
-            continue
-        }
-
-        $keptHooks = @()
-        foreach ($hook in @($group.hooks)) {
-            $cmd = ""
-            if ($hook.PSObject.Properties.Name -contains "command") {
-                $cmd = [string]$hook.command
-            }
-            $trimmedCmd = $cmd.Trim()
-            $isProjectDcgHook = $cmd -like "*dcg_filter*"
-            $isDirectDcgHook = $trimmedCmd -match '^dcg(\.exe)?$'
-            if (-not ($isProjectDcgHook -or $isDirectDcgHook)) {
-                $keptHooks += $hook
-            }
-        }
-
-        if ($keptHooks.Count -gt 0) {
-            $group.hooks = @($keptHooks)
-            $keptGroups += $group
-        }
-    }
-    $cfg.hooks.PreToolUse = @($keptGroups) + @($newGroup)
-
-    Write-Utf8NoBomFile $settingsDstPath (Format-Json ($cfg | ConvertTo-Json -Depth 20) 2)
-    Write-Host "    + ~/.claude/settings.json（已规范化为单条低噪音 dcg PreToolUse hook）"
+    return [bool](Resolve-DcgPath)
 }
 
-function Install-AntigravityHooks($settingsDstPath) {
-    if ($SkipDcg) {
-        Write-Host "    → -SkipDcg 已启用，跳过 Antigravity dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
+function Set-HooksFeature([string]$Content, [bool]$Enabled) {
+    $value = if ($Enabled) { "true" } else { "false" }
+    $pattern = '(?ms)^\[features\]\s*\r?\n.*?(?=^\[|\z)'
+    $match = [regex]::Match($Content, $pattern)
+
+    if ($match.Success) {
+        $section = $match.Value
+        if ($section -match '(?m)^\s*hooks\s*=') {
+            $section = [regex]::Replace($section, '(?m)^(\s*hooks\s*=\s*)(true|false)', "`${1}$value", 1)
+        } else {
+            $section = $section.TrimEnd() + "`r`nhooks = $value`r`n"
+        }
+        return $Content.Remove($match.Index, $match.Length).Insert($match.Index, $section)
+    }
+
+    return $Content.TrimEnd() + "`r`n`r`n[features]`r`nhooks = $value`r`n"
+}
+
+function Upsert-MarkitdownMcp([string]$Content, [string]$UvPath) {
+    $escapedUv = Escape-TomlString $UvPath
+    $block = @"
+[mcp_servers.markitdown]
+command = "$escapedUv"
+args = ["tool", "run", "markitdown-mcp"]
+"@
+    $withoutOld = [regex]::Replace($Content, '(?ms)^\[mcp_servers\.markitdown\]\s*\r?\n.*?(?=^\[|\z)', '').TrimEnd()
+    return $withoutOld + "`r`n`r`n" + $block + "`r`n"
+}
+
+function Update-CodexConfig([string]$UvPath, [bool]$HooksEnabled) {
+    if ($DryRun) {
+        Write-Host "  [DryRun] would merge $configSrc -> $configDst"
         return
     }
-    if ($DisableDcgHooks) {
-        Write-Host "    → -DisableDcgHooks 已启用，跳过 Antigravity dcg hook 部署。" -ForegroundColor DarkGray
+
+    if (-not (Test-Path $codexDst)) {
+        New-Item -ItemType Directory -Path $codexDst -Force | Out-Null
+    }
+
+    if ((Test-Path $configDst) -and -not $Force) {
+        Backup-File $configDst
+        $content = Get-Content $configDst -Raw -Encoding UTF8
+    } else {
+        $content = Get-Content $configSrc -Raw -Encoding UTF8
+    }
+
+    $content = $content.Replace('__UV_PATH__', (Escape-TomlString $UvPath))
+    $content = Set-HooksFeature $content $HooksEnabled
+    $content = Upsert-MarkitdownMcp $content $UvPath
+    Write-Utf8NoBomFile $configDst $content
+    Write-Host "  + ~/.codex/config.toml"
+}
+
+function Install-CodexHooks {
+    if ($SkipDcg -or $DisableDcgHooks) {
+        Write-Host "  Codex hard hooks disabled by option."
         return
     }
-    if (-not (Test-DcgInstalled)) {
-        Write-Host "    → dcg 未安装，跳过 Antigravity PreToolUse hook。" -ForegroundColor DarkGray
+
+    if (-not (Resolve-DcgPath)) {
+        Write-Host "  dcg unavailable; Codex hard hooks not installed."
         return
     }
 
     if ($DryRun) {
-        Write-Host "    [DryRun] $antigravityHooksSrc -> $antigravityHooksDst" -ForegroundColor Yellow
-        Write-Host "    [DryRun] 向 $settingsDstPath 写入 dcg PreToolUse hook" -ForegroundColor Yellow
+        Write-Host "  [DryRun] would install Codex hooks."
         return
     }
 
-    if (Test-Path $antigravityHooksSrc) {
-        if ($Force) {
-            Copy-DirReplace $antigravityHooksSrc $antigravityHooksDst
-            Write-Host "    + ~/.gemini/antigravity/hooks/（覆盖，低噪音 dcg 过滤器）"
-        } else {
-            Copy-DirMerge $antigravityHooksSrc $antigravityHooksDst
-            Write-Host "    + ~/.gemini/antigravity/hooks/（增量，低噪音 dcg 过滤器）"
-        }
+    if ($Force) {
+        Copy-DirReplace $hooksSrc $hooksDst
+    } else {
+        Copy-DirMerge $hooksSrc $hooksDst
     }
 
-    $dcgScriptPath = Join-Path $antigravityHooksDst "dcg_filter.ps1"
-    $hookCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$dcgScriptPath`""
-    $newGroup = [PSCustomObject]@{
-        matcher = "Bash"
-        hooks   = @([PSCustomObject]@{
-            type    = "command"
-            command = $hookCmd
-            timeout = 10
-        })
-    }
-
-    if (-not (Test-Path $settingsDstPath)) {
-        $obj = [PSCustomObject]@{
-            "chat.hooks" = [PSCustomObject]@{ PreToolUse = @($newGroup) }
-        }
-        $dstDir = Split-Path $settingsDstPath -Parent
-        if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Path $dstDir -Force | Out-Null }
-        Write-Utf8NoBomFile $settingsDstPath (Format-Json ($obj | ConvertTo-Json -Depth 10) 2)
-        Write-Host "    + Antigravity settings.json（新建，写入 dcg PreToolUse hook）"
-        return
-    }
-
-    Backup-File $settingsDstPath
-    $raw = Get-Content $settingsDstPath -Raw -Encoding UTF8
-    try {
-        $cfg = ConvertFrom-Jsonc $raw
-    } catch {
-        Write-Warning "  现有 settings.json 解析失败（含语法错误），跳过追加: $settingsDstPath"
-        return
-    }
-
-    if (-not ($cfg.PSObject.Properties.Name -contains "chat.hooks")) {
-        $cfg | Add-Member -MemberType NoteProperty -Name "chat.hooks" -Value ([PSCustomObject]@{}) -Force
-    }
-    if (-not ($cfg."chat.hooks".PSObject.Properties["PreToolUse"])) {
-        $cfg."chat.hooks" | Add-Member -MemberType NoteProperty -Name "PreToolUse" -Value @() -Force
-    }
-
-    $keptGroups = @()
-    foreach ($group in @($cfg."chat.hooks".PreToolUse)) {
-        if (-not ($group.PSObject.Properties.Name -contains "hooks")) {
-            $keptGroups += $group
-            continue
-        }
-
-        $keptHooks = @()
-        foreach ($hook in @($group.hooks)) {
-            $cmd = ""
-            if ($hook.PSObject.Properties.Name -contains "command") {
-                $cmd = [string]$hook.command
-            }
-            $trimmedCmd = $cmd.Trim()
-            $isProjectDcgHook = $cmd -like "*dcg_filter*"
-            $isDirectDcgHook = $trimmedCmd -match '^dcg(\.exe)?$'
-            if (-not ($isProjectDcgHook -or $isDirectDcgHook)) {
-                $keptHooks += $hook
-            }
-        }
-
-        if ($keptHooks.Count -gt 0) {
-            $group.hooks = @($keptHooks)
-            $keptGroups += $group
-        }
-    }
-    $cfg."chat.hooks".PreToolUse = @($keptGroups) + @($newGroup)
-
-    Write-Utf8NoBomFile $settingsDstPath (Format-Json ($cfg | ConvertTo-Json -Depth 20) 2)
-    Write-Host "    + Antigravity settings.json（已规范化为单条低噪音 dcg PreToolUse hook）"
-}
-
-function Install-WindsurfHooks($hooksJsonDstPath, $hooksDirDstPath) {
-    # Windsurf Cascade Hooks：使用 pre_run_command 事件 + dcg 过滤器，exit 2 阻断危险命令。
-    # 与 Claude/Antigravity 的 PreToolUse permissionDecision JSON 协议不同。
-
-    if ($SkipDcg) {
-        Write-Host "    → -SkipDcg 已启用，跳过 Windsurf dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
-        return
-    }
-    if ($DisableDcgHooks) {
-        Write-Host "    → -DisableDcgHooks 已启用，跳过 Windsurf dcg hook 部署。" -ForegroundColor DarkGray
-        return
-    }
-    if (-not (Test-DcgInstalled)) {
-        Write-Host "    → dcg 未安装，跳过 Windsurf pre_run_command hook。" -ForegroundColor DarkGray
-        return
-    }
-
-    if ($DryRun) {
-        Write-Host "    [DryRun] $windsurfHooksDirSrc -> $hooksDirDstPath" -ForegroundColor Yellow
-        Write-Host "    [DryRun] $windsurfHooksJsonSrc -> $hooksJsonDstPath（注册 pre_run_command hook）" -ForegroundColor Yellow
-        return
-    }
-
-    # 1. 部署 windsurf/hooks/ → ~/.codeium/windsurf/hooks/
-    if (Test-Path $windsurfHooksDirSrc) {
-        if ($Force) {
-            Copy-DirReplace $windsurfHooksDirSrc $hooksDirDstPath
-            Write-Host "    + ~/.codeium/windsurf/hooks/（覆盖，dcg 过滤器）"
-        } else {
-            Copy-DirMerge $windsurfHooksDirSrc $hooksDirDstPath
-            Write-Host "    + ~/.codeium/windsurf/hooks/（增量，dcg 过滤器）"
-        }
-    }
-
-    # 2. 部署 windsurf/hooks.json → ~/.codeium/windsurf/hooks.json，替换占位符
-    if (-not (Test-Path $windsurfHooksJsonSrc)) { return }
-
-    $ps1Path = Join-Path $hooksDirDstPath "dcg_filter.ps1"
-    $pyPath  = Join-Path $hooksDirDstPath "dcg_filter.py"
-    $hookCmdPs   = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$ps1Path`""
-    $hookCmdBash = "python3 `"$pyPath`""
-
-    if ((Test-Path $hooksJsonDstPath) -and -not $Force) {
-        Backup-File $hooksJsonDstPath
-    }
-
-    $hookJson = Get-Content $windsurfHooksJsonSrc -Raw -Encoding UTF8
-    $hookJson = $hookJson.Replace('__WINDSURF_DCG_HOOK_POWERSHELL__', (Escape-JsonString $hookCmdPs))
-    $hookJson = $hookJson.Replace('__WINDSURF_DCG_HOOK_BASH__', (Escape-JsonString $hookCmdBash))
-    Write-Utf8NoBomFile $hooksJsonDstPath $hookJson
-    Write-Host "    + ~/.codeium/windsurf/hooks.json（pre_run_command → dcg 过滤器）"
-}
-
-function Install-CursorHooks($hooksJsonDstPath, $hooksDirDstPath) {
-    if ($SkipDcg) {
-        Write-Host "    → -SkipDcg 已启用，跳过 Cursor dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
-        return
-    }
-    if ($DisableDcgHooks) {
-        Write-Host "    → -DisableDcgHooks 已启用，跳过 Cursor dcg hook 部署。" -ForegroundColor DarkGray
-        return
-    }
-    if (-not (Test-DcgInstalled)) {
-        Write-Host "    → dcg 未安装，跳过 Cursor beforeShellExecution hook。" -ForegroundColor DarkGray
-        return
-    }
-
-    if ($DryRun) {
-        Write-Host "    [DryRun] $cursorHooksDirSrc -> $hooksDirDstPath" -ForegroundColor Yellow
-        Write-Host "    [DryRun] $cursorHooksSrc -> $hooksJsonDstPath (注册 beforeShellExecution hook)" -ForegroundColor Yellow
-        return
-    }
-
-    # 1. 部署 cursor/hooks/ → ~/.cursor/hooks/
-    if (Test-Path $cursorHooksDirSrc) {
-        if ($Force) {
-            Copy-DirReplace $cursorHooksDirSrc $hooksDirDstPath
-            Write-Host "    + ~/.cursor/hooks/（覆盖，dcg 过滤器）"
-        } else {
-            Copy-DirMerge $cursorHooksDirSrc $hooksDirDstPath
-            Write-Host "    + ~/.cursor/hooks/（增量，dcg 过滤器）"
-        }
-    }
-
-    # 2. 部署 cursor/hooks.json → ~/.cursor/hooks.json
-    if (-not (Test-Path $cursorHooksSrc)) { return }
-
-    $dcgScriptPath = Join-Path $hooksDirDstPath "dcg_filter.ps1"
-    $hookCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$dcgScriptPath`""
-
-    if ((Test-Path $hooksJsonDstPath) -and -not $Force) {
-        Backup-File $hooksJsonDstPath
-    }
-
-    $hookJson = Get-Content $cursorHooksSrc -Raw -Encoding UTF8
-    $hookJson = $hookJson.Replace('__CURSOR_DCG_HOOK_COMMAND__', (Escape-JsonString $hookCmd))
-    Write-Utf8NoBomFile $hooksJsonDstPath $hookJson
-    Write-Host "    + ~/.cursor/hooks.json（beforeShellExecution → dcg 过滤器）"
-}
-
-function Install-CopilotHooks($hooksDirDstPath) {
-    if ($SkipDcg) {
-        Write-Host "    → -SkipDcg 已启用，跳过 Copilot dcg hook。软层 SKILL 仍生效。" -ForegroundColor DarkGray
-        return
-    }
-    if ($DisableDcgHooks) {
-        Write-Host "    → -DisableDcgHooks 已启用，跳过 Copilot dcg hook 部署。" -ForegroundColor DarkGray
-        return
-    }
-    if (-not (Test-DcgInstalled)) {
-        Write-Host "    → dcg 未安装，跳过 Copilot preToolUse hook。" -ForegroundColor DarkGray
-        return
-    }
-
-    if ($DryRun) {
-        Write-Host "    [DryRun] $copilotHooksSrc -> $hooksDirDstPath" -ForegroundColor Yellow
-        return
-    }
-
-    # 部署 copilot/hooks/ → ~/.copilot/hooks/
-    if (Test-Path $copilotHooksSrc) {
-        if ($Force) {
-            Copy-DirReplace $copilotHooksSrc $hooksDirDstPath
-            Write-Host "    + ~/.copilot/hooks/（覆盖，dcg 过滤器）"
-        } else {
-            Copy-DirMerge $copilotHooksSrc $hooksDirDstPath
-            Write-Host "    + ~/.copilot/hooks/（增量，dcg 过滤器）"
-        }
-    }
-
-    # 替换 dcg-guard.json 中的占位符为实际路径
-    $guardJson = Join-Path $hooksDirDstPath "dcg-guard.json"
-    if (Test-Path $guardJson) {
-        $ps1Path = Join-Path $hooksDirDstPath "dcg_filter.ps1"
-        $pyPath = Join-Path $hooksDirDstPath "dcg_filter.py"
-        $content = Get-Content $guardJson -Raw -Encoding UTF8
-        $content = $content.Replace('__COPILOT_DCG_HOOK_POWERSHELL__', (Escape-JsonString "powershell -NoProfile -ExecutionPolicy Bypass -File `"$ps1Path`""))
-        $content = $content.Replace('__COPILOT_DCG_HOOK_BASH__', (Escape-JsonString "python3 `"$pyPath`""))
-        Write-Utf8NoBomFile $guardJson $content
-        Write-Host "    + ~/.copilot/hooks/dcg-guard.json（preToolUse → dcg 过滤器）"
-    }
+    $hookScript = Join-Path $hooksDst "dcg_filter.ps1"
+    $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$hookScript`""
+    $hookJson = (Get-Content $hooksJsonSrc -Raw -Encoding UTF8).Replace('__DCG_HOOK_COMMAND__', (Escape-JsonString $command))
+    Backup-File $hooksJsonDst
+    Write-Utf8NoBomFile $hooksJsonDst $hookJson
+    Write-Host "  + ~/.codex/hooks.json"
+    Write-Host "  + ~/.codex/hooks/"
 }
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  Cursor + VS Code Copilot + Codex + Claude + Antigravity + Windsurf 配置还原" -ForegroundColor Cyan
+Write-Host "  Codex configuration restore" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
+if ($DryRun) { Write-Host "[DryRun] no files will be changed." -ForegroundColor Yellow }
+if ($Force) { Write-Host "[Force] existing Codex managed files may be overwritten." -ForegroundColor Yellow }
 Write-Host ""
 
-# 显示模式
-if ($Force) {
-    Write-Host "[模式] 完全覆盖（-Force）" -ForegroundColor Red
-} else {
-    Write-Host "[模式] 增量合并（保留用户已有配置）" -ForegroundColor Green
+if (-not (Test-Path $codexSrc)) {
+    throw "Codex source directory not found: $codexSrc"
 }
-if ($Target -notcontains "All") {
-    Write-Host "[目标] 仅配置: $($Target -join ', ')" -ForegroundColor Cyan
-}
-
-# 显示检测结果
-Write-Host "[IDE 检测]" -ForegroundColor Cyan
-if ($hasVSCode) { Write-Host "  + VS Code" -ForegroundColor Green }
-if ($hasCursor) { Write-Host "  + Cursor" -ForegroundColor Green }
-if ($hasCodex)  { Write-Host "  + Codex" -ForegroundColor Green }
-if ($hasClaude) { Write-Host "  + Claude" -ForegroundColor Green }
-if ($hasAntigravity) { Write-Host "  + Antigravity" -ForegroundColor Green }
-if ($hasWindsurf) { Write-Host "  + Windsurf" -ForegroundColor Green }
-if (-not $hasVSCode -and -not $hasCursor -and -not $hasCodex -and -not $hasClaude -and -not $hasAntigravity -and -not $hasWindsurf) {
-    if ($Target -notcontains "All") {
-        Write-Host "  指定的 IDE 未安装，仍将安装配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
-        if ($Target -contains "VSCode") { $hasVSCode = $true }
-        if ($Target -contains "Cursor") { $hasCursor = $true }
-        if ($Target -contains "Codex")  { $hasCodex  = $true }
-        if ($Target -contains "Claude") { $hasClaude = $true }
-        if ($Target -contains "Antigravity") { $hasAntigravity = $true }
-        if ($Target -contains "Windsurf") { $hasWindsurf = $true }
-    } else {
-        Write-Host "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。" -ForegroundColor Yellow
-        $hasVSCode = $true
-        $hasCursor = $true
-        $hasCodex  = $true
-        $hasClaude = $true
-        $hasAntigravity = $true
-        $hasWindsurf = $true
-    }
-}
-Write-Host ""
 
 if ($DryRun) {
-    Write-Host "[DryRun] 仅预览，不执行实际操作。" -ForegroundColor Yellow
-    Write-Host ""
+    Write-Host "  [DryRun] would ensure $codexDst"
+} elseif (-not (Test-Path $codexDst)) {
+    New-Item -ItemType Directory -Path $codexDst -Force | Out-Null
 }
 
-# 计算总步骤数
-$totalSteps = 1  # 验证
-if ($hasVSCode) { $totalSteps += 2 }
-if ($hasCursor) { $totalSteps++ }
-if ($hasCodex)  { $totalSteps++ }
-if ($hasClaude) { $totalSteps++ }
-if ($hasAntigravity) { $totalSteps++ }
-if ($hasWindsurf) { $totalSteps++ }
-$hasMcpTargets = $hasVSCode -or $hasCursor -or $hasCodex -or $hasAntigravity -or $hasWindsurf
-if ($hasMcpTargets) { $totalSteps++ }
-$step = 0
-
-# ============================
-# 还原 copilot → ~/.copilot (VS Code Copilot instructions + skills)
-# ============================
-if ($hasVSCode) {
-    $step++
-    Write-Host "[$step/$totalSteps] 还原 VS Code Copilot 配置（instructions + skills + hooks）..." -ForegroundColor Green
-    if (-not (Test-Path $copilotSrc)) {
-        Write-Warning "找不到源目录: $copilotSrc，跳过。"
-    } elseif ($DryRun) {
-        Write-Host "  [DryRun] $copilotSrc -> $copilotDst"
-        Install-CopilotHooks $copilotHooksDst
-    } else {
-        if (-not (Test-Path $copilotDst)) {
-            New-Item -ItemType Directory -Path $copilotDst -Force | Out-Null
-        }
-        foreach ($subdir in @("instructions", "skills")) {
-            $src = Join-Path $copilotSrc $subdir
-            $dst = Join-Path $copilotDst $subdir
-            if (Test-Path $src) {
-                if ($Force) {
-                    Copy-DirReplace $src $dst
-                    Write-Host "  + $subdir (覆盖)"
-                } else {
-                    Copy-DirMerge $src $dst
-                    Write-Host "  + $subdir (增量)"
-                }
-            }
-        }
-        Remove-DeprecatedSkillsReadme (Join-Path $copilotDst "skills")
-        # hooks（preToolUse 硬兜底，使用社区方案 dcg）
-        Install-CopilotHooks $copilotHooksDst
-    }
+if ($DryRun) {
+    Write-Host "  [DryRun] $agentsSrc -> $agentsDst"
+} else {
+    Backup-File $agentsDst
+    Copy-Item $agentsSrc $agentsDst -Force
+    Write-Host "  + ~/.codex/AGENTS.md"
 }
 
-# ============================
-# 还原 Cursor 配置
-# ============================
-if ($hasCursor) {
-    $step++
-    Write-Host "[$step/$totalSteps] 还原 Cursor 配置（rules + skills + hooks）..." -ForegroundColor Green
-    if (-not (Test-Path $cursorSrc)) {
-        Write-Warning "找不到源目录: $cursorSrc，跳过。"
-    } elseif ($DryRun) {
-        Write-Host "  [DryRun] $cursorSrc -> $cursorDst"
-        Install-CursorHooks $cursorHooksDst $cursorHooksDirDst
+if ($DryRun) {
+    Write-Host "  [DryRun] $skillsSrc -> $skillsDst"
+} else {
+    if ($Force) {
+        Copy-DirReplace $skillsSrc $skillsDst
     } else {
-        # rules/
-        $rulesSrc = Join-Path $cursorSrc "rules"
-        if (Test-Path $rulesSrc) {
-            $rulesDst = Join-Path $cursorDst "rules"
-            if ($Force) {
-                Copy-DirReplace $rulesSrc $rulesDst
-                Write-Host "  + rules/ (覆盖)"
-            } else {
-                Copy-DirMerge $rulesSrc $rulesDst
-                Write-Host "  + rules/ (增量)"
-            }
-        }
-
-        # skills/
-        $skillsSrc = Join-Path $cursorSrc "skills"
-        if (Test-Path $skillsSrc) {
-            $skillsDst = Join-Path $cursorDst "skills"
-            if ($Force) {
-                Copy-DirReplace $skillsSrc $skillsDst
-                Write-Host "  + skills/ (覆盖)"
-            } else {
-                Copy-DirMerge $skillsSrc $skillsDst
-                Write-Host "  + skills/ (增量)"
-            }
-            Remove-DeprecatedSkillsReadme $skillsDst
-        }
-
-        # settings.json (始终合并)
-        if (Test-Path $cursorSettSrc) {
-            Merge-JsonSettings $cursorSettSrc $cursorSettDst
-        }
-
-        # hooks（beforeShellExecution 硬兜底，使用社区方案 dcg）
-        Install-CursorHooks $cursorHooksDst $cursorHooksDirDst
+        Copy-DirMerge $skillsSrc $skillsDst
     }
+    Write-Host "  + ~/.codex/skills/"
 }
 
-# ============================
-# 还原 Codex 配置
-# ============================
-if ($hasCodex) {
-    $step++
-    Write-Host "[$step/$totalSteps] 还原 Codex 配置（AGENTS.md + skills + 低噪音 hooks）..." -ForegroundColor Green
-    if (-not (Test-Path $codexSrc)) {
-        Write-Warning "找不到源目录: $codexSrc，跳过。"
-    } elseif ($DryRun) {
-        Write-Host "  [DryRun] $codexAgentsSrc -> $codexAgentsDst"
-        Write-Host "  [DryRun] $codexSkillsSrc -> $codexSkillsDst"
-        # Install-CodexHooks 在 DryRun 下也会被调用，由它自己打印更精确的预览
-        Install-CodexHooks $codexHooksJsonSrc $codexHooksJsonDst $codexConfigDst
-    } else {
-        if (-not (Test-Path $codexDst)) {
-            New-Item -ItemType Directory -Path $codexDst -Force | Out-Null
-        }
-        # AGENTS.md
-        if (Test-Path $codexAgentsSrc) {
-            Backup-File $codexAgentsDst
-            Copy-Item $codexAgentsSrc $codexAgentsDst -Force
-            Write-Host "  + AGENTS.md"
-        }
-        # skills/  ← 与 cursor/skills、copilot/skills、claude/skills 的技能内容对齐，但各目录独立（含安全护栏 skill）
-        if (Test-Path $codexSkillsSrc) {
-            if ($Force) {
-                Copy-DirReplace $codexSkillsSrc $codexSkillsDst
-                Write-Host "  + skills/ (覆盖)"
-            } else {
-                Copy-DirMerge $codexSkillsSrc $codexSkillsDst
-                Write-Host "  + skills/ (增量)"
-            }
-            Remove-DeprecatedSkillsReadme $codexSkillsDst
-        }
-        # hooks.json（低噪音硬兜底，使用社区方案 dcg）
-        Install-CodexHooks $codexHooksJsonSrc $codexHooksJsonDst $codexConfigDst
-    }
-}
+$uvPath = Install-UvIfMissing
+$dcgAvailable = Install-DcgIfRequested
+$hooksEnabled = $dcgAvailable -and -not $DisableDcgHooks -and -not $SkipDcg
 
-# ============================
-# 还原 Claude 配置
-# ============================
-if ($hasClaude) {
-    $step++
-    Write-Host "[$step/$totalSteps] 还原 Claude 配置（CLAUDE.md + skills + 低噪音 hooks）..." -ForegroundColor Green
-    if (-not (Test-Path $claudeSrc)) {
-        Write-Warning "找不到源目录: $claudeSrc，跳过。"
-    } elseif ($DryRun) {
-        Write-Host "  [DryRun] $claudeConfigSrc -> $claudeConfigDst"
-        Write-Host "  [DryRun] $claudeSkillsSrc -> $claudeSkillsDst"
-        Install-ClaudeHooks $claudeSettingsDst
-    } else {
-        if (-not (Test-Path $claudeDst)) {
-            New-Item -ItemType Directory -Path $claudeDst -Force | Out-Null
-        }
-        if (Test-Path $claudeConfigSrc) {
-            Backup-File $claudeConfigDst
-            Copy-Item $claudeConfigSrc $claudeConfigDst -Force
-            Write-Host "  + CLAUDE.md"
-        }
-        if (Test-Path $claudeSkillsSrc) {
-            if ($Force) {
-                Copy-DirReplace $claudeSkillsSrc $claudeSkillsDst
-                Write-Host "  + skills/ (覆盖)"
-            } else {
-                Copy-DirMerge $claudeSkillsSrc $claudeSkillsDst
-                Write-Host "  + skills/ (增量)"
-            }
-        }
-        # hooks（低噪音硬兜底，使用社区方案 dcg）
-        Install-ClaudeHooks $claudeSettingsDst
-    }
-}
-
-# ============================
-# 还原 VS Code 配置
-# ============================
-if ($hasVSCode) {
-    $step++
-    Write-Host "[$step/$totalSteps] 还原 VS Code 配置..." -ForegroundColor Green
-    if ($DryRun) {
-        Write-Host "  [DryRun] settings.json"
-    } else {
-        if (Test-Path $vscodeSettSrc) {
-            Merge-JsonSettings $vscodeSettSrc $vscodeSettDst
-        }
-    }
-}
-
-# ============================
-# 还原 Antigravity 配置
-# ============================
-if ($hasAntigravity) {
-    $step++
-    Write-Host "[$step/$totalSteps] 还原 Antigravity 配置（GEMINI.md + skills + settings + 低噪音 hooks）..." -ForegroundColor Green
-    if (-not (Test-Path $antigravitySrc)) {
-        Write-Warning "找不到源目录: $antigravitySrc，跳过。"
-    } elseif ($DryRun) {
-        Write-Host "  [DryRun] $antigravityConfigSrc -> $antigravityConfigDst"
-        Write-Host "  [DryRun] $antigravitySkillsSrc -> $antigravitySkillsDst"
-        Write-Host "  [DryRun] $antigravitySettSrc -> $antigravitySettDst"
-        Install-AntigravityHooks $antigravitySettDst
-    } else {
-        $geminiDir = Join-Path $env:USERPROFILE ".gemini"
-        if (-not (Test-Path $geminiDir)) { New-Item -ItemType Directory -Path $geminiDir -Force | Out-Null }
-        if (-not (Test-Path $antigravityDst)) { New-Item -ItemType Directory -Path $antigravityDst -Force | Out-Null }
-        
-        if (Test-Path $antigravityConfigSrc) {
-            Backup-File $antigravityConfigDst
-            Copy-Item $antigravityConfigSrc $antigravityConfigDst -Force
-            Write-Host "  + GEMINI.md"
-        }
-        if (Test-Path $antigravitySkillsSrc) {
-            if ($Force) {
-                Copy-DirReplace $antigravitySkillsSrc $antigravitySkillsDst
-                Write-Host "  + skills/ (覆盖)"
-            } else {
-                Copy-DirMerge $antigravitySkillsSrc $antigravitySkillsDst
-                Write-Host "  + skills/ (增量)"
-            }
-        }
-        if (Test-Path $antigravitySettSrc) {
-            Merge-JsonSettings $antigravitySettSrc $antigravitySettDst
-        }
-        # hooks
-        Install-AntigravityHooks $antigravitySettDst
-    }
-}
-
-# ============================
-# 还原 Windsurf 配置（仅 MCP + hooks；skills/rules 由 Cascade 直接读 ~/.claude/）
-# ============================
-if ($hasWindsurf) {
-    $step++
-    Write-Host "[$step/$totalSteps] 还原 Windsurf 配置（pre_run_command 低噪音 hooks）..." -ForegroundColor Green
-    if (-not (Test-Path $windsurfSrc)) {
-        Write-Warning "找不到源目录: $windsurfSrc，跳过。"
-    } elseif ($DryRun) {
-        Install-WindsurfHooks $windsurfHooksJsonDst $windsurfHooksDirDst
-    } else {
-        if (-not (Test-Path $windsurfDst)) { New-Item -ItemType Directory -Path $windsurfDst -Force | Out-Null }
-        # hooks（pre_run_command 硬兜底，使用社区方案 dcg）
-        Install-WindsurfHooks $windsurfHooksJsonDst $windsurfHooksDirDst
-    }
-}
-
-# ============================
-# 生成 MCP 配置
-# ============================
-if ($hasMcpTargets) {
-    $step++
-    Write-Host "[$step/$totalSteps] 配置 MCP 服务器..." -ForegroundColor Green
-    if ($DryRun) {
-        Write-Host "  [DryRun] 将生成 VS Code / Cursor / Codex / Antigravity / Windsurf MCP 配置"
-    } else {
-        $uvPath = Resolve-UvPath
-        if (-not $uvPath) {
-            Write-Host "  未找到 uv，正在自动安装..." -ForegroundColor Yellow
-            try {
-                $installScript = Invoke-RestMethod https://astral.sh/uv/install.ps1
-                $installScript | Invoke-Expression
-                # 刷新 PATH
-                $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "User") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
-                $uvPath = Resolve-UvPath
-                if ($uvPath) {
-                    Write-Host "  + uv 安装成功: $uvPath"
-                } else {
-                    Write-Warning "  uv 安装后仍未找到，请手动检查"
-                }
-            } catch {
-                Write-Warning "  uv 自动安装失败: $_"
-                Write-Warning "  请手动安装: https://docs.astral.sh/uv/"
-            }
-        }
-        if (-not $uvPath) {
-            Write-Warning "  未找到 uv，请先安装: https://docs.astral.sh/uv/"
-        }
-
-        if (-not $uvPath) { $uvPath = Join-Path $env:USERPROFILE ".local\bin\uv.exe" }
-        if ($hasCursor) {
-            $cursorMcpSrc = Join-Path $cursorSrc "mcp.json"
-            Merge-McpJson $cursorMcpSrc (Join-Path $cursorDst "mcp.json") $uvPath "mcpServers"
-        }
-        if ($hasVSCode) {
-            Merge-McpJson $vscodeMcpSrc $vscodeMcpDst $uvPath "servers"
-        }
-        if ($hasCodex) {
-            Merge-CodexConfig $codexConfigSrc $codexConfigDst $uvPath
-        }
-        if ($hasAntigravity) {
-            Merge-McpJson $antigravityMcpSrc $antigravityMcpDst $uvPath "mcpServers"
-        }
-        if ($hasWindsurf) {
-            Merge-McpJson $windsurfMcpSrc $windsurfMcpDst $uvPath "mcpServers"
-        }
-    }
-}
-
-# ============================
-# 验证
-# ============================
-$step++
-Write-Host "[$step/$totalSteps] 验证..." -ForegroundColor Green
-$checks = @()
-if ($hasVSCode) {
-    $copilotChecks = @(
-        @{ Name = "~/.copilot/instructions/"; Path = (Join-Path $copilotDst "instructions") },
-        @{ Name = "~/.copilot/skills/"; Path = (Join-Path $copilotDst "skills") },
-        @{ Name = "VS Code mcp.json"; Path = $vscodeMcpDst }
-    )
-    if (-not $SkipDcg -and -not $DisableDcgHooks) {
-        $copilotChecks += @{ Name = "~/.copilot/hooks/"; Path = $copilotHooksDst }
-    }
-    $checks = $copilotChecks + $checks
-}
-if ($hasCursor) {
-    $cursorChecks = @(
-        @{ Name = "~/.cursor/mcp.json"; Path = (Join-Path $cursorDst "mcp.json") },
-        @{ Name = "~/.cursor/rules/"; Path = (Join-Path $cursorDst "rules") },
-        @{ Name = "~/.cursor/skills/"; Path = (Join-Path $cursorDst "skills") }
-    )
-    if (-not $SkipDcg -and -not $DisableDcgHooks) {
-        $cursorChecks += @{ Name = "~/.cursor/hooks.json"; Path = $cursorHooksDst }
-        $cursorChecks += @{ Name = "~/.cursor/hooks/"; Path = $cursorHooksDirDst }
-    }
-    $checks = $cursorChecks + $checks
-}
-if ($hasCodex) {
-    $checks = @(
-        @{ Name = "~/.codex/AGENTS.md"; Path = $codexAgentsDst },
-        @{ Name = "~/.codex/config.toml"; Path = $codexConfigDst },
-        @{ Name = "~/.codex/skills/"; Path = $codexSkillsDst },
-        @{ Name = "~/.codex/skills/destructive-command-guard/"; Path = (Join-Path $codexSkillsDst "destructive-command-guard") }
-    ) + $checks
-}
-if ($hasClaude) {
-    $claudeChecks = @(
-        @{ Name = "~/.claude/CLAUDE.md"; Path = $claudeConfigDst },
-        @{ Name = "~/.claude/skills/"; Path = $claudeSkillsDst },
-        @{ Name = "~/.claude/skills/destructive-command-guard/"; Path = (Join-Path $claudeSkillsDst "destructive-command-guard") }
-    )
-    if (-not $SkipDcg -and -not $DisableDcgHooks) {
-        $claudeChecks += @{ Name = "~/.claude/hooks/"; Path = $claudeHooksDst }
-    }
-    $checks = $claudeChecks + $checks
-}
-if ($hasAntigravity) {
-    $agChecks = @(
-        @{ Name = "~/.gemini/GEMINI.md"; Path = $antigravityConfigDst },
-        @{ Name = "~/.gemini/antigravity/skills/"; Path = $antigravitySkillsDst },
-        @{ Name = "~/.gemini/antigravity/skills/destructive-command-guard/"; Path = (Join-Path $antigravitySkillsDst "destructive-command-guard") },
-        @{ Name = "~/.gemini/antigravity/mcp_config.json"; Path = $antigravityMcpDst },
-        @{ Name = "Antigravity settings.json"; Path = $antigravitySettDst }
-    )
-    if (-not $SkipDcg -and -not $DisableDcgHooks) {
-        $agChecks += @{ Name = "~/.gemini/antigravity/hooks/"; Path = $antigravityHooksDst }
-    }
-    $checks = $agChecks + $checks
-}
-if ($hasWindsurf) {
-    $wsChecks = @(
-        @{ Name = "~/.codeium/windsurf/mcp_config.json"; Path = $windsurfMcpDst }
-    )
-    if (-not $SkipDcg -and -not $DisableDcgHooks) {
-        $wsChecks += @{ Name = "~/.codeium/windsurf/hooks.json"; Path = $windsurfHooksJsonDst }
-        $wsChecks += @{ Name = "~/.codeium/windsurf/hooks/"; Path = $windsurfHooksDirDst }
-    }
-    $checks = $wsChecks + $checks
-}
-foreach ($c in $checks) {
-    if (Test-Path $c.Path) {
-        Write-Host "  + $($c.Name)" -ForegroundColor Green
-    } else {
-        Write-Host "  - $($c.Name) (未找到)" -ForegroundColor Red
-    }
-}
-
-# dcg 二进制独立检查（未安装时软层 SKILL 仍生效）
-if ($hasCodex -and -not $SkipDcg) {
-    if (Test-DcgInstalled) {
-        Write-Host "  + dcg 二进制（社区方案 destructive_command_guard）" -ForegroundColor Green
-    } else {
-        Write-Host "  ~ dcg 未安装（硬层未启用；软层 SKILL 仍生效）" -ForegroundColor Yellow
-    }
-    if ($DisableDcgHooks) {
-        Write-Host "  + Codex dcg hook 已按参数关闭" -ForegroundColor Yellow
-    } else {
-        if (Test-Path $codexHooksJsonDst) {
-            Write-Host "  + Codex dcg hook（默认启用，低噪音过滤器）" -ForegroundColor Green
-        } else {
-            Write-Host "  - Codex dcg hook（默认启用但 hooks.json 未找到）" -ForegroundColor Red
-        }
-    }
-}
-if ($hasClaude -and -not $SkipDcg) {
-    if (Test-DcgInstalled) {
-        Write-Host "  + dcg 二进制（Claude Code 硬层已启用）" -ForegroundColor Green
-    } else {
-        Write-Host "  ~ dcg 未安装（Claude Code 硬层未启用；软层 SKILL 仍生效）" -ForegroundColor Yellow
-    }
-    if ($DisableDcgHooks) {
-        Write-Host "  + Claude Code dcg hook 已按参数跳过" -ForegroundColor Yellow
-    } elseif (Test-Path $claudeHooksDst) {
-        Write-Host "  + Claude Code dcg hook（低噪音过滤器）" -ForegroundColor Green
-    } else {
-        Write-Host "  ~ Claude Code dcg hook（hooks/ 未找到）" -ForegroundColor Yellow
-    }
-}
-if ($hasAntigravity -and -not $SkipDcg) {
-    if (Test-DcgInstalled) {
-        Write-Host "  + dcg 二进制（Antigravity 硬层已启用）" -ForegroundColor Green
-    } else {
-        Write-Host "  ~ dcg 未安装（Antigravity 硬层未启用；软层 SKILL 仍生效）" -ForegroundColor Yellow
-    }
-    if ($DisableDcgHooks) {
-        Write-Host "  + Antigravity dcg hook 已按参数跳过" -ForegroundColor Yellow
-    } elseif (Test-Path $antigravityHooksDst) {
-        Write-Host "  + Antigravity dcg hook（低噪音过滤器）" -ForegroundColor Green
-    } else {
-        Write-Host "  ~ Antigravity dcg hook（hooks/ 未找到）" -ForegroundColor Yellow
-    }
-}
-if ($hasCursor -and -not $SkipDcg) {
-    if ($DisableDcgHooks) {
-        Write-Host "  + Cursor dcg hook 已按参数跳过" -ForegroundColor Yellow
-    } elseif (Test-Path $cursorHooksDst) {
-        Write-Host "  + Cursor dcg hook（beforeShellExecution）" -ForegroundColor Green
-    } else {
-        Write-Host "  ~ Cursor dcg hook（hooks.json 未找到）" -ForegroundColor Yellow
-    }
-}
-if ($hasVSCode -and -not $SkipDcg) {
-    if ($DisableDcgHooks) {
-        Write-Host "  + Copilot dcg hook 已按参数跳过" -ForegroundColor Yellow
-    } elseif (Test-Path $copilotHooksDst) {
-        Write-Host "  + Copilot dcg hook（preToolUse）" -ForegroundColor Green
-    } else {
-        Write-Host "  ~ Copilot dcg hook（hooks/ 未找到）" -ForegroundColor Yellow
-    }
-}
+Update-CodexConfig $uvPath $hooksEnabled
+Install-CodexHooks
 
 Write-Host ""
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  还原完成！" -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "后续步骤：" -ForegroundColor Yellow
-if ($hasVSCode) { Write-Host "  - 重启 VS Code" }
-if ($hasCursor) { Write-Host "  - 重启 Cursor，验证 MCP Server 是否正常加载" }
-if ($hasCodex)  { Write-Host "  - 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载" }
-if ($hasClaude) { Write-Host "  - 重启 Claude Code" }
-if ($hasAntigravity) { Write-Host "  - 重启 Antigravity" }
-if ($hasWindsurf) { Write-Host "  - 重启 Windsurf" }
-Write-Host "  - 如需其他 MCP（GitHub、Context7 等），在扩展商城中安装"
+Write-Host "Done. Restart Codex to reload AGENTS.md, skills, MCP servers, and hooks." -ForegroundColor Green

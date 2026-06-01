@@ -148,19 +148,17 @@ See language-specific guides for detailed testing approaches and quality checkli
 
 ---
 
-### Phase 4: Create Evaluations
+### Phase 4: Create Codex Evaluation Notes
 
-After implementing your MCP server, create comprehensive evaluations to test its effectiveness.
-
-**Load [✅ Evaluation Guide](./reference/evaluation.md) for complete evaluation guidelines.**
+After implementing your MCP server, create a lightweight evaluation note that Codex can run manually or adapt into the host project's existing test framework.
 
 #### 4.1 Understand Evaluation Purpose
 
-Use evaluations to test whether LLMs can effectively use your MCP server to answer realistic, complex questions.
+Use evaluations to test whether Codex can effectively use your MCP server to answer realistic, complex questions.
 
 #### 4.2 Create 10 Evaluation Questions
 
-To create effective evaluations, follow the process outlined in the evaluation guide:
+To create effective evaluations:
 
 1. **Tool Inspection**: List available tools and understand their capabilities
 2. **Content Exploration**: Use READ-ONLY operations to explore available data
@@ -177,15 +175,15 @@ Ensure each question is:
 - **Verifiable**: Single, clear answer that can be verified by string comparison
 - **Stable**: Answer won't change over time
 
-#### 4.4 Output Format
+#### 4.4 Suggested Output Format
 
-Create an XML file with this structure:
+Create a Markdown or XML file with this structure:
 
 ```xml
 <evaluation>
   <qa_pair>
-    <question>Find discussions about AI model launches with animal codenames. One model needed a specific safety designation that uses the format ASL-X. What number X was being determined for the model named after a spotted wild cat?</question>
-    <answer>3</answer>
+    <question>Use the MCP server to find the latest open invoice for customer ACME.</question>
+    <answer>INV-1001</answer>
   </qa_pair>
 <!-- More qa_pairs... -->
 </evaluation>
@@ -227,10 +225,7 @@ Load these resources as needed during development:
   - Complete working examples
   - Quality checklist
 
-### Evaluation Guide (Load During Phase 4)
-- [✅ Evaluation Guide](./reference/evaluation.md) - Complete evaluation creation guide with:
-  - Question creation guidelines
-  - Answer verification strategies
-  - XML format specifications
-  - Example questions and answers
-  - Running an evaluation with the provided scripts
+### Evaluation Notes (Phase 4)
+- Prefer the host repository's existing test runner and fixtures.
+- Keep evaluation questions read-only and stable.
+- Store generated evaluation notes next to the MCP server's own tests.

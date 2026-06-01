@@ -1,102 +1,88 @@
-# Codex Hooks（破坏性命令低噪音硬兜底）
+# Codex Hooks
 
-> **默认策略**：`restore.ps1` / `restore.sh` 会检测或安装 `dcg`，并默认启用 Codex PreToolUse hook。由于 Codex 当前 matcher 只能按工具名匹配 shell 工具，本仓库默认匹配 `Bash|shell_command` 并先运行轻量过滤器；只有命令看起来高危时，才调用 `dcg` 本体。
+本目录保存 Codex `PreToolUse` hook 的低噪音过滤器。
 
-## 这是什么？
+## 作用
 
-[Codex Hooks](https://developers.openai.com/codex/hooks) 是 Codex 在工具调用前后同步触发的外部进程。`PreToolUse` 钩子可以在 Codex 真正执行 shell 命令前拦下来——这是 prompt 之外的**硬兜底**。
+Codex hooks 是 Codex 在工具调用前后同步触发的外部进程。`PreToolUse` 可以在 shell 命令真正执行前做最后检查。
 
-为了避免重复造轮子，**硬层使用社区项目 [`Dicklesworthstone/destructive_command_guard`（dcg）](https://github.com/Dicklesworthstone/destructive_command_guard)**：
+本仓库使用两层防护：
 
-| 维度 | dcg |
-|------|------|
-| 受关注度 | GitHub 项目活跃维护；已验证上游稳定 release tag `v0.5.2`（2026-05），Windows release 包含 PE32+ 二进制校验修复 |
-| 实现 | Rust 二进制（SIMD 加速，sub-millisecond 延迟） |
-| 包大小 | 49+ 安全 packs（git / 文件系统 / databases / k8s / docker / cloud / terraform 等） |
-| 跨 agent | Codex CLI / Claude Code / Gemini CLI / Copilot CLI / Cursor / OpenCode / Aider / Continue |
-| Codex 协议 | wire format 兼容 Claude Code，使用 `~/.codex/hooks.json` 注册 |
-| 跨平台 | Linux x86_64 / aarch64、macOS Intel / Apple Silicon、**Windows x86_64**（原生 .exe） |
-| 安装包校验 | 官方 install 脚本强制 SHA256，可选 cosign / Sigstore 签名验证 |
-| ⚠️ 风险（必须诚实披露） | 单人维护（Bus factor 1），作者明确不接受外部 PR；属于供应链依赖 |
+- 软层：`codex/skills/destructive-command-guard/SKILL.md`
+- 硬层：`codex/hooks.json` + 本目录过滤器 + 社区项目 `dcg`
 
-## restore 脚本如何处理 dcg？
+## 为什么需要过滤器
 
-为了"一键配置"但又不偷偷碰用户的 PATH，`restore.ps1` / `restore.sh` 的策略是：
+Codex 当前 hook matcher 主要按工具名匹配，例如 `Bash` 或 `shell_command`。这意味着如果直接把 matcher 配成 shell 工具，普通命令也会触发 hook。
 
-1. **检测**：`dcg` / `dcg.exe` 是否已在 PATH 或 `~/.local/bin/` 下
-2. **询问**：未安装时弹出 `[y/N]` 确认（你必须明确同意才会动手）
-3. **下载并校验**：
-   - **macOS / Linux**：代理调用上游官方 `install.sh`（含 SHA256 校验 + 可选 cosign）
-   - **Windows**：上游 `install.ps1` 在 Windows PowerShell 5.1（系统默认 shell）下有 bug——它假设 `Invoke-WebRequest -UseBasicParsing` 返回 string，但 PS 5.1 实际返回 byte[]，导致 SHA256 校验逻辑抛 `Checksum file not found`。`restore.ps1` 用 PS 5.1 兼容代码**复刻同样的官方流程**：GitHub API 选择最高稳定 semver tag → 下载 `dcg-x86_64-pc-windows-msvc.zip` → 拉上游 `.sha256` 强制校验 → 解压 → 安装到 `~/.local/bin/dcg.exe` → 写入用户 PATH。**信任锚点完全不变**（artifact 与 hash 都是 dcg 官方发布物，本仓库不参与签名 / 不 host 二进制）
-4. **跳过询问 / 刷新已安装版本**：加 `-AutoInstallDcg`（PowerShell）/ `--auto-install-dcg`（bash）旗标
-5. **默认低噪音 hook**：部署 `~/.codex/hooks/` 过滤器和 `~/.codex/hooks.json`，并设置 `hooks = true`
-6. **只在高危命令调用 dcg**：过滤器命中删除、危险 git、数据库清空、格式化、云资源销毁等模式时才调用 `dcg`
-7. **关闭 hook**：加 `-DisableDcgHooks`（PowerShell）/ `--disable-dcg-hooks`（bash）
-8. **完全跳过**：加 `-SkipDcg`（PowerShell）/ `--skip-dcg`（bash）旗标
+因此本目录的脚本先做轻量判断：
 
-非交互式 stdin（CI、管道）默认**不会**安装 dcg——必须显式传入 `--auto-install-dcg` 才会装。
+1. 普通命令直接放行。
+2. 看起来涉及删除、危险 git、数据库清空、格式化、云资源销毁等操作时，再调用 `dcg`。
+3. `dcg` 返回 `deny` 或 `ask` 时，结果原样交给 Codex。
 
-| 操作系统 | 装 dcg 二进制 | 默认 `hooks` | 默认 hook 行为 |
-|---------|---------------|---------------------|----------------|
-| Windows（PowerShell） | ✅ 自动询问安装 | `true` | 先进入 PowerShell 过滤器，高危命令再调用 `dcg.exe` |
-| macOS / Linux | ✅ 自动询问安装 | `true` | 先进入 Python 过滤器，高危命令再调用 `dcg` |
-| WSL2 内的 Linux Codex | ✅ | `true` | 同上 |
-| Git Bash / MSYS / Cygwin | ⚠️ 提示走 PowerShell 安装 | `true` | 已安装 dcg 后可部署，取决于实际运行的 Codex surface |
+## 文件说明
 
-## 启用条件清单
+| 文件 | 平台 | 说明 |
+|---|---|---|
+| `dcg_filter.ps1` | Windows / PowerShell | Windows Codex hook 入口 |
+| `dcg_filter.py` | macOS / Linux / WSL2 | Unix-like Codex hook 入口 |
 
-1. `dcg` 命令在 PATH（restore 询问后自动安装）
-2. `~/.codex/config.toml` 里有 `[features]\nhooks = true`
-3. `~/.codex/hooks.json` 文件存在且 JSON 合法
-4. `~/.codex/hooks/` 中存在 `dcg_filter.ps1`（Windows）或 `dcg_filter.py`（macOS / Linux）
-5. **重启 Codex 会话**
+`restore.ps1` / `restore.sh` 会把这些文件复制到 `~/.codex/hooks/`，并生成 `~/.codex/hooks.json`。
 
-## 验证 hook 是否生效
+## 启用条件
 
-```bash
-# Linux / macOS / Windows（Git Bash / WSL）都适用：只分析字符串，不会真的删除
-dcg --version
-tmpdir="${TMPDIR:-/tmp}/dcg-smoke"
-dcg test "rm -rf \"$tmpdir\""     # 应返回 decision = block
-
-# 检查 Codex hook 文件
-cat ~/.codex/hooks.json
-grep 'hooks =' ~/.codex/config.toml
-
-# 让 Codex 真正触发：在 Codex 对话里让它删除一个刚创建的临时目录（例如 /tmp/dcg-smoke），应被立即拦截
-```
-
-## 临时绕过（极少用）
-
-dcg 内置完整的绕过机制，详见上游文档：
-
-| 方式 | 范围 | 命令 |
-|------|------|------|
-| 环境变量 | 单条命令 | `DCG_BYPASS=1 <command>` |
-| 一次性放行码 | 单条命令 | 复制 block 提示里的短码，`dcg allow-once <code>` |
-| 永久白名单 | 规则 / 命令 | `dcg allowlist add core.git:reset-hard -r "reason"` |
-| 完全禁用 | 全部命令 | 在 `~/.codex/config.toml` 设置 `hooks = false` |
-
-## 自定义规则
-
-dcg 支持项目级自定义 packs。在仓库根放置 `.dcg/packs/<name>.yaml`，并在 `~/.config/dcg/config.toml` 加入：
+1. `dcg` 或 `dcg.exe` 在 PATH 中。
+2. `~/.codex/config.toml` 中有：
 
 ```toml
-[packs]
-custom_paths = [".dcg/packs/*.yaml"]
+[features]
+hooks = true
 ```
 
-详见 [dcg docs/custom-packs.md](https://github.com/Dicklesworthstone/destructive_command_guard/blob/main/docs/custom-packs.md)。
+3. `~/.codex/hooks.json` 存在且 JSON 合法。
+4. 重启 Codex。
 
-## 已知限制（来自上游与 Codex 引擎）
+## 验证
 
-- **版本依赖**：需要当前 Codex 支持 hooks feature flag。OpenAI 当前文档包含 Windows hooks 配置项；如果你使用旧版 Codex，请先升级。
-- **按 shell 工具名触发**：Codex 当前 `PreToolUse` matcher 只能按工具名匹配，不能只匹配危险命令。本仓库默认匹配 `Bash|shell_command`，因此过滤器仍会被 Codex 调起，但 `dcg` 本体只在疑似高危命令时运行。
-- **可被绕过**：模型可以把命令写到磁盘脚本里再执行；hook 是有用的护栏但不是绝对的强制边界（dcg 与官方文档都承认这点）
-- **dcg Bus factor = 1**：单人维护项目，作者明确不接受外部 PR。如果 dcg 仓库哪天消失，可以无缝切回纯软层 SKILL（仍然有效）
+```bash
+dcg --version
+dcg test "rm -rf /tmp/dcg-smoke"
+```
 
-## 软层兜底（任何平台、任何情况下都生效）
+`dcg test` 只分析字符串，不会执行删除。预期应返回阻止或高风险判断。
 
-跨 IDE 的 [`destructive-command-guard` SKILL.md](../skills/destructive-command-guard/SKILL.md) 通过 prompt 层面引导 Codex / Cursor / Copilot / Claude 在生成危险命令前 `AskQuestion` 二次确认。
+也可以在 Codex 新会话里要求它删除一个临时测试目录；如果 hook 生效，应被拦截或要求确认。
 
-- SKILL 提供"模型主动避开"，dcg hook 提供"运行时强制阻断"，两层独立。
+## 关闭
+
+重新运行：
+
+```powershell
+.\restore.ps1 -DisableDcgHooks
+```
+
+或：
+
+```bash
+bash restore.sh --disable-dcg-hooks
+```
+
+这会在 `~/.codex/config.toml` 中设置 `hooks = false`。软层 skill 不受影响。
+
+完全跳过 `dcg`：
+
+```powershell
+.\restore.ps1 -SkipDcg
+```
+
+```bash
+bash restore.sh --skip-dcg
+```
+
+## 限制
+
+- hook 是运行时护栏，不等于系统级沙箱。
+- 如果命令被写进脚本文件再执行，hook 只能看到执行脚本的命令，不能保证理解脚本全部内容。
+- 需要当前 Codex 版本支持 hooks feature。
+- `dcg` 是社区项目，属于供应链依赖；如公司策略不允许安装，可使用 `-SkipDcg`，仅保留软层 skill。

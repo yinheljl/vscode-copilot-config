@@ -1,7 +1,0 @@
-{
-    "chat.mcp.gallery.enabled": true,
-    "chat.viewSessions.orientation": "stacked",
-    "cursor.composer.usageSummaryDisplay": "always",
-    "cursor.general.disableHttp2": true,
-    "mcp.server.timeout": 43200000
-}

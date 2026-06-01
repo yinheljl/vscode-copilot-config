@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
-"""
-校验仓库中的所有配置模板是否合法：
-- JSON：vscode/mcp.json, cursor/mcp.json
-- JSONC：vscode/settings.json, cursor/settings.json
-- TOML：codex/config.toml
+"""Validate Codex-only configuration templates."""
 
-供 GitHub Actions 与本地手动校验复用。
-"""
+from __future__ import annotations
+
 import json
-import re
 import sys
 import tomllib
 from pathlib import Path
@@ -16,60 +11,38 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-PURE_JSON = [
-    "vscode/mcp.json",
-    "cursor/mcp.json",
-    "antigravity/mcp.json",
-    "windsurf/mcp_config.json",
-    "cursor/hooks.json",
+JSON_FILES = [
     "codex/hooks.json",
-    "copilot/hooks/dcg-guard.json",
 ]
-JSONC = [
-    "vscode/settings.json",
-    "cursor/settings.json",
-    "antigravity/settings.json",
-    "windsurf/hooks.json",
-]
+
 TOML_FILES = [
     "codex/config.toml",
 ]
 
-
-def strip_jsonc(raw: str) -> str:
-    placeholders: list[str] = []
-
-    def keep(m: re.Match[str]) -> str:
-        placeholders.append(m.group(0))
-        return f"__STR_{len(placeholders)-1}__"
-
-    s = re.sub(r'"(?:\\.|[^"\\])*"', keep, raw)
-    s = re.sub(r"(?m)//[^\r\n]*", "", s)
-    s = re.sub(r"(?s)/\*.*?\*/", "", s)
-    s = re.sub(r",(\s*[}\]])", r"\1", s)
-    for i, p in enumerate(placeholders):
-        s = s.replace(f"__STR_{i}__", p)
-    return s
+REQUIRED_PATHS = [
+    "codex/AGENTS.md",
+    "codex/skills/destructive-command-guard/SKILL.md",
+    "codex/hooks/dcg_filter.py",
+    "codex/hooks/dcg_filter.ps1",
+]
 
 
 def main() -> int:
     failed: list[tuple[str, str]] = []
 
-    for rel in PURE_JSON:
+    for rel in REQUIRED_PATHS:
+        if not (ROOT / rel).exists():
+            failed.append((rel, "required Codex file is missing"))
+        else:
+            print(f"  OK  {rel}")
+
+    for rel in JSON_FILES:
         path = ROOT / rel
         try:
             json.loads(path.read_text(encoding="utf-8"))
             print(f"  OK  {rel}")
-        except Exception as e:
-            failed.append((rel, f"JSON 解析失败: {e}"))
-
-    for rel in JSONC:
-        path = ROOT / rel
-        try:
-            json.loads(strip_jsonc(path.read_text(encoding="utf-8")))
-            print(f"  OK  {rel} (JSONC)")
-        except Exception as e:
-            failed.append((rel, f"JSONC 解析失败: {e}"))
+        except Exception as exc:  # noqa: BLE001 - report validator failures clearly
+            failed.append((rel, f"JSON parse failed: {exc}"))
 
     for rel in TOML_FILES:
         path = ROOT / rel
@@ -77,16 +50,16 @@ def main() -> int:
             with path.open("rb") as f:
                 tomllib.load(f)
             print(f"  OK  {rel}")
-        except Exception as e:
-            failed.append((rel, f"TOML 解析失败: {e}"))
+        except Exception as exc:  # noqa: BLE001
+            failed.append((rel, f"TOML parse failed: {exc}"))
 
     if failed:
-        print("\n校验失败：")
-        for rel, msg in failed:
-            print(f"  X  {rel}: {msg}")
+        print("\nValidation failed:")
+        for rel, message in failed:
+            print(f"  X  {rel}: {message}")
         return 1
 
-    print("\n所有模板校验通过。")
+    print("\nCodex configuration templates validated.")
     return 0
 
 

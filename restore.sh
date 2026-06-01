@@ -1,1491 +1,258 @@
 #!/usr/bin/env bash
-# restore.sh — 还原 Cursor + VS Code GitHub Copilot + Codex + Claude + Antigravity 个人配置（Linux / macOS）
-# 自动检测已安装的 IDE，仅配置已安装的环境。
-# 默认增量模式（不覆盖用户已有配置），使用 --force 切换为覆盖模式。
+# Restore Codex global configuration from this repository.
 
 set -euo pipefail
 
-# 参数解析
+DRY_RUN=false
 FORCE=false
-TARGET_ALL=true
-TARGET_VSCODE=false
-TARGET_CURSOR=false
-TARGET_CODEX=false
-TARGET_CLAUDE=false
-TARGET_ANTIGRAVITY=false
-TARGET_WINDSURF=false
 AUTO_INSTALL_DCG=false
-SKIP_DCG=false
 DISABLE_DCG_HOOKS=false
+SKIP_DCG=false
+
 for arg in "$@"; do
     case "$arg" in
-        --force|-f) FORCE=true ;;
+        --dry-run) DRY_RUN=true ;;
+        --force) FORCE=true ;;
         --auto-install-dcg) AUTO_INSTALL_DCG=true ;;
         --disable-dcg-hooks) DISABLE_DCG_HOOKS=true ;;
         --skip-dcg) SKIP_DCG=true ;;
-        --target=*)
-            TARGET_ALL=false
-            target_list="${arg#--target=},"
-            while [ -n "$target_list" ]; do
-                t="${target_list%%,*}"
-                target_list="${target_list#*,}"
-                [ -z "$t" ] && continue
-                case "$(echo "$t" | tr '[:upper:]' '[:lower:]')" in
-                    vscode) TARGET_VSCODE=true ;;
-                    cursor) TARGET_CURSOR=true ;;
-                    codex)  TARGET_CODEX=true ;;
-                    claude) TARGET_CLAUDE=true ;;
-                    antigravity) TARGET_ANTIGRAVITY=true ;;
-                    windsurf) TARGET_WINDSURF=true ;;
-                    all)    TARGET_ALL=true ;;
-                esac
-            done
+        -h|--help)
+            cat <<'EOF'
+Usage: bash restore.sh [options]
+
+Options:
+  --dry-run              Print planned changes without writing files
+  --force                Replace managed Codex directories instead of merging
+  --auto-install-dcg     Install/refresh dcg without prompting
+  --disable-dcg-hooks    Keep dcg available but disable Codex hooks
+  --skip-dcg             Skip dcg install and disable Codex hooks
+EOF
+            exit 0
             ;;
+        *) echo "Unknown option: $arg" >&2; exit 1 ;;
     esac
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COPILOT_SRC="$SCRIPT_DIR/copilot"
-COPILOT_DST="$HOME/.copilot"
-COPILOT_HOOKS_SRC="$COPILOT_SRC/hooks"
-COPILOT_HOOKS_DST="$COPILOT_DST/hooks"
-CURSOR_SRC="$SCRIPT_DIR/cursor"
-CURSOR_DST="$HOME/.cursor"
-CURSOR_HOOKS_SRC="$CURSOR_SRC/hooks.json"
-CURSOR_HOOKS_DST="$CURSOR_DST/hooks.json"
-CURSOR_HOOKS_DIR_SRC="$CURSOR_SRC/hooks"
-CURSOR_HOOKS_DIR_DST="$CURSOR_DST/hooks"
-CLAUDE_SRC="$SCRIPT_DIR/claude"
-CLAUDE_DST="$HOME/.claude"
-CLAUDE_CONFIG_SRC="$CLAUDE_SRC/CLAUDE.md"
-CLAUDE_CONFIG_DST="$CLAUDE_DST/CLAUDE.md"
-CLAUDE_SKILLS_SRC="$CLAUDE_SRC/skills"
-CLAUDE_SKILLS_DST="$CLAUDE_DST/skills"
-CLAUDE_HOOKS_SRC="$CLAUDE_SRC/hooks"
-CLAUDE_HOOKS_DST="$CLAUDE_DST/hooks"
-CLAUDE_SETTINGS_DST="$CLAUDE_DST/settings.json"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CODEX_SRC="$SCRIPT_DIR/codex"
 CODEX_DST="$HOME/.codex"
-CODEX_SKILLS_SRC="$CODEX_SRC/skills"
-CODEX_SKILLS_DST="$CODEX_DST/skills"
-CODEX_HOOKS_SRC="$CODEX_SRC/hooks"
-CODEX_HOOKS_DST="$CODEX_DST/hooks"
-CODEX_HOOKS_JSON_SRC="$CODEX_SRC/hooks.json"
-CODEX_HOOKS_JSON_DST="$CODEX_DST/hooks.json"
-ANTIGRAVITY_SRC="$SCRIPT_DIR/antigravity"
-ANTIGRAVITY_DST="$HOME/.gemini/antigravity"
-ANTIGRAVITY_CONFIG_SRC="$ANTIGRAVITY_SRC/GEMINI.md"
-ANTIGRAVITY_CONFIG_DST="$HOME/.gemini/GEMINI.md"
-ANTIGRAVITY_SKILLS_SRC="$ANTIGRAVITY_SRC/skills"
-ANTIGRAVITY_SKILLS_DST="$ANTIGRAVITY_DST/skills"
-ANTIGRAVITY_HOOKS_SRC="$ANTIGRAVITY_SRC/hooks"
-ANTIGRAVITY_HOOKS_DST="$ANTIGRAVITY_DST/hooks"
-ANTIGRAVITY_MCP_SRC="$ANTIGRAVITY_SRC/mcp.json"
-ANTIGRAVITY_MCP_DST="$ANTIGRAVITY_DST/mcp_config.json"
-WINDSURF_SRC="$SCRIPT_DIR/windsurf"
-WINDSURF_DST="$HOME/.codeium/windsurf"
-WINDSURF_MCP_SRC="$WINDSURF_SRC/mcp_config.json"
-WINDSURF_MCP_DST="$WINDSURF_DST/mcp_config.json"
-WINDSURF_HOOKS_JSON_SRC="$WINDSURF_SRC/hooks.json"
-WINDSURF_HOOKS_JSON_DST="$WINDSURF_DST/hooks.json"
-WINDSURF_HOOKS_DIR_SRC="$WINDSURF_SRC/hooks"
-WINDSURF_HOOKS_DIR_DST="$WINDSURF_DST/hooks"
-
-# VS Code / Cursor / Antigravity 用户配置目录（macOS 和 Linux 路径不同）
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User"
-    CURSOR_USER_DIR="$HOME/Library/Application Support/Cursor/User"
-    ANTIGRAVITY_USER_DIR="$HOME/Library/Application Support/antigravity/User"
-else
-    VSCODE_USER_DIR="$HOME/.config/Code/User"
-    CURSOR_USER_DIR="$HOME/.config/Cursor/User"
-    ANTIGRAVITY_USER_DIR="$HOME/.config/antigravity/User"
-fi
-
-MCP_SRC="$SCRIPT_DIR/vscode/mcp.json"
-MCP_DST="$VSCODE_USER_DIR/mcp.json"
-VSCODE_SETT_SRC="$SCRIPT_DIR/vscode/settings.json"
-VSCODE_SETT_DST="$VSCODE_USER_DIR/settings.json"
-CURSOR_SETT_SRC="$SCRIPT_DIR/cursor/settings.json"
-CURSOR_SETT_DST="$CURSOR_USER_DIR/settings.json"
-ANTIGRAVITY_SETT_SRC="$SCRIPT_DIR/antigravity/settings.json"
-ANTIGRAVITY_SETT_DST="$ANTIGRAVITY_USER_DIR/settings.json"
-
-# ============================
-# IDE 自动检测
-# ============================
-HAS_VSCODE=false
-HAS_CURSOR=false
-HAS_CODEX=false
-HAS_CLAUDE=false
-HAS_ANTIGRAVITY=false
-HAS_WINDSURF=false
-
-if [ -d "$VSCODE_USER_DIR" ] || command -v code &>/dev/null; then
-    HAS_VSCODE=true
-fi
-
-if [ -d "$CURSOR_DST" ] || command -v cursor &>/dev/null; then
-    HAS_CURSOR=true
-fi
-
-if [ -d "$CODEX_DST" ] || command -v codex &>/dev/null; then
-    HAS_CODEX=true
-fi
-
-if [ -d "$CLAUDE_DST" ] || command -v claude &>/dev/null; then
-    HAS_CLAUDE=true
-fi
-
-if [ -d "$ANTIGRAVITY_USER_DIR" ] || [ -d "$ANTIGRAVITY_DST" ] || command -v antigravity &>/dev/null; then
-    HAS_ANTIGRAVITY=true
-fi
-if [ -d "$WINDSURF_DST" ] || command -v windsurf &>/dev/null; then
-    HAS_WINDSURF=true
-fi
-
-# ============================
-# --target 参数过滤
-# ============================
-if [ "$TARGET_ALL" = false ]; then
-    [ "$TARGET_VSCODE" = false ] && HAS_VSCODE=false
-    [ "$TARGET_CURSOR" = false ] && HAS_CURSOR=false
-    [ "$TARGET_CODEX"  = false ] && HAS_CODEX=false
-    [ "$TARGET_CLAUDE" = false ] && HAS_CLAUDE=false
-    [ "$TARGET_ANTIGRAVITY" = false ] && HAS_ANTIGRAVITY=false
-    [ "$TARGET_WINDSURF" = false ] && HAS_WINDSURF=false
-fi
 
 resolve_uv_path() {
     for p in "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv"; do
-        [ -x "$p" ] && echo "$p" && return
+        [ -x "$p" ] && { printf '%s\n' "$p"; return 0; }
     done
-    command -v uv 2>/dev/null && return
+    command -v uv 2>/dev/null && return 0
     return 1
 }
 
-copy_dir_merge() {
-    local src="$1" dst="$2"
-    mkdir -p "$dst"
-    cp -rf "$src/"* "$dst/"
-}
-
-copy_dir_replace() {
-    local src="$1" dst="$2"
-    rm -rf "$dst"
-    cp -rf "$src" "$dst"
-}
-
-remove_deprecated_skills_readme() {
-    local skills_dir="$1"
-    local readme="$skills_dir/README.md"
-    if [ -f "$readme" ]; then
-        rm -f -- "$readme"
-        echo "  - skills/README.md (清理废弃说明文件)"
+install_uv_if_missing() {
+    if uv_path=$(resolve_uv_path); then
+        printf '%s\n' "$uv_path"
+        return
     fi
+
+    echo "  uv not found; installing uv for markitdown MCP..." >&2
+    if [ "$DRY_RUN" = true ]; then
+        printf '%s\n' "$HOME/.local/bin/uv"
+        return
+    fi
+
+    if curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; then
+        if uv_path=$(resolve_uv_path); then
+            printf '%s\n' "$uv_path"
+            return
+        fi
+    fi
+
+    echo "  Warning: uv install failed or uv is still unavailable." >&2
+    printf '%s\n' "$HOME/.local/bin/uv"
 }
 
-test_dcg_installed() {
-    command -v dcg >/dev/null 2>&1 && return 0
-    [ -x "$HOME/.local/bin/dcg" ] && return 0
-    return 1
+dcg_available() {
+    command -v dcg >/dev/null 2>&1 || command -v dcg.exe >/dev/null 2>&1
 }
 
-invoke_dcg_installer() {
-    # 调用 dcg 官方 install.sh：自动选择平台二进制，强制 SHA256 校验，可选 cosign 签名验证。
-    # 我们只是"代理调用官方安装器"，不重写下载/校验逻辑（出问题归上游 dcg 维护者）。
-    local installer_url="https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
-    echo "    → 拉取并执行: curl -fsSL $installer_url | bash -s -- --easy-mode"
-    if ! command -v curl >/dev/null 2>&1; then
-        echo "    ✗ 未安装 curl，无法运行官方安装器" >&2
+install_dcg_if_requested() {
+    if [ "$SKIP_DCG" = true ]; then
+        echo "  dcg skipped; Codex hooks will be disabled." >&2
         return 1
     fi
-    if curl -fsSL "$installer_url" | bash -s -- --easy-mode; then
-        # install.sh --easy-mode 把 ~/.local/bin 加到了 PATH（写入 ~/.bashrc / ~/.zshrc），但当前 shell 还没刷新
-        export PATH="$HOME/.local/bin:$PATH"
+
+    if dcg_available; then
+        echo "  dcg found: $(command -v dcg || command -v dcg.exe)" >&2
         return 0
     fi
-    return 1
+
+    should_install=false
+    if [ "$AUTO_INSTALL_DCG" = true ]; then
+        should_install=true
+    elif [ -t 0 ] && [ "$DRY_RUN" = false ]; then
+        printf '  dcg is not installed. Install it now? [y/N] ' >&2
+        read -r answer
+        case "$answer" in
+            y|Y|yes|YES) should_install=true ;;
+        esac
+    fi
+
+    if [ "$should_install" != true ]; then
+        echo "  dcg not installed; soft skill still applies, hard hook disabled." >&2
+        return 1
+    fi
+
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [DryRun] would install dcg from upstream installer." >&2
+        return 0
+    fi
+
+    curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh?$(date +%s)" |
+        bash -s -- --no-configure >/dev/null
+    dcg_available
 }
 
-set_codex_hooks_feature() {
-    local enabled="$1"
-    local cfg_dst="$CODEX_DST/config.toml"
-    if [ ! -f "$cfg_dst" ]; then
-        mkdir -p "$CODEX_DST"
-        printf '[features]\nhooks = %s\n' "$enabled" > "$cfg_dst"
-        echo "    + config.toml 设置 [features] hooks = $enabled"
+merge_codex_config() {
+    local uv_path="$1"
+    local hooks_enabled="$2"
+    local config_src="$CODEX_SRC/config.toml"
+    local config_dst="$CODEX_DST/config.toml"
+
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [DryRun] would merge $config_src -> $config_dst"
         return
     fi
-    local had_legacy_key=false
-    if grep -qE '^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$' "$cfg_dst"; then
-        had_legacy_key=true
-    fi
-    if command -v python3 >/dev/null 2>&1; then
-        local result
-        result=$(CFG="$cfg_dst" VALUE="$enabled" python3 - <<'PY'
-import os, re, shutil, time
-p = os.environ['CFG']
-v = os.environ['VALUE']
-with open(p, 'r', encoding='utf-8') as f:
-    s = f.read()
-if re.search(r'(?m)^\s*hooks\s*=\s*(true|false)\b', s):
-    s2 = re.sub(r'(?m)^(\s*hooks\s*=\s*)(true|false)\b', r'\g<1>' + v, s, count=1)
-    s2 = re.sub(r'(?m)^\s*codex_hooks\s*=\s*(true|false)\b[^\n]*(?:\n|$)', '', s2)
-elif re.search(r'(?m)^\s*codex_hooks\s*=\s*(true|false)\b', s):
-    s2 = re.sub(r'(?m)^(\s*)codex_hooks(\s*=\s*)(true|false)\b[^\n]*', r'\g<1>hooks\g<2>' + v, s, count=1)
-    s2 = re.sub(r'(?m)^\s*codex_hooks\s*=\s*(true|false)\b[^\n]*(?:\n|$)', '', s2)
-elif re.search(r'(?m)^\[features\]\s*$', s):
-    s2 = re.sub(r'(?m)^\[features\]\s*$', '[features]\nhooks = ' + v, s, count=1)
+
+    CONFIG_SRC="$config_src" CONFIG_DST="$config_dst" UV_PATH="$uv_path" HOOKS_ENABLED="$hooks_enabled" FORCE="$FORCE" python3 - <<'PY'
+from __future__ import annotations
+
+import os
+import re
+from pathlib import Path
+
+src = Path(os.environ["CONFIG_SRC"])
+dst = Path(os.environ["CONFIG_DST"])
+uv_path = os.environ["UV_PATH"]
+hooks_enabled = os.environ["HOOKS_ENABLED"].lower()
+force = os.environ["FORCE"].lower() == "true"
+
+def toml_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+if dst.exists() and not force:
+    content = dst.read_text(encoding="utf-8")
+    backup = dst.with_name(dst.name + ".bak")
+    backup.write_text(content, encoding="utf-8")
 else:
-    s2 = s.rstrip() + '\n\n[features]\nhooks = ' + v + '\n'
-if s2 != s:
-    shutil.copy2(p, p + '.bak_' + time.strftime('%Y%m%d_%H%M%S'))
-    with open(p, 'w', encoding='utf-8') as f:
-        f.write(s2)
-    print('changed')
+    content = src.read_text(encoding="utf-8")
+
+content = content.replace("__UV_PATH__", toml_string(uv_path))
+
+features_re = re.compile(r"(?ms)^\[features\]\s*\n.*?(?=^\[|\Z)")
+match = features_re.search(content)
+if match:
+    section = match.group(0)
+    if re.search(r"(?m)^\s*hooks\s*=", section):
+        section = re.sub(r"(?m)^(\s*hooks\s*=\s*)(true|false)", rf"\g<1>{hooks_enabled}", section, count=1)
+    else:
+        section = section.rstrip() + f"\nhooks = {hooks_enabled}\n"
+    content = content[: match.start()] + section + content[match.end() :]
 else:
-    print('unchanged')
-PY
+    content = content.rstrip() + f"\n\n[features]\nhooks = {hooks_enabled}\n"
+
+content = re.sub(r"(?ms)^\[mcp_servers\.markitdown\]\s*\n.*?(?=^\[|\Z)", "", content).rstrip()
+content += (
+    "\n\n[mcp_servers.markitdown]\n"
+    f'command = "{toml_string(uv_path)}"\n'
+    'args = ["tool", "run", "markitdown-mcp"]\n'
 )
-        if [ "$result" = "changed" ]; then
-            echo "    + config.toml 设置 [features] hooks = $enabled"
-            if [ "$had_legacy_key" = true ]; then
-                echo "    ℹ 已将旧键 codex_hooks 迁移为 hooks"
-            fi
-        fi
-    else
-        local tmp
-        tmp=$(mktemp)
-        trap 'rm -f "$tmp"' RETURN
-        if grep -qE '^[[:space:]]*hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$' "$cfg_dst"; then
-            awk -v value="$enabled" '
-                BEGIN { updated = 0 }
-                {
-                    if ($0 ~ /^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$/) {
-                        next
-                    }
-                    if (!updated && $0 ~ /^[[:space:]]*hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$/) {
-                        sub(/true|false/, value)
-                        updated = 1
-                    }
-                    print
-                }
-            ' "$cfg_dst" > "$tmp"
-        elif grep -qE '^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$' "$cfg_dst"; then
-            awk -v value="$enabled" '
-                BEGIN { updated = 0 }
-                {
-                    if (!updated && $0 ~ /^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$/) {
-                        print "hooks = " value
-                        updated = 1
-                        next
-                    }
-                    if ($0 ~ /^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*(true|false)([[:space:]]*($|#).*)?$/) {
-                        next
-                    }
-                    print
-                }
-            ' "$cfg_dst" > "$tmp"
-        elif grep -qE '^\[features\][[:space:]]*$' "$cfg_dst"; then
-            awk -v value="$enabled" '
-                BEGIN { inserted = 0 }
-                {
-                    print
-                    if (!inserted && $0 ~ /^\[features\][[:space:]]*$/) {
-                        print "hooks = " value
-                        inserted = 1
-                    }
-                }
-            ' "$cfg_dst" > "$tmp"
-        else
-            cat "$cfg_dst" > "$tmp"
-            printf '\n[features]\nhooks = %s\n' "$enabled" >> "$tmp"
-        fi
-        if ! cmp -s "$cfg_dst" "$tmp"; then
-            cp "$cfg_dst" "${cfg_dst}.bak_$(date +%Y%m%d_%H%M%S)"
-            trap - RETURN
-            mv "$tmp" "$cfg_dst"
-            echo "    + config.toml 设置 [features] hooks = $enabled"
-            if [ "$had_legacy_key" = true ]; then
-                echo "    ℹ 已将旧键 codex_hooks 迁移为 hooks"
-            fi
-        else
-            rm -f "$tmp"
-            trap - RETURN
-        fi
-    fi
-}
 
-install_codex_hooks() {
-    # 硬层防护使用社区方案 dcg（Dicklesworthstone/destructive_command_guard）。
-    # 设计原则：
-    #   1) 调用官方 install.sh，不自己实现下载/SHA256/cosign 校验逻辑
-    #   2) 不默默 curl|bash；首次安装需用户交互式确认（Y/N），或通过 --auto-install-dcg 旗标显式同意
-    #   3) Codex PreToolUse matcher 当前按 shell 工具名触发；默认使用轻量过滤器，只在疑似高危命令时调用 dcg
-
-    echo "  Codex 硬层（破坏性命令防护 dcg）："
-
-    if [ "$SKIP_DCG" = true ]; then
-        echo "    → --skip-dcg 已启用，跳过 dcg 全部步骤，并关闭 Codex hooks。软层 SKILL 仍生效。"
-        set_codex_hooks_feature false
-        return
-    fi
-
-    local uname_s
-    uname_s=$(uname -s 2>/dev/null || echo unknown)
-    local is_windows_host=false
-    case "$uname_s" in
-        MINGW*|MSYS*|CYGWIN*) is_windows_host=true ;;
-    esac
-
-    # Step 1: 检测 dcg
-    local dcg_installed=false
-    if test_dcg_installed; then
-        dcg_installed=true
-        local dcg_ver
-        dcg_ver=$(dcg --version 2>/dev/null | head -n 1 || echo "unknown")
-        echo "    ✓ 已检测到 dcg：$dcg_ver"
-        if [ "$AUTO_INSTALL_DCG" = true ]; then
-            if [ "$is_windows_host" = true ]; then
-                echo "    ⚠ 当前是 Git Bash / MSYS / Cygwin。刷新 dcg 请在 PowerShell 内运行：./restore.ps1 -Target Codex -AutoInstallDcg"
-            else
-                echo "    --auto-install-dcg 已启用，按上游官方 install.sh 刷新 dcg。"
-                if invoke_dcg_installer; then
-                    dcg_ver=$(dcg --version 2>/dev/null | head -n 1 || echo "unknown")
-                    echo "    ✓ dcg 当前版本：$dcg_ver"
-                else
-                    echo "    ⚠ dcg 刷新失败；继续使用已安装版本。" >&2
-                fi
-            fi
-        fi
-    else
-        echo "    × 未检测到 dcg（社区方案 destructive_command_guard）"
-        local should_install=false
-        if [ "$is_windows_host" = true ]; then
-            # Windows / Git Bash 上不运行 install.sh，必须走 PowerShell 的 restore.ps1。
-            echo "    ⚠ 当前是 Git Bash / MSYS / Cygwin。dcg 在 Windows 上需要走 PowerShell restore.ps1。"
-            echo "      请在 PowerShell 内运行：./restore.ps1 -Target Codex -AutoInstallDcg"
-        elif [ "$AUTO_INSTALL_DCG" = true ]; then
-            should_install=true
-            echo "    --auto-install-dcg 已启用，自动安装。"
-        else
-            echo ""
-            echo "    将通过官方 install.sh 安装 dcg："
-            echo "      源:    https://github.com/Dicklesworthstone/destructive_command_guard"
-            echo "      安装到: $HOME/.local/bin/dcg"
-            echo "      校验:   官方安装器内置 SHA256（强制） + cosign（如果你装了）"
-            if [ -t 0 ]; then
-                read -r -p "    是否安装 dcg？[y/N] " resp
-                case "$resp" in
-                    y|Y|yes|YES) should_install=true ;;
-                esac
-            else
-                echo "    （非交互式 stdin，未安装。下次加 --auto-install-dcg 自动安装。）"
-            fi
-        fi
-        if [ "$should_install" = true ]; then
-            if invoke_dcg_installer; then
-                if test_dcg_installed; then
-                    dcg_installed=true
-                    echo "    ✓ dcg 安装成功"
-                else
-                    echo "    ⚠ 安装脚本结束但仍找不到 dcg，请手动确认 PATH 是否包含 $HOME/.local/bin" >&2
-                fi
-            else
-                echo "    ✗ 安装失败，请查看上方输出" >&2
-            fi
-        elif [ "$is_windows_host" = false ]; then
-            echo "    → 跳过 dcg 安装。软层 SKILL 仍生效；如需启用硬层，重跑 --auto-install-dcg。"
-        fi
-    fi
-
-    # Step 2: 用户显式关闭时，仅保留 dcg 二进制。
-    if [ "$DISABLE_DCG_HOOKS" = true ]; then
-        echo "    → --disable-dcg-hooks 已启用：保留 dcg 二进制，但关闭 Codex PreToolUse hook。"
-        set_codex_hooks_feature false
-        return
-    fi
-
-    # Step 3: 默认启用低噪音 hook，需要 dcg 已装才部署 hooks.json
-    if [ "$dcg_installed" = false ]; then
-        echo "    → dcg 未安装，无法启用 hooks.json。"
-        if [ "$is_windows_host" = true ]; then
-            echo "      请在 PowerShell 内运行：./restore.ps1 -Target Codex -AutoInstallDcg"
-        fi
-        set_codex_hooks_feature false
-        return
-    fi
-
-    # 部署 hooks 过滤器 + hooks.json
-    if [ -d "$CODEX_HOOKS_SRC" ]; then
-        if [ "$FORCE" = true ]; then
-            copy_dir_replace "$CODEX_HOOKS_SRC" "$CODEX_HOOKS_DST"
-            echo "  + hooks/（覆盖，低噪音 dcg 过滤器）"
-        else
-            copy_dir_merge "$CODEX_HOOKS_SRC" "$CODEX_HOOKS_DST"
-            echo "  + hooks/（增量，低噪音 dcg 过滤器）"
-        fi
-        if [ -f "$CODEX_HOOKS_DST/dcg_filter.py" ]; then
-            chmod +x "$CODEX_HOOKS_DST/dcg_filter.py" 2>/dev/null || true
-        fi
-    fi
-    if [ -f "$CODEX_HOOKS_JSON_SRC" ]; then
-        local hook_command
-        if command -v python3 >/dev/null 2>&1 && [ -f "$CODEX_HOOKS_DST/dcg_filter.py" ]; then
-            hook_command="python3 \"$CODEX_HOOKS_DST/dcg_filter.py\""
-        else
-            hook_command="dcg"
-        fi
-        if [ -f "$CODEX_HOOKS_JSON_DST" ] && [ "$FORCE" = false ]; then
-            cp "$CODEX_HOOKS_JSON_DST" "${CODEX_HOOKS_JSON_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-        fi
-        if command -v python3 >/dev/null 2>&1; then
-            SRC="$CODEX_HOOKS_JSON_SRC" DST="$CODEX_HOOKS_JSON_DST" HOOK_COMMAND="$hook_command" python3 - <<'PY'
-import json, os
-src = os.environ['SRC']
-dst = os.environ['DST']
-hook_command = os.environ['HOOK_COMMAND']
-with open(src, 'r', encoding='utf-8') as f:
-    s = f.read().replace('__DCG_HOOK_COMMAND__', hook_command.replace('\\', '\\\\').replace('"', '\\"'))
-json.loads(s)
-with open(dst, 'w', encoding='utf-8') as f:
-    f.write(s)
+dst.parent.mkdir(parents=True, exist_ok=True)
+dst.write_text(content, encoding="utf-8")
 PY
-        else
-            sed "s#__DCG_HOOK_COMMAND__#dcg#g" "$CODEX_HOOKS_JSON_SRC" > "$CODEX_HOOKS_JSON_DST"
-        fi
-        echo "  + hooks.json（低噪音过滤器 → dcg）"
-    fi
-
-    set_codex_hooks_feature true
+    echo "  + ~/.codex/config.toml"
 }
 
-install_claude_hooks() {
-    # Claude Code 硬层：部署低噪音 dcg PreToolUse hook（claude/hooks/ → ~/.claude/hooks/），
-    # 并把 hook 注册到 ~/.claude/settings.json。
-    # 与 Codex 硬层共享同一套 dcg 二进制，但退出码语义不同（exit 0=allow, exit 2=block）。
-
-    echo "  Claude Code 硬层（破坏性命令防护 dcg）："
-
-    if [ "$SKIP_DCG" = true ]; then
-        echo "    → --skip-dcg 已启用，跳过 Claude Code dcg hook。软层 SKILL 仍生效。"
-        return
-    fi
-    if [ "$DISABLE_DCG_HOOKS" = true ]; then
-        echo "    → --disable-dcg-hooks 已启用，跳过 Claude Code dcg hook 部署。"
+install_hooks() {
+    local hooks_enabled="$1"
+    if [ "$hooks_enabled" != true ]; then
+        echo "  Codex hard hooks disabled."
         return
     fi
 
-    if ! test_dcg_installed; then
-        echo "    → dcg 未安装，跳过 Claude Code PreToolUse hook。软层 SKILL 仍生效。"
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [DryRun] would install Codex hooks."
         return
     fi
 
-    # 1. 部署 claude/hooks/ → ~/.claude/hooks/
-    if [ -d "$CLAUDE_HOOKS_SRC" ]; then
-        if [ "$FORCE" = true ]; then
-            copy_dir_replace "$CLAUDE_HOOKS_SRC" "$CLAUDE_HOOKS_DST"
-            echo "    + ~/.claude/hooks/（覆盖，低噪音 dcg 过滤器）"
-        else
-            copy_dir_merge "$CLAUDE_HOOKS_SRC" "$CLAUDE_HOOKS_DST"
-            echo "    + ~/.claude/hooks/（增量，低噪音 dcg 过滤器）"
-        fi
-    fi
-
-    # 2. 合并 hooks.PreToolUse 条目到 ~/.claude/settings.json
-    local hook_cmd
-    if command -v python3 >/dev/null 2>&1 && [ -f "$CLAUDE_HOOKS_DST/dcg_filter.py" ]; then
-        hook_cmd="python3 \"$CLAUDE_HOOKS_DST/dcg_filter.py\""
-    elif [ -f "$CLAUDE_HOOKS_DST/dcg_filter.ps1" ]; then
-        hook_cmd="powershell -NoProfile -ExecutionPolicy Bypass -File \"$CLAUDE_HOOKS_DST/dcg_filter.ps1\""
+    mkdir -p "$CODEX_DST/hooks"
+    if [ "$FORCE" = true ]; then
+        rm -rf "$CODEX_DST/hooks"
+        cp -R "$CODEX_SRC/hooks" "$CODEX_DST/hooks"
     else
-        hook_cmd="dcg"
+        cp -R "$CODEX_SRC/hooks/." "$CODEX_DST/hooks/"
     fi
 
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo "    ! 未安装 python3，跳过 Claude settings.json hook 注册。" >&2
-        return
-    fi
+    local hook_script="$CODEX_DST/hooks/dcg_filter.py"
+    HOOKS_JSON_SRC="$CODEX_SRC/hooks.json" HOOKS_JSON_DST="$CODEX_DST/hooks.json" HOOK_COMMAND="python3 \"$hook_script\"" python3 - <<'PY'
+from __future__ import annotations
 
-    HOOK_CMD="$hook_cmd" SETTINGS_DST="$CLAUDE_SETTINGS_DST" FORCE="$FORCE" python3 - <<'PY'
-import json, os, sys
+import json
+import os
+from pathlib import Path
 
-hook_cmd = os.environ['HOOK_CMD']
-settings_dst = os.environ['SETTINGS_DST']
-force = os.environ.get('FORCE', 'false') == 'true'
-
-new_group = {
-    "matcher": "Bash",
-    "hooks": [
-        {
-            "type": "command",
-            "command": hook_cmd,
-            "timeout": 10
-        }
-    ]
-}
-
-if not os.path.exists(settings_dst):
-    os.makedirs(os.path.dirname(settings_dst), exist_ok=True)
-    obj = {"hooks": {"PreToolUse": [new_group]}}
-    with open(settings_dst, 'w', encoding='utf-8') as f:
-        json.dump(obj, f, indent=2, ensure_ascii=False)
-    print("    + ~/.claude/settings.json（新建，写入 dcg PreToolUse hook）")
-    sys.exit(0)
-
-with open(settings_dst, 'r', encoding='utf-8') as f:
-    cfg = json.load(f)
-
-# backup
-import shutil, time
-shutil.copy2(settings_dst, settings_dst + '.bak_' + time.strftime('%Y%m%d_%H%M%S'))
-
-if "hooks" not in cfg or not isinstance(cfg["hooks"], dict):
-    cfg["hooks"] = {}
-if "PreToolUse" not in cfg["hooks"] or not isinstance(cfg["hooks"]["PreToolUse"], list):
-    cfg["hooks"]["PreToolUse"] = []
-
-kept_groups = []
-for group in cfg["hooks"]["PreToolUse"]:
-    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
-        kept_groups.append(group)
-        continue
-
-    kept_hooks = []
-    for hook in group["hooks"]:
-        cmd = str(hook.get("command", "")) if isinstance(hook, dict) else ""
-        trimmed = cmd.strip().lower()
-        is_project_dcg_hook = "dcg_filter" in cmd
-        is_direct_dcg_hook = trimmed in ("dcg", "dcg.exe")
-        if not (is_project_dcg_hook or is_direct_dcg_hook):
-            kept_hooks.append(hook)
-
-    if kept_hooks:
-        new_existing_group = dict(group)
-        new_existing_group["hooks"] = kept_hooks
-        kept_groups.append(new_existing_group)
-
-cfg["hooks"]["PreToolUse"] = kept_groups + [new_group]
-
-with open(settings_dst, 'w', encoding='utf-8') as f:
-    json.dump(cfg, f, indent=2, ensure_ascii=False)
-print("    + ~/.claude/settings.json（已规范化为单条低噪音 dcg PreToolUse hook）")
+src = Path(os.environ["HOOKS_JSON_SRC"])
+dst = Path(os.environ["HOOKS_JSON_DST"])
+command = os.environ["HOOK_COMMAND"]
+raw = src.read_text(encoding="utf-8")
+raw = raw.replace("__DCG_HOOK_COMMAND__", command.replace("\\", "\\\\").replace('"', '\\"'))
+json.loads(raw)
+dst.write_text(raw, encoding="utf-8")
 PY
+    echo "  + ~/.codex/hooks.json"
+    echo "  + ~/.codex/hooks/"
 }
 
-install_antigravity_hooks() {
-    echo "  Antigravity 硬层（破坏性命令防护 dcg）："
-
-    if [ "$SKIP_DCG" = true ]; then
-        echo "    → --skip-dcg 已启用，跳过 Antigravity dcg hook。软层 SKILL 仍生效。"
-        return
-    fi
-    if [ "$DISABLE_DCG_HOOKS" = true ]; then
-        echo "    → --disable-dcg-hooks 已启用，跳过 Antigravity dcg hook 部署。"
-        return
-    fi
-
-    if ! test_dcg_installed; then
-        echo "    → dcg 未安装，跳过 Antigravity PreToolUse hook。软层 SKILL 仍生效。"
-        return
-    fi
-
-    # 1. 部署 antigravity/hooks/ → ~/.gemini/antigravity/hooks/
-    if [ -d "$ANTIGRAVITY_HOOKS_SRC" ]; then
-        if [ "$FORCE" = true ]; then
-            copy_dir_replace "$ANTIGRAVITY_HOOKS_SRC" "$ANTIGRAVITY_HOOKS_DST"
-            echo "    + ~/.gemini/antigravity/hooks/（覆盖，低噪音 dcg 过滤器）"
-        else
-            copy_dir_merge "$ANTIGRAVITY_HOOKS_SRC" "$ANTIGRAVITY_HOOKS_DST"
-            echo "    + ~/.gemini/antigravity/hooks/（增量，低噪音 dcg 过滤器）"
-        fi
-    fi
-
-    # 2. 合并 chat.hooks.PreToolUse 条目到 settings.json
-    local hook_cmd
-    if command -v python3 >/dev/null 2>&1 && [ -f "$ANTIGRAVITY_HOOKS_DST/dcg_filter.py" ]; then
-        hook_cmd="python3 \"$ANTIGRAVITY_HOOKS_DST/dcg_filter.py\""
-    elif [ -f "$ANTIGRAVITY_HOOKS_DST/dcg_filter.ps1" ]; then
-        hook_cmd="powershell -NoProfile -ExecutionPolicy Bypass -File \"$ANTIGRAVITY_HOOKS_DST/dcg_filter.ps1\""
-    else
-        hook_cmd="dcg"
-    fi
-
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo "    ! 未安装 python3，跳过 Antigravity settings.json hook 注册。" >&2
-        return
-    fi
-
-    HOOK_CMD="$hook_cmd" SETTINGS_DST="$ANTIGRAVITY_SETT_DST" FORCE="$FORCE" python3 - <<'PY'
-import json, os, sys
-
-hook_cmd = os.environ['HOOK_CMD']
-settings_dst = os.environ['SETTINGS_DST']
-force = os.environ.get('FORCE', 'false') == 'true'
-
-new_group = {
-    "matcher": "Bash",
-    "hooks": [
-        {
-            "type": "command",
-            "command": hook_cmd,
-            "timeout": 10
-        }
-    ]
-}
-
-if not os.path.exists(settings_dst):
-    os.makedirs(os.path.dirname(settings_dst), exist_ok=True)
-    obj = {"chat.hooks": {"PreToolUse": [new_group]}}
-    with open(settings_dst, 'w', encoding='utf-8') as f:
-        json.dump(obj, f, indent=2, ensure_ascii=False)
-    print("    + Antigravity settings.json（新建，写入 dcg PreToolUse hook）")
-    sys.exit(0)
-
-with open(settings_dst, 'r', encoding='utf-8') as f:
-    cfg = json.load(f)
-
-import shutil, time
-shutil.copy2(settings_dst, settings_dst + '.bak_' + time.strftime('%Y%m%d_%H%M%S'))
-
-if "chat.hooks" not in cfg or not isinstance(cfg["chat.hooks"], dict):
-    cfg["chat.hooks"] = {}
-if "PreToolUse" not in cfg["chat.hooks"] or not isinstance(cfg["chat.hooks"]["PreToolUse"], list):
-    cfg["chat.hooks"]["PreToolUse"] = []
-
-kept_groups = []
-for group in cfg["chat.hooks"]["PreToolUse"]:
-    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
-        kept_groups.append(group)
-        continue
-
-    kept_hooks = []
-    for hook in group["hooks"]:
-        cmd = str(hook.get("command", "")) if isinstance(hook, dict) else ""
-        trimmed = cmd.strip().lower()
-        is_project_dcg_hook = "dcg_filter" in cmd
-        is_direct_dcg_hook = trimmed in ("dcg", "dcg.exe")
-        if not (is_project_dcg_hook or is_direct_dcg_hook):
-            kept_hooks.append(hook)
-
-    if kept_hooks:
-        new_existing_group = dict(group)
-        new_existing_group["hooks"] = kept_hooks
-        kept_groups.append(new_existing_group)
-
-cfg["chat.hooks"]["PreToolUse"] = kept_groups + [new_group]
-
-with open(settings_dst, 'w', encoding='utf-8') as f:
-    json.dump(cfg, f, indent=2, ensure_ascii=False)
-print("    + Antigravity settings.json（已规范化为单条低噪音 dcg PreToolUse hook）")
-PY
-}
-
-install_windsurf_hooks() {
-    # Windsurf Cascade Hooks：使用 pre_run_command 事件 + dcg 过滤器；exit 2 = 阻断（与 Claude/Antigravity 协议不同）
-
-    if [ "$SKIP_DCG" = true ]; then
-        echo "    → --skip-dcg 已启用，跳过 Windsurf dcg hook。软层 SKILL 仍生效。"
-        return
-    fi
-    if [ "$DISABLE_DCG_HOOKS" = true ]; then
-        echo "    → --disable-dcg-hooks 已启用，跳过 Windsurf dcg hook 部署。"
-        return
-    fi
-    if ! test_dcg_installed; then
-        echo "    → dcg 未安装，跳过 Windsurf pre_run_command hook。软层 SKILL 仍生效。"
-        return
-    fi
-
-    # 1. 部署 windsurf/hooks/ → ~/.codeium/windsurf/hooks/
-    if [ -d "$WINDSURF_HOOKS_DIR_SRC" ]; then
-        if [ "$FORCE" = true ]; then
-            copy_dir_replace "$WINDSURF_HOOKS_DIR_SRC" "$WINDSURF_HOOKS_DIR_DST"
-            echo "    + ~/.codeium/windsurf/hooks/（覆盖，dcg 过滤器）"
-        else
-            copy_dir_merge "$WINDSURF_HOOKS_DIR_SRC" "$WINDSURF_HOOKS_DIR_DST"
-            echo "    + ~/.codeium/windsurf/hooks/（增量，dcg 过滤器）"
-        fi
-    fi
-
-    # 2. 部署 windsurf/hooks.json，替换 bash/powershell 命令占位符
-    if [ ! -f "$WINDSURF_HOOKS_JSON_SRC" ]; then return; fi
-
-    local hook_cmd_bash=""
-    local hook_cmd_ps=""
-    if [ -f "$WINDSURF_HOOKS_DIR_DST/dcg_filter.py" ]; then
-        hook_cmd_bash="python3 \"$WINDSURF_HOOKS_DIR_DST/dcg_filter.py\""
-    fi
-    if [ -f "$WINDSURF_HOOKS_DIR_DST/dcg_filter.ps1" ]; then
-        hook_cmd_ps="powershell -NoProfile -ExecutionPolicy Bypass -File \"$WINDSURF_HOOKS_DIR_DST/dcg_filter.ps1\""
-    fi
-
-    [ "$FORCE" = false ] && [ -f "$WINDSURF_HOOKS_JSON_DST" ] && cp "$WINDSURF_HOOKS_JSON_DST" "${WINDSURF_HOOKS_JSON_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-
-    if command -v python3 >/dev/null 2>&1; then
-        SRC="$WINDSURF_HOOKS_JSON_SRC" DST="$WINDSURF_HOOKS_JSON_DST" CMD_BASH="$hook_cmd_bash" CMD_PS="$hook_cmd_ps" python3 - <<'PY'
-import json, os
-src = os.environ['SRC']; dst = os.environ['DST']
-cmd_bash = os.environ.get('CMD_BASH', ''); cmd_ps = os.environ.get('CMD_PS', '')
-with open(src, 'r', encoding='utf-8') as f:
-    raw = f.read()
-raw = raw.replace('__WINDSURF_DCG_HOOK_BASH__', json.dumps(cmd_bash)[1:-1])
-raw = raw.replace('__WINDSURF_DCG_HOOK_POWERSHELL__', json.dumps(cmd_ps)[1:-1])
-os.makedirs(os.path.dirname(dst), exist_ok=True)
-with open(dst, 'w', encoding='utf-8') as f:
-    f.write(raw)
-PY
-        echo "    + ~/.codeium/windsurf/hooks.json（pre_run_command → dcg 过滤器）"
-    else
-        echo "    ! 未安装 python3，跳过 Windsurf hooks.json 写入。" >&2
-    fi
-}
-
-install_cursor_hooks() {
-    # Cursor 硬层：部署低噪音 dcg beforeShellExecution hook（cursor/hooks.json + cursor/hooks/ → ~/.cursor/）。
-    # Cursor 的 preToolUse deny 有已知 bug，因此使用 beforeShellExecution（仅 Shell 命令触发）。
-
-    echo "  Cursor 硬层（破坏性命令防护 dcg）："
-
-    if [ "$SKIP_DCG" = true ]; then
-        echo "    → --skip-dcg 已启用，跳过 Cursor dcg hook。软层 SKILL 仍生效。"
-        return
-    fi
-    if [ "$DISABLE_DCG_HOOKS" = true ]; then
-        echo "    → --disable-dcg-hooks 已启用，跳过 Cursor dcg hook 部署。"
-        return
-    fi
-
-    if ! test_dcg_installed; then
-        echo "    → dcg 未安装，跳过 Cursor beforeShellExecution hook。软层 SKILL 仍生效。"
-        return
-    fi
-
-    # 1. 部署 cursor/hooks/ → ~/.cursor/hooks/
-    if [ -d "$CURSOR_HOOKS_DIR_SRC" ]; then
-        if [ "$FORCE" = true ]; then
-            copy_dir_replace "$CURSOR_HOOKS_DIR_SRC" "$CURSOR_HOOKS_DIR_DST"
-            echo "    + ~/.cursor/hooks/（覆盖，dcg 过滤器）"
-        else
-            copy_dir_merge "$CURSOR_HOOKS_DIR_SRC" "$CURSOR_HOOKS_DIR_DST"
-            echo "    + ~/.cursor/hooks/（增量，dcg 过滤器）"
-        fi
-    fi
-
-    # 2. 部署 cursor/hooks.json → ~/.cursor/hooks.json
-    if [ ! -f "$CURSOR_HOOKS_SRC" ]; then
-        return
-    fi
-
-    local hook_cmd
-    local dcg_script="$CURSOR_HOOKS_DIR_DST/dcg_filter.ps1"
-    if [ -f "$dcg_script" ]; then
-        hook_cmd="powershell -NoProfile -ExecutionPolicy Bypass -File \"$dcg_script\""
-    elif command -v python3 >/dev/null 2>&1 && [ -f "$CURSOR_HOOKS_DIR_DST/dcg_filter.py" ]; then
-        hook_cmd="python3 \"$CURSOR_HOOKS_DIR_DST/dcg_filter.py\""
-    else
-        hook_cmd="dcg"
-    fi
-
-    if [ -f "$CURSOR_HOOKS_DST" ] && [ "$FORCE" = false ]; then
-        cp "$CURSOR_HOOKS_DST" "${CURSOR_HOOKS_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-    fi
-
-    if command -v python3 >/dev/null 2>&1; then
-        SRC="$CURSOR_HOOKS_SRC" DST="$CURSOR_HOOKS_DST" HOOK_COMMAND="$hook_cmd" python3 - <<'PY'
-import json, os
-src = os.environ['SRC']
-dst = os.environ['DST']
-hook_command = os.environ['HOOK_COMMAND']
-with open(src, 'r', encoding='utf-8') as f:
-    s = f.read().replace('__CURSOR_DCG_HOOK_COMMAND__', hook_command.replace('\\', '\\\\').replace('"', '\\"'))
-json.loads(s)
-with open(dst, 'w', encoding='utf-8') as f:
-    f.write(s)
-PY
-        echo "    + ~/.cursor/hooks.json（beforeShellExecution → dcg 过滤器）"
-    else
-        sed "s#__CURSOR_DCG_HOOK_COMMAND__#$hook_cmd#g" "$CURSOR_HOOKS_SRC" > "$CURSOR_HOOKS_DST"
-        echo "    + ~/.cursor/hooks.json（beforeShellExecution → dcg，已替换路径）"
-    fi
-}
-
-install_copilot_hooks() {
-    # Copilot 硬层：部署低噪音 dcg preToolUse hook（copilot/hooks/ → ~/.copilot/hooks/）。
-    # Copilot preToolUse stdin 格式：{"toolName":"bash","toolArgs":"{\"command\":\"...\"}"}
-
-    echo "  Copilot 硬层（破坏性命令防护 dcg）："
-
-    if [ "$SKIP_DCG" = true ]; then
-        echo "    → --skip-dcg 已启用，跳过 Copilot dcg hook。软层 SKILL 仍生效。"
-        return
-    fi
-    if [ "$DISABLE_DCG_HOOKS" = true ]; then
-        echo "    → --disable-dcg-hooks 已启用，跳过 Copilot dcg hook 部署。"
-        return
-    fi
-
-    if ! test_dcg_installed; then
-        echo "    → dcg 未安装，跳过 Copilot preToolUse hook。软层 SKILL 仍生效。"
-        return
-    fi
-
-    # 部署 copilot/hooks/ → ~/.copilot/hooks/
-    if [ -d "$COPILOT_HOOKS_SRC" ]; then
-        if [ "$FORCE" = true ]; then
-            copy_dir_replace "$COPILOT_HOOKS_SRC" "$COPILOT_HOOKS_DST"
-            echo "    + ~/.copilot/hooks/（覆盖，dcg 过滤器）"
-        else
-            copy_dir_merge "$COPILOT_HOOKS_SRC" "$COPILOT_HOOKS_DST"
-            echo "    + ~/.copilot/hooks/（增量，dcg 过滤器）"
-        fi
-        if [ -f "$COPILOT_HOOKS_DST/dcg_filter.py" ]; then
-            chmod +x "$COPILOT_HOOKS_DST/dcg_filter.py" 2>/dev/null || true
-        fi
-    fi
-
-    # 替换 dcg-guard.json 中的占位符为实际路径
-    local guard_json="$COPILOT_HOOKS_DST/dcg-guard.json"
-    if [ -f "$guard_json" ] && command -v python3 >/dev/null 2>&1; then
-        local ps1_path="$COPILOT_HOOKS_DST/dcg_filter.ps1"
-        local py_path="$COPILOT_HOOKS_DST/dcg_filter.py"
-        local ps1_cmd="powershell -NoProfile -ExecutionPolicy Bypass -File \"$ps1_path\""
-        local py_cmd="python3 \"$py_path\""
-        PS1_CMD="$ps1_cmd" PY_CMD="$py_cmd" GUARD="$guard_json" python3 - <<'PY'
-import json, os
-ps1_cmd = os.environ['PS1_CMD']
-py_cmd = os.environ['PY_CMD']
-guard = os.environ['GUARD']
-with open(guard, 'r', encoding='utf-8') as f:
-    s = f.read()
-s = s.replace('__COPILOT_DCG_HOOK_POWERSHELL__', ps1_cmd.replace('\\', '\\\\').replace('"', '\\"'))
-s = s.replace('__COPILOT_DCG_HOOK_BASH__', py_cmd.replace('\\', '\\\\').replace('"', '\\"'))
-json.loads(s)
-with open(guard, 'w', encoding='utf-8') as f:
-    f.write(s)
-PY
-        echo "    + ~/.copilot/hooks/dcg-guard.json（preToolUse → dcg 过滤器）"
-    fi
-}
-
-# 将任意字符串安全地编码为 JSON 字符串字面量内部（不含外层引号）
-# 用于把路径替换进 mcp.json 模板时正确转义 \ 和 " 等字符
-json_escape_value() {
-    if command -v python3 &>/dev/null; then
-        python3 -c 'import json,sys; sys.stdout.write(json.dumps(sys.argv[1])[1:-1])' "$1"
-    else
-        # 回退：仅转义最常见的 \ 与 "（控制字符在 macOS/Linux 路径中极罕见）
-        printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
-    fi
-}
-
-# 增量合并 JSONC settings：仅追加目标中缺失的顶层键，最大限度保留原文格式与注释
-merge_json_settings() {
-    local src="$1" dst="$2"
-    [ ! -f "$src" ] && return
-    if [ ! -f "$dst" ]; then
-        mkdir -p "$(dirname "$dst")"
-        cp "$src" "$dst"
-        echo "  + 已创建 $(basename "$dst")"
-        return
-    fi
-    if ! command -v python3 &>/dev/null; then
-        echo "  ! 未安装 python3，跳过 settings.json 合并: $dst" >&2
-        return
-    fi
-    cp "$dst" "${dst}.bak_$(date +%Y%m%d_%H%M%S)"
-    SRC="$src" DST="$dst" python3 - <<'PY'
-import json, os, re, sys
-
-src_path = os.environ['SRC']
-dst_path = os.environ['DST']
-
-def strip_jsonc(text):
-    placeholders = []
-    def repl(m):
-        placeholders.append(m.group(0))
-        return f'__JSONC_STR_{len(placeholders)-1}__'
-    s = re.sub(r'"(\\.|[^"\\])*"', repl, text)
-    s = re.sub(r'//[^\r\n]*', '', s)
-    s = re.sub(r'/\*.*?\*/', '', s, flags=re.S)
-    s = re.sub(r',(\s*[}\]])', r'\1', s)
-    for i, p in enumerate(placeholders):
-        s = s.replace(f'__JSONC_STR_{i}__', p)
-    return s
-
-with open(src_path, 'r', encoding='utf-8') as f:
-    src_raw = f.read()
-with open(dst_path, 'r', encoding='utf-8') as f:
-    dst_raw = f.read()
-
-try:
-    src_obj = json.loads(strip_jsonc(src_raw))
-except Exception as e:
-    print(f"  源 settings 解析失败，跳过: {e}", file=sys.stderr)
-    sys.exit(0)
-
-try:
-    dst_obj = json.loads(strip_jsonc(dst_raw))
-except Exception as e:
-    print(f"  现有 settings.json 解析失败（含语法错误），跳过合并: {e}", file=sys.stderr)
-    sys.exit(0)
-
-if not isinstance(src_obj, dict) or not isinstance(dst_obj, dict):
-    print("  settings.json 顶层不是对象，跳过", file=sys.stderr)
-    sys.exit(0)
-
-missing = {k: v for k, v in src_obj.items() if k not in dst_obj}
-if not missing:
-    print("  + settings.json (所有键已存在，未修改，注释保留)")
-    sys.exit(0)
-
-trimmed = dst_raw.rstrip()
-if not trimmed.endswith('}'):
-    print("  目标 settings.json 不以 '}' 结尾，跳过追加", file=sys.stderr)
-    sys.exit(0)
-
-body = trimmed[:-1].rstrip()
-additions = []
-for k, v in missing.items():
-    val = json.dumps(v, ensure_ascii=False, indent=2)
-    val_lines = val.split('\n')
-    val_lines = [val_lines[0]] + ['  ' + ln for ln in val_lines[1:]]
-    additions.append('  ' + json.dumps(k, ensure_ascii=False) + ': ' + '\n'.join(val_lines))
-
-insertion = ',\n'.join(additions)
-sep = '' if (body.endswith(',') or body.endswith('{')) else ','
-new_raw = f"{body}{sep}\n{insertion}\n}}\n"
-
-with open(dst_path, 'w', encoding='utf-8') as f:
-    f.write(new_raw)
-print(f"  + settings.json (追加 {len(missing)} 个缺失键，原注释保留)")
-PY
-}
-
-install_mcp_json() {
-    local src="$1" dst="$2" uv_path="$3"
-    [ ! -f "$src" ] && return
-    local content
-    if command -v python3 &>/dev/null; then
-        # 通过 Python 完成"读模板 + JSON 转义 + 占位符替换"
-        # 避免 bash ${var//pat/repl} 把替换串里的 \\ 收缩为 \ 的隐患
-        content=$(SRC="$src" UV="$uv_path" python3 - <<'PY'
-import os, json, sys
-with open(os.environ['SRC'], 'r', encoding='utf-8') as f:
-    s = f.read()
-def esc(v): return json.dumps(v)[1:-1]
-s = s.replace('__UV_PATH__', esc(os.environ['UV']))
-sys.stdout.write(s)
-PY
-)
-    else
-        # 回退：bash 直接替换（典型 Linux/macOS 路径不含 \ 或 "，足够用）
-        content=$(cat "$src")
-        content="${content//__UV_PATH__/$uv_path}"
-    fi
-    mkdir -p "$(dirname "$dst")"
-
-    if [ -f "$dst" ] && [ "$FORCE" = false ]; then
-        # 增量模式：备份并通过 Python 进行安全 JSON 合并（不依赖字符串插值）
-        cp "$dst" "${dst}.bak_$(date +%Y%m%d_%H%M%S)"
-        if command -v python3 &>/dev/null; then
-            if NEW_DATA="$content" DST="$dst" python3 - <<'PY' 2>/dev/null
-import json, os
-dst = os.environ['DST']
-new_data = json.loads(os.environ['NEW_DATA'])
-with open(dst, 'r', encoding='utf-8') as f:
-    existing = json.load(f)
-for key in ('servers', 'mcpServers'):
-    if key in existing:
-        existing[key].pop('interactiveFeedback', None)
-        existing[key].pop('interactive-feedback', None)
-    if key in new_data:
-        servers = existing.setdefault(key, {})
-        servers.pop('interactiveFeedback', None)
-        servers.pop('interactive-feedback', None)
-        servers.update(new_data[key])
-with open(dst, 'w', encoding='utf-8') as f:
-    json.dump(existing, f, indent=2, ensure_ascii=False)
-PY
-            then
-                echo "  + mcp.json (增量合并，保留已有服务器)"
-                return
-            fi
-        fi
-        # python 不可用或解析失败则回退到覆盖
-        printf '%s\n' "$content" > "$dst"
-        echo "  + mcp.json (已替换路径，Python 合并失败已回退)"
-    else
-        [ -f "$dst" ] && cp "$dst" "${dst}.bak_$(date +%Y%m%d_%H%M%S)"
-        printf '%s\n' "$content" > "$dst"
-        echo "  + mcp.json (已替换路径)"
-    fi
-}
-
+echo ""
 echo "========================================"
-echo "  Cursor + VS Code Copilot + Codex + Claude 配置还原"
+echo "  Codex configuration restore"
 echo "========================================"
+[ "$DRY_RUN" = true ] && echo "[DryRun] no files will be changed."
+[ "$FORCE" = true ] && echo "[Force] existing Codex managed files may be overwritten."
 echo ""
 
-# 显示模式
-if [ "$FORCE" = true ]; then
-    echo "[模式] 完全覆盖（--force）"
+[ -d "$CODEX_SRC" ] || { echo "Codex source directory not found: $CODEX_SRC" >&2; exit 1; }
+
+if [ "$DRY_RUN" = true ]; then
+    echo "  [DryRun] would ensure $CODEX_DST"
 else
-    echo "[模式] 增量合并（保留用户已有配置）"
-fi
-if [ "$TARGET_ALL" = false ]; then
-    active_targets=""
-    [ "$TARGET_VSCODE" = true ] && active_targets="${active_targets:+$active_targets, }VSCode"
-    [ "$TARGET_CURSOR" = true ] && active_targets="${active_targets:+$active_targets, }Cursor"
-    [ "$TARGET_CODEX"  = true ] && active_targets="${active_targets:+$active_targets, }Codex"
-    [ "$TARGET_CLAUDE" = true ] && active_targets="${active_targets:+$active_targets, }Claude"
-    [ "$TARGET_ANTIGRAVITY" = true ] && active_targets="${active_targets:+$active_targets, }Antigravity"
-    [ "$TARGET_WINDSURF" = true ] && active_targets="${active_targets:+$active_targets, }Windsurf"
-    echo "[目标] 仅配置: $active_targets"
+    mkdir -p "$CODEX_DST"
 fi
 
-# 显示检测结果
-echo "[IDE 检测]"
-if [ "$HAS_VSCODE" = true ]; then echo "  + VS Code"; fi
-if [ "$HAS_CURSOR" = true ]; then echo "  + Cursor"; fi
-if [ "$HAS_CODEX" = true ]; then echo "  + Codex"; fi
-if [ "$HAS_CLAUDE" = true ]; then echo "  + Claude"; fi
-if [ "$HAS_ANTIGRAVITY" = true ]; then echo "  + Antigravity"; fi
-if [ "$HAS_WINDSURF" = true ]; then echo "  + Windsurf"; fi
-if [ "$HAS_VSCODE" = false ] && [ "$HAS_CURSOR" = false ] && [ "$HAS_CODEX" = false ] && [ "$HAS_CLAUDE" = false ] && [ "$HAS_ANTIGRAVITY" = false ] && [ "$HAS_WINDSURF" = false ]; then
-    if [ "$TARGET_ALL" = false ]; then
-        echo "  指定的 IDE 未安装，仍将安装配置（IDE 安装后即可使用）。"
-        [ "$TARGET_VSCODE" = true ] && HAS_VSCODE=true
-        [ "$TARGET_CURSOR" = true ] && HAS_CURSOR=true
-        [ "$TARGET_CODEX"  = true ] && HAS_CODEX=true
-        [ "$TARGET_CLAUDE" = true ] && HAS_CLAUDE=true
-        [ "$TARGET_ANTIGRAVITY" = true ] && HAS_ANTIGRAVITY=true
-        [ "$TARGET_WINDSURF" = true ] && HAS_WINDSURF=true
+if [ "$DRY_RUN" = true ]; then
+    echo "  [DryRun] $CODEX_SRC/AGENTS.md -> $CODEX_DST/AGENTS.md"
+    echo "  [DryRun] $CODEX_SRC/skills -> $CODEX_DST/skills"
+else
+    [ -f "$CODEX_DST/AGENTS.md" ] && cp "$CODEX_DST/AGENTS.md" "$CODEX_DST/AGENTS.md.bak_$(date +%Y%m%d_%H%M%S)"
+    cp "$CODEX_SRC/AGENTS.md" "$CODEX_DST/AGENTS.md"
+    echo "  + ~/.codex/AGENTS.md"
+
+    if [ "$FORCE" = true ]; then
+        rm -rf "$CODEX_DST/skills"
+        cp -R "$CODEX_SRC/skills" "$CODEX_DST/skills"
     else
-        echo "  未检测到任何 IDE，将安装所有配置（IDE 安装后即可使用）。"
-        HAS_VSCODE=true
-        HAS_CURSOR=true
-        HAS_CODEX=true
-        HAS_CLAUDE=true
-        HAS_ANTIGRAVITY=true
-        HAS_WINDSURF=true
+        mkdir -p "$CODEX_DST/skills"
+        cp -R "$CODEX_SRC/skills/." "$CODEX_DST/skills/"
     fi
-fi
-echo ""
-
-# --- 1. 还原 copilot → ~/.copilot (VS Code) ---
-if [ "$HAS_VSCODE" = true ]; then
-    echo "[1] 还原 VS Code Copilot 配置（instructions + skills + hooks）..."
-    if [ ! -d "$COPILOT_SRC" ]; then
-        echo "  警告：找不到源目录: $COPILOT_SRC" >&2
-    else
-        for subdir in instructions skills; do
-            if [ -d "$COPILOT_SRC/$subdir" ]; then
-                if [ "$FORCE" = true ]; then
-                    copy_dir_replace "$COPILOT_SRC/$subdir" "$COPILOT_DST/$subdir"
-                    echo "  + $subdir (覆盖)"
-                else
-                    copy_dir_merge "$COPILOT_SRC/$subdir" "$COPILOT_DST/$subdir"
-                    echo "  + $subdir (增量)"
-                fi
-            fi
-        done
-        remove_deprecated_skills_readme "$COPILOT_DST/skills"
-
-        # VS Code settings.json 合并（与 PowerShell 版本对齐）
-        if [ -f "$VSCODE_SETT_SRC" ]; then
-            merge_json_settings "$VSCODE_SETT_SRC" "$VSCODE_SETT_DST"
-        fi
-
-        # hooks（preToolUse 硬兜底，使用社区方案 dcg）
-        install_copilot_hooks
-    fi
+    echo "  + ~/.codex/skills/"
 fi
 
-# --- 2. 还原 Cursor 配置 ---
-if [ "$HAS_CURSOR" = true ]; then
-    echo "[2] 还原 Cursor 配置（rules + skills + hooks）..."
-    if [ ! -d "$CURSOR_SRC" ]; then
-        echo "  警告：找不到源目录: $CURSOR_SRC" >&2
-    else
-        mkdir -p "$CURSOR_DST"
-
-        for subdir in rules skills; do
-            if [ -d "$CURSOR_SRC/$subdir" ]; then
-                if [ "$FORCE" = true ]; then
-                    copy_dir_replace "$CURSOR_SRC/$subdir" "$CURSOR_DST/$subdir"
-                    echo "  + $subdir/ (覆盖)"
-                else
-                    copy_dir_merge "$CURSOR_SRC/$subdir" "$CURSOR_DST/$subdir"
-                    echo "  + $subdir/ (增量)"
-                fi
-            fi
-        done
-        remove_deprecated_skills_readme "$CURSOR_DST/skills"
-
-        # settings.json 合并（与 PowerShell 版本对齐）
-        if [ -f "$CURSOR_SETT_SRC" ]; then
-            merge_json_settings "$CURSOR_SETT_SRC" "$CURSOR_SETT_DST"
-        fi
-
-        # hooks（beforeShellExecution 硬兜底，使用社区方案 dcg）
-        install_cursor_hooks
-    fi
+UV_PATH="$(install_uv_if_missing)"
+if install_dcg_if_requested && [ "$DISABLE_DCG_HOOKS" = false ] && [ "$SKIP_DCG" = false ]; then
+    HOOKS_ENABLED=true
+else
+    HOOKS_ENABLED=false
 fi
 
-# --- 3. 还原 Codex 配置 ---
-if [ "$HAS_CODEX" = true ]; then
-    echo "[3] 还原 Codex 配置（AGENTS.md + skills + 低噪音 hooks）..."
-    if [ ! -d "$CODEX_SRC" ]; then
-        echo "  警告：找不到源目录: $CODEX_SRC" >&2
-    else
-        mkdir -p "$CODEX_DST"
-        AGENTS_SRC="$CODEX_SRC/AGENTS.md"
-        AGENTS_DST="$CODEX_DST/AGENTS.md"
-        if [ -f "$AGENTS_SRC" ]; then
-            [ -f "$AGENTS_DST" ] && cp "$AGENTS_DST" "${AGENTS_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-            cp "$AGENTS_SRC" "$AGENTS_DST"
-            echo "  + AGENTS.md"
-        fi
-        # skills/  ← 与 cursor/skills、copilot/skills、claude/skills 的技能内容对齐，但各目录独立（含安全护栏 skill）
-        if [ -d "$CODEX_SKILLS_SRC" ]; then
-            if [ "$FORCE" = true ]; then
-                copy_dir_replace "$CODEX_SKILLS_SRC" "$CODEX_SKILLS_DST"
-                echo "  + skills/ (覆盖)"
-            else
-                copy_dir_merge "$CODEX_SKILLS_SRC" "$CODEX_SKILLS_DST"
-                echo "  + skills/ (增量)"
-            fi
-            remove_deprecated_skills_readme "$CODEX_SKILLS_DST"
-        fi
-        # hooks.json + config.toml feature flag（默认启用低噪音硬兜底，使用社区方案 dcg）
-        install_codex_hooks
-    fi
-fi
-
-# --- 4. 还原 Claude 配置 ---
-if [ "$HAS_CLAUDE" = true ]; then
-    echo "[4] 还原 Claude 配置（CLAUDE.md + skills + 低噪音 hooks）..."
-    if [ ! -d "$CLAUDE_SRC" ]; then
-        echo "  警告：找不到源目录: $CLAUDE_SRC" >&2
-    else
-        mkdir -p "$CLAUDE_DST"
-        if [ -f "$CLAUDE_CONFIG_SRC" ]; then
-            [ -f "$CLAUDE_CONFIG_DST" ] && cp "$CLAUDE_CONFIG_DST" "${CLAUDE_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-            cp "$CLAUDE_CONFIG_SRC" "$CLAUDE_CONFIG_DST"
-            echo "  + CLAUDE.md"
-        fi
-        if [ -d "$CLAUDE_SKILLS_SRC" ]; then
-            if [ "$FORCE" = true ]; then
-                copy_dir_replace "$CLAUDE_SKILLS_SRC" "$CLAUDE_SKILLS_DST"
-                echo "  + skills/ (覆盖)"
-            else
-                copy_dir_merge "$CLAUDE_SKILLS_SRC" "$CLAUDE_SKILLS_DST"
-                echo "  + skills/ (增量)"
-            fi
-        fi
-        # hooks（低噪音硬兜底，使用社区方案 dcg）
-        install_claude_hooks
-    fi
-fi
-
-# --- 4.5. 还原 Antigravity 配置 ---
-if [ "$HAS_ANTIGRAVITY" = true ]; then
-    echo "[4.5] 还原 Antigravity 配置（GEMINI.md + skills + settings + 低噪音 hooks）..."
-    if [ ! -d "$ANTIGRAVITY_SRC" ]; then
-        echo "  警告：找不到源目录: $ANTIGRAVITY_SRC" >&2
-    else
-        mkdir -p "$HOME/.gemini"
-        mkdir -p "$ANTIGRAVITY_DST"
-        
-        if [ -f "$ANTIGRAVITY_CONFIG_SRC" ]; then
-            [ -f "$ANTIGRAVITY_CONFIG_DST" ] && cp "$ANTIGRAVITY_CONFIG_DST" "${ANTIGRAVITY_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-            cp "$ANTIGRAVITY_CONFIG_SRC" "$ANTIGRAVITY_CONFIG_DST"
-            echo "  + GEMINI.md"
-        fi
-        
-        if [ -d "$ANTIGRAVITY_SKILLS_SRC" ]; then
-            if [ "$FORCE" = true ]; then
-                copy_dir_replace "$ANTIGRAVITY_SKILLS_SRC" "$ANTIGRAVITY_SKILLS_DST"
-                echo "  + skills/ (覆盖)"
-            else
-                copy_dir_merge "$ANTIGRAVITY_SKILLS_SRC" "$ANTIGRAVITY_SKILLS_DST"
-                echo "  + skills/ (增量)"
-            fi
-        fi
-        
-        if [ -f "$ANTIGRAVITY_SETT_SRC" ]; then
-            merge_json_settings "$ANTIGRAVITY_SETT_SRC" "$ANTIGRAVITY_SETT_DST"
-        fi
-        
-        install_antigravity_hooks
-    fi
-fi
-
-# --- 4.6. 还原 Windsurf 配置（仅 MCP + hooks；skills/rules 由 Cascade 直接读 ~/.claude/）---
-if [ "$HAS_WINDSURF" = true ]; then
-    echo "[4.6] 还原 Windsurf 配置（pre_run_command 低噪音 hooks）..."
-    if [ ! -d "$WINDSURF_SRC" ]; then
-        echo "  警告：找不到源目录: $WINDSURF_SRC" >&2
-    else
-        mkdir -p "$WINDSURF_DST"
-        install_windsurf_hooks
-    fi
-fi
-
-# --- 5. 生成 MCP 配置 ---
-if [ "$HAS_CURSOR" = true ] || [ "$HAS_VSCODE" = true ] || [ "$HAS_CODEX" = true ] || [ "$HAS_ANTIGRAVITY" = true ] || [ "$HAS_WINDSURF" = true ]; then
-    echo "[5] 配置 MCP 服务器..."
-    UV_PATH=$(resolve_uv_path || true)
-    if [ -z "$UV_PATH" ]; then
-        echo "  未找到 uv，正在自动安装..."
-        if curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null; then
-            # 刷新 PATH
-            export PATH="$HOME/.local/bin:$PATH"
-            UV_PATH=$(resolve_uv_path || true)
-            if [ -n "$UV_PATH" ]; then
-                echo "  + uv 安装成功: $UV_PATH"
-            else
-                echo "  警告：uv 安装后仍未找到，请手动检查" >&2
-            fi
-        else
-            echo "  警告：uv 自动安装失败" >&2
-            echo "  请手动安装: https://docs.astral.sh/uv/" >&2
-        fi
-    fi
-    if [ -z "$UV_PATH" ]; then
-        echo "  警告：未找到 uv，请先安装: https://docs.astral.sh/uv/"
-    fi
-
-    [ -z "$UV_PATH" ] && UV_PATH="$HOME/.local/bin/uv"
-
-    if [ "$HAS_CURSOR" = true ]; then
-        install_mcp_json "$CURSOR_SRC/mcp.json" "$CURSOR_DST/mcp.json" "$UV_PATH"
-    fi
-    if [ "$HAS_VSCODE" = true ]; then
-        install_mcp_json "$MCP_SRC" "$MCP_DST" "$UV_PATH"
-    fi
-    if [ "$HAS_ANTIGRAVITY" = true ]; then
-        install_mcp_json "$ANTIGRAVITY_MCP_SRC" "$ANTIGRAVITY_MCP_DST" "$UV_PATH"
-    fi
-    if [ "$HAS_WINDSURF" = true ]; then
-        install_mcp_json "$WINDSURF_MCP_SRC" "$WINDSURF_MCP_DST" "$UV_PATH"
-    fi
-    if [ "$HAS_CODEX" = true ]; then
-        # 合并 Codex config.toml MCP 服务器配置
-        CODEX_CONFIG_SRC="$CODEX_SRC/config.toml"
-        CODEX_CONFIG_DST="$CODEX_DST/config.toml"
-        if [ -f "$CODEX_CONFIG_SRC" ]; then
-            if command -v python3 &>/dev/null; then
-                # TOML 基本字符串与 JSON 字符串转义规则一致：用 Python 一次性读取+转义+替换
-                config_content=$(SRC="$CODEX_CONFIG_SRC" UV="$UV_PATH" python3 - <<'PY'
-import os, json, sys
-with open(os.environ['SRC'], 'r', encoding='utf-8') as f:
-    s = f.read()
-def esc(v): return json.dumps(v)[1:-1]
-s = s.replace('__UV_PATH__', esc(os.environ['UV']))
-sys.stdout.write(s)
-PY
-)
-            else
-                config_content=$(cat "$CODEX_CONFIG_SRC")
-                config_content="${config_content//__UV_PATH__/$UV_PATH}"
-            fi
-            mkdir -p "$CODEX_DST"
-            if [ -f "$CODEX_CONFIG_DST" ] && [ "$FORCE" = false ]; then
-                cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-                if command -v python3 &>/dev/null; then
-                    merged_ok=false
-                    if NEW_CONTENT="$config_content" DST="$CODEX_CONFIG_DST" python3 - <<'PY'
-import os, re, sys
-new_content = os.environ['NEW_CONTENT']
-dst = os.environ['DST']
-with open(dst, 'r', encoding='utf-8') as f:
-    existing = f.read()
-legacy_re = re.compile(r'(?ms)^\[mcp_servers\.(?:interactiveFeedback|interactive-feedback)(?:\.[^\]]+)?\]\s*.*?(?=^\[|\Z)')
-original = existing
-existing = legacy_re.sub('', existing)
-removed_legacy = existing != original
-# 仅按"顶层 [mcp_servers.NAME]"切块，子表（如 .env）随父块一同保留
-header_re = re.compile(r'(?m)^\[mcp_servers\.([A-Za-z_][A-Za-z0-9_-]*)\]\s*$')
-matches = list(header_re.finditer(new_content))
-to_add = []
-for i, m in enumerate(matches):
-    name = m.group(1)
-    if f'[mcp_servers.{name}]' in existing:
-        continue
-    start = m.start()
-    end = matches[i+1].start() if i+1 < len(matches) else len(new_content)
-    to_add.append(new_content[start:end].rstrip())
-if not to_add and not removed_legacy:
-    print('  + config.toml (MCP 服务器已存在，无需修改)')
-    sys.exit(0)
-result = existing.rstrip()
-if to_add:
-    result += '\n\n' + '\n\n'.join(to_add)
-result = result.rstrip() + '\n'
-with open(dst, 'w', encoding='utf-8') as f:
-    f.write(result)
-if removed_legacy:
-    print('  + config.toml (增量合并，已移除旧 interactiveFeedback 服务器)')
-else:
-    print(f'  + config.toml (增量合并，追加 {len(to_add)} 个 MCP 服务器)')
-PY
-                    then
-                        merged_ok=true
-                    fi
-                    if [ "$merged_ok" = false ]; then
-                        printf '%s\n' "$config_content" > "$CODEX_CONFIG_DST"
-                        echo "  + config.toml (Python 合并失败，已覆盖)"
-                    fi
-                else
-                    echo "  ! 未安装 python3，已直接覆盖 config.toml" >&2
-                    printf '%s\n' "$config_content" > "$CODEX_CONFIG_DST"
-                fi
-            else
-                [ -f "$CODEX_CONFIG_DST" ] && cp "$CODEX_CONFIG_DST" "${CODEX_CONFIG_DST}.bak_$(date +%Y%m%d_%H%M%S)"
-                echo "$config_content" > "$CODEX_CONFIG_DST"
-                echo "  + config.toml (已替换路径)"
-            fi
-        fi
-    fi
-fi
-
-# --- 验证 ---
-echo "[验证]"
-CHECKS=""
-if [ "$HAS_VSCODE" = true ]; then
-    CHECKS="$CHECKS ~/.copilot/instructions/:$COPILOT_DST/instructions"
-    CHECKS="$CHECKS ~/.copilot/skills/:$COPILOT_DST/skills"
-    if [ "$SKIP_DCG" = false ] && [ "$DISABLE_DCG_HOOKS" = false ]; then
-        CHECKS="$CHECKS ~/.copilot/hooks/:$COPILOT_HOOKS_DST"
-    fi
-    CHECKS="$CHECKS VS_Code_mcp.json:$MCP_DST"
-fi
-if [ "$HAS_CURSOR" = true ]; then
-    CHECKS="$CHECKS ~/.cursor/mcp.json:$CURSOR_DST/mcp.json"
-    CHECKS="$CHECKS ~/.cursor/rules/:$CURSOR_DST/rules"
-    CHECKS="$CHECKS ~/.cursor/skills/:$CURSOR_DST/skills"
-    if [ "$SKIP_DCG" = false ] && [ "$DISABLE_DCG_HOOKS" = false ]; then
-        CHECKS="$CHECKS ~/.cursor/hooks.json:$CURSOR_HOOKS_DST"
-        CHECKS="$CHECKS ~/.cursor/hooks/:$CURSOR_HOOKS_DIR_DST"
-    fi
-fi
-if [ "$HAS_CODEX" = true ]; then
-    CHECKS="$CHECKS ~/.codex/AGENTS.md:$CODEX_DST/AGENTS.md"
-    CHECKS="$CHECKS ~/.codex/config.toml:$CODEX_DST/config.toml"
-    CHECKS="$CHECKS ~/.codex/skills/:$CODEX_SKILLS_DST"
-    CHECKS="$CHECKS ~/.codex/skills/destructive-command-guard/:$CODEX_SKILLS_DST/destructive-command-guard"
-    CHECKS="$CHECKS ~/.codex/hooks.json:$CODEX_HOOKS_JSON_DST"
-fi
-if [ "$HAS_CLAUDE" = true ]; then
-    CHECKS="$CHECKS ~/.claude/CLAUDE.md:$CLAUDE_CONFIG_DST"
-    CHECKS="$CHECKS ~/.claude/skills/:$CLAUDE_SKILLS_DST"
-    CHECKS="$CHECKS ~/.claude/skills/destructive-command-guard/:$CLAUDE_SKILLS_DST/destructive-command-guard"
-    if [ "$SKIP_DCG" = false ] && [ "$DISABLE_DCG_HOOKS" = false ]; then
-        CHECKS="$CHECKS ~/.claude/hooks/:$CLAUDE_HOOKS_DST"
-    fi
-fi
-if [ "$HAS_ANTIGRAVITY" = true ]; then
-    CHECKS="$CHECKS ~/.gemini/GEMINI.md:$ANTIGRAVITY_CONFIG_DST"
-    CHECKS="$CHECKS ~/.gemini/antigravity/skills/:$ANTIGRAVITY_SKILLS_DST"
-    CHECKS="$CHECKS ~/.gemini/antigravity/skills/destructive-command-guard/:$ANTIGRAVITY_SKILLS_DST/destructive-command-guard"
-    CHECKS="$CHECKS ~/.gemini/antigravity/mcp_config.json:$ANTIGRAVITY_MCP_DST"
-    CHECKS="$CHECKS Antigravity_settings.json:$ANTIGRAVITY_SETT_DST"
-    if [ "$SKIP_DCG" = false ] && [ "$DISABLE_DCG_HOOKS" = false ]; then
-        CHECKS="$CHECKS ~/.gemini/antigravity/hooks/:$ANTIGRAVITY_HOOKS_DST"
-    fi
-fi
-if [ "$HAS_WINDSURF" = true ]; then
-    CHECKS="$CHECKS ~/.codeium/windsurf/mcp_config.json:$WINDSURF_MCP_DST"
-    if [ "$SKIP_DCG" = false ] && [ "$DISABLE_DCG_HOOKS" = false ]; then
-        CHECKS="$CHECKS ~/.codeium/windsurf/hooks.json:$WINDSURF_HOOKS_JSON_DST"
-        CHECKS="$CHECKS ~/.codeium/windsurf/hooks/:$WINDSURF_HOOKS_DIR_DST"
-    fi
-fi
-for item in $CHECKS; do
-    name="${item%%:*}"
-    path="${item#*:}"
-    if [ -e "$path" ]; then
-        echo "  + $name"
-    else
-        echo "  - $name (未找到)"
-    fi
-done
-
-# dcg 二进制独立检查（未安装时软层 SKILL 仍生效）
-if [ "$HAS_CODEX" = true ] && [ "$SKIP_DCG" = false ]; then
-    if test_dcg_installed; then
-        echo "  + dcg 二进制（社区方案 destructive_command_guard）"
-    else
-        echo "  ~ dcg 未安装（硬层未启用；软层 SKILL 仍生效）"
-    fi
-    if [ "$DISABLE_DCG_HOOKS" = true ]; then
-        echo "  + Codex dcg hook 已按参数关闭"
-    elif [ -f "$CODEX_HOOKS_JSON_DST" ]; then
-        echo "  + Codex dcg hook（默认启用，低噪音过滤器）"
-    else
-        echo "  - Codex dcg hook（默认启用但 hooks.json 未找到）"
-    fi
-fi
-if [ "$HAS_CLAUDE" = true ] && [ "$SKIP_DCG" = false ]; then
-    if test_dcg_installed; then
-        echo "  + dcg 二进制（Claude Code 硬层已启用）"
-    else
-        echo "  ~ dcg 未安装（Claude Code 硬层未启用；软层 SKILL 仍生效）"
-    fi
-    if [ "$DISABLE_DCG_HOOKS" = true ]; then
-        echo "  + Claude Code dcg hook 已按参数跳过"
-    elif [ -d "$CLAUDE_HOOKS_DST" ]; then
-        echo "  + Claude Code dcg hook（低噪音过滤器）"
-    else
-        echo "  ~ Claude Code dcg hook（hooks/ 未找到）"
-    fi
-fi
-if [ "$HAS_ANTIGRAVITY" = true ] && [ "$SKIP_DCG" = false ]; then
-    if test_dcg_installed; then
-        echo "  + dcg 二进制（Antigravity 硬层已启用）"
-    else
-        echo "  ~ dcg 未安装（Antigravity 硬层未启用；软层 SKILL 仍生效）"
-    fi
-    if [ "$DISABLE_DCG_HOOKS" = true ]; then
-        echo "  + Antigravity dcg hook 已按参数跳过"
-    elif [ -d "$ANTIGRAVITY_HOOKS_DST" ]; then
-        echo "  + Antigravity dcg hook（低噪音过滤器）"
-    else
-        echo "  ~ Antigravity dcg hook（hooks/ 未找到）"
-    fi
-fi
-if [ "$HAS_CURSOR" = true ] && [ "$SKIP_DCG" = false ]; then
-    if [ "$DISABLE_DCG_HOOKS" = true ]; then
-        echo "  + Cursor dcg hook 已按参数跳过"
-    elif [ -f "$CURSOR_HOOKS_DST" ]; then
-        echo "  + Cursor dcg hook（beforeShellExecution）"
-    else
-        echo "  ~ Cursor dcg hook（hooks.json 未找到）"
-    fi
-fi
-if [ "$HAS_VSCODE" = true ] && [ "$SKIP_DCG" = false ]; then
-    if [ "$DISABLE_DCG_HOOKS" = true ]; then
-        echo "  + Copilot dcg hook 已按参数跳过"
-    elif [ -d "$COPILOT_HOOKS_DST" ]; then
-        echo "  + Copilot dcg hook（preToolUse）"
-    else
-        echo "  ~ Copilot dcg hook（hooks/ 未找到）"
-    fi
-fi
+merge_codex_config "$UV_PATH" "$HOOKS_ENABLED"
+install_hooks "$HOOKS_ENABLED"
 
 echo ""
-echo "========================================"
-echo "  还原完成！"
-echo "========================================"
-echo ""
-echo "后续步骤："
-if [ "$HAS_VSCODE" = true ]; then echo "  - 重启 VS Code"; fi
-if [ "$HAS_CURSOR" = true ]; then echo "  - 重启 Cursor，验证 MCP Server 是否正常加载"; fi
-if [ "$HAS_CODEX" = true ]; then echo "  - 重启 VS Code Codex 扩展，验证 MCP 工具是否正常加载"; fi
-if [ "$HAS_CLAUDE" = true ]; then echo "  - 重启 Claude Code"; fi
-if [ "$HAS_ANTIGRAVITY" = true ]; then echo "  - 重启 Antigravity"; fi
-if [ "$HAS_WINDSURF" = true ]; then echo "  - 重启 Windsurf"; fi
-echo "  - 如需其他 MCP（GitHub、Context7 等），按需手动安装"
+echo "Done. Restart Codex to reload AGENTS.md, skills, MCP servers, and hooks."

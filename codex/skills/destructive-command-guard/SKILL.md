@@ -66,7 +66,7 @@ description: "破坏性命令安全护栏。当将要执行可能导致数据丢
 
 ## Windows 平台特别警告（F 盘 / D 盘删盘事故根因）
 
-Codex / Cursor 在 Windows 上经常生成**混合 shell** 调用，如：
+Codex 在 Windows 上可能生成**混合 shell** 调用，如：
 
 ```powershell
 powershell -Command "cmd /c rmdir /s /q F:\MyProject\__pycache__"
@@ -142,7 +142,7 @@ rmdir /s /q F:\
 
 - `.git/`、`.git/**`（任何 Git 元数据）
 - `~/.ssh/`、`~/.aws/`、`~/.config/`、`~/.local/`
-- `~/.codex/`、`~/.cursor/`、`~/.copilot/`、`~/.claude/`（IDE 配置）
+- `~/.codex/`（Codex 配置）
 - `C:\Windows\`、`C:\Program Files\`、`C:\ProgramData\`、`/etc/`、`/usr/`、`/var/`
 - 用户文档目录：`~/Documents`、`~/Pictures`、`~/Desktop`、`~/Downloads`
 - 任何驱动器盘符根目录：`C:\`、`D:\`、`E:\`、`/`、`/mnt/<drive>/`

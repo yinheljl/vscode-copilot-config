@@ -1,159 +1,84 @@
 # Codex 安装、搭建与配置简易操作文档
 
-本文面向公司内部同事，目标是让新用户能按步骤完成 Codex 安装、登录、公司统一配置导入、验证和后续更新。
-
-本文基于当前仓库 `ai-agent-config` 编写，推荐优先使用本仓库脚本完成 Codex 配置，不建议手工复制配置文件。
-
-路径说明：本地持久目录统一使用 `~/.ai-agent-config`。
+本文用于公司内部同事快速安装 Codex，并导入本仓库维护的 Codex 全局配置。
 
 ## 1. 适用范围
 
-- 主要适用：Windows 11 / Windows 10 新版本。
-- 兼容适用：macOS、Linux、Windows WSL2。
-- 适用工具：Codex App、Codex CLI、Codex IDE Extension。
-- 公司统一配置来源：本仓库的 `codex/` 目录和 `restore.ps1` / `restore.sh` 脚本。
+- Windows 10/11
+- macOS
+- Linux
+- Windows WSL2
 
-完成后应达到以下状态：
+适用工具：
 
-- `~/.codex/AGENTS.md` 已写入公司统一行为规范。
-- `~/.codex/skills/` 已写入公司维护的 Codex skills。
-- `~/.codex/config.toml` 已配置 `markitdown` MCP 服务器。
-- 如启用 `dcg`，`~/.codex/hooks.json` 和 `~/.codex/hooks/` 已写入破坏性命令防护 hook。
-- 重启 Codex 后，新会话能读取上述配置。
+- Codex App
+- Codex CLI
+- Codex IDE Extension
 
-## 2. 准备工作
+## 2. 安装 Codex
 
-Windows 用户建议先确认：
-
-```powershell
-git --version
-$PSVersionTable.PSVersion
-```
-
-如果没有 Git，先安装 Git for Windows。公司标准环境如有软件分发平台，优先使用公司分发平台；否则可用 Git 官网安装包。
-
-Codex 使用上还需要：
-
-- 一个可使用 Codex 的 ChatGPT / OpenAI 账号。
-- 能访问 GitHub 和 OpenAI / ChatGPT 相关域名的网络。
-- PowerShell 终端。
-- 如使用 WSL2，建议仓库放在 Linux home 下，例如 `~/code/repo`，不要放在 `/mnt/c/...`。
-
-## 3. 安装 Codex
-
-### 3.1 Windows 推荐方式：Codex App
+### Windows 推荐方式
 
 1. 打开官方 Codex App 文档：<https://developers.openai.com/codex/app>
-2. 点击 Windows 下载入口安装 Codex App。
+2. 下载并安装 Windows 版 Codex App。
 3. 打开 Codex App，使用 ChatGPT 账号或 OpenAI API key 登录。
-4. 选择本地项目目录，首次使用建议选择 `Local` 模式。
-5. 在 PowerShell 中验证本机是否已有 CLI：
+4. 在 PowerShell 中验证：
 
 ```powershell
 codex --version
 ```
 
-能输出版本号即可，例如 `codex-cli 0.135.0`。
-
-### 3.2 macOS / Linux / WSL2：Codex CLI
-
-官方 CLI 安装命令：
+### macOS / Linux / WSL2
 
 ```bash
 curl -fsSL https://chatgpt.com/codex/install.sh | sh
 codex
 ```
 
-首次运行 `codex` 会提示登录，可选择 ChatGPT 账号或 OpenAI API key。
+首次运行 `codex` 时按提示登录。
 
-非交互式安装可用：
+## 3. 导入公司配置
 
-```bash
-curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
-```
-
-Windows 上如果需要 Linux 原生环境，先安装 WSL2：
-
-```powershell
-wsl --install
-wsl
-```
-
-进入 WSL shell 后再执行上面的 macOS / Linux CLI 安装命令。
-
-## 4. 导入公司 Codex 配置
-
-### 4.1 Windows 一键配置
-
-首次配置：
+### Windows
 
 ```powershell
 git clone https://github.com/yinheljl/ai-agent-config.git "$env:USERPROFILE\.ai-agent-config"
 Set-ExecutionPolicy -Scope Process Bypass -Force
-& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1"
 ```
 
-如果已经克隆过仓库：
+如需自动安装/刷新 `dcg` 硬层安全 hook：
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass -Force
-& "$env:USERPROFILE\.ai-agent-config\update.ps1" -Target Codex
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -AutoInstallDcg
 ```
 
-如果希望无人值守安装/刷新 `dcg` 破坏性命令防护：
-
-```powershell
-& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -AutoInstallDcg
-```
-
-如果公司环境暂时不允许安装 `dcg`，但仍想写入软层规则和 MCP 配置：
-
-```powershell
-& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -SkipDcg
-```
-
-### 4.2 macOS / Linux / WSL2 一键配置
-
-首次配置：
+### macOS / Linux / WSL2
 
 ```bash
 git clone https://github.com/yinheljl/ai-agent-config.git ~/.ai-agent-config
-bash ~/.ai-agent-config/restore.sh --target=codex
+bash ~/.ai-agent-config/restore.sh
 ```
 
-已配置用户更新：
+如需自动安装/刷新 `dcg`：
 
 ```bash
-bash ~/.ai-agent-config/update.sh --target=codex
+bash ~/.ai-agent-config/restore.sh --auto-install-dcg
 ```
 
-无人值守安装/刷新 `dcg`：
+完成后重启 Codex。
 
-```bash
-bash ~/.ai-agent-config/restore.sh --target=codex --auto-install-dcg
-```
+## 4. 配置内容
 
-跳过 `dcg`：
+| 目标 | 说明 |
+|---|---|
+| `~/.codex/AGENTS.md` | 公司统一 Codex 行为规范 |
+| `~/.codex/skills/` | Codex skills |
+| `~/.codex/config.toml` | `markitdown` MCP 与 hooks feature |
+| `~/.codex/hooks.json` | Codex `PreToolUse` hook 注册 |
+| `~/.codex/hooks/` | `dcg` 低噪音过滤器 |
 
-```bash
-bash ~/.ai-agent-config/restore.sh --target=codex --skip-dcg
-```
-
-## 5. 脚本实际做了什么
-
-执行 `restore.ps1 -Target Codex` 或 `restore.sh --target=codex` 后，脚本会按当前仓库模板写入用户级 Codex 配置：
-
-| 目标文件/目录 | 来源 | 作用 |
-|---|---|---|
-| `~/.codex/AGENTS.md` | `codex/AGENTS.md` | 公司统一行为规范，例如中文回复、自动修复代码、谨慎变更、目标驱动验证 |
-| `~/.codex/skills/` | `codex/skills/` | 公司维护的 Codex skills，例如文档处理、表格处理、代码审查、安全护栏 |
-| `~/.codex/config.toml` | `codex/config.toml` | 合并 MCP 配置，目前默认包含 `markitdown` |
-| `~/.codex/hooks.json` | `codex/hooks.json` | 注册 Codex PreToolUse hook |
-| `~/.codex/hooks/` | `codex/hooks/` | 低噪音 `dcg` 过滤器，高危命令才调用 `dcg` |
-
-脚本默认是增量模式，会尽量保留用户已有配置。使用 `-Force` / `--force` 才会覆盖目标配置。
-
-## 6. 验证配置是否成功
+## 5. 验证
 
 Windows：
 
@@ -175,119 +100,75 @@ codex mcp list
 
 预期结果：
 
-- 能看到 `AGENTS.md`、`config.toml` 和 `destructive-command-guard` skill。
-- `codex mcp list` 中能看到 `markitdown`。
-- 重启 Codex 后，新会话应自动加载公司规则和 skills。
+- `codex mcp list` 能看到 `markitdown`。
+- 新 Codex 会话会读取全局 `AGENTS.md` 和 skills。
+- 如果启用了 `dcg`，危险 shell 命令会先经过 hook 过滤。
 
-如果已安装 `dcg`，可再验证：
+## 6. 更新配置
 
-```powershell
-dcg --version
-dcg test 'rm -rf C:\Temp\dcg-smoke'
-```
-
-`dcg test` 只是分析字符串，不会真的删除目录。预期应返回阻止或高风险判断。
-
-## 7. 常用维护命令
-
-更新公司配置：
+Windows：
 
 ```powershell
-& "$env:USERPROFILE\.ai-agent-config\update.ps1" -Target Codex
+& "$env:USERPROFILE\.ai-agent-config\update.ps1"
 ```
 
-只预览不写入：
+macOS / Linux / WSL2：
+
+```bash
+bash ~/.ai-agent-config/update.sh
+```
+
+## 7. 常用选项
+
+Windows：
 
 ```powershell
-& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -DryRun
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -DryRun
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Force
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -SkipDcg
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -DisableDcgHooks
 ```
 
-覆盖式重装 Codex 配置：
+macOS / Linux / WSL2：
 
-```powershell
-& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -Force
+```bash
+bash ~/.ai-agent-config/restore.sh --dry-run
+bash ~/.ai-agent-config/restore.sh --force
+bash ~/.ai-agent-config/restore.sh --skip-dcg
+bash ~/.ai-agent-config/restore.sh --disable-dcg-hooks
 ```
 
-关闭硬层 hook，但保留软层 skill：
+## 8. 常见问题
 
-```powershell
-& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -DisableDcgHooks
-```
-
-## 8. 推荐的 Windows Sandbox 配置
-
-OpenAI 官方建议 Windows 原生 Codex 优先使用 `elevated` sandbox；如果公司电脑策略阻止管理员批准流程，再临时使用 `unelevated`。
-
-可在 `~/.codex/config.toml` 中添加：
-
-```toml
-[windows]
-sandbox = "elevated"
-# sandbox = "unelevated" # elevated 无法使用时再启用
-```
-
-不建议日常使用 `danger-full-access`。全权限模式不受项目目录限制，误操作风险更高。
-
-## 9. 常见问题
-
-### PowerShell 提示脚本执行策略拦截
-
-在当前终端临时放行：
+### PowerShell 拦截脚本
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
 ```
 
-然后重新执行 `restore.ps1` 或 `update.ps1`。
+然后重新执行 `restore.ps1`。
 
-### `codex mcp list` 没看到 `markitdown`
+### `codex mcp list` 没有 markitdown
 
-先重新执行：
+重新执行：
 
 ```powershell
-& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1"
 ```
 
-脚本会检测或安装 `uv`，并把 `markitdown` MCP 写入 `~/.codex/config.toml`。首次调用 `markitdown` 时可能需要联网下载工具包。
-
-### 配置后 Codex 没有读取新规则
-
-处理顺序：
-
-1. 退出并重启 Codex App / CLI / IDE Extension。
-2. 确认 `~/.codex/AGENTS.md` 存在。
-3. 确认当前项目没有更近层级的 `AGENTS.override.md` 覆盖了规则。
-4. 在 Codex 中询问："请列出当前加载的 AGENTS.md 来源。"
-
-### 公司电脑无法启用 Windows elevated sandbox
-
-先用 `unelevated` 临时继续工作，并把错误信息、Windows 版本、`CODEX_HOME/.sandbox/sandbox.log` 交给 IT 或管理员排查。
+脚本会重新检测 `uv` 并合并 `markitdown` MCP 配置。
 
 ### 不想安装 dcg
 
-可以使用：
-
 ```powershell
-& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -SkipDcg
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -SkipDcg
 ```
 
-这样不会安装 `dcg`，也不会启用硬层 hook；但 `destructive-command-guard` skill 仍会作为软层规则生效。
+这样会跳过硬层 hook；软层 `destructive-command-guard` skill 仍会保留。
 
-## 10. 维护者注意事项
+## 9. 维护者说明
 
-- 不要提交 `.env.local`、API key、GitHub token 或任何账号凭据。
-- 本仓库已将 `.env.local` 加入 `.gitignore`。
-- 当前仓库的 Codex skills 管理路径是 `codex/skills/` 到 `~/.codex/skills/`，与仓库脚本保持一致。
-- OpenAI 官方 Codex Skills 文档可能会继续演进；如官方路径或格式发生变化，优先更新 `restore.ps1` / `restore.sh`，再更新本文档。
-- 发布配置更新后，通知同事运行 `update.ps1 -Target Codex` 或 `update.sh --target=codex`。
-
-## 11. 官方资料
-
-- Codex App：<https://developers.openai.com/codex/app>
-- Codex CLI：<https://developers.openai.com/codex/cli>
-- Windows 使用说明：<https://developers.openai.com/codex/windows>
-- Config basics：<https://developers.openai.com/codex/config-basic>
-- AGENTS.md：<https://developers.openai.com/codex/guides/agents-md>
-- MCP：<https://developers.openai.com/codex/mcp>
-- Hooks：<https://developers.openai.com/codex/hooks>
-- Agent Skills：<https://developers.openai.com/codex/skills>
+- 当前分支只维护 Codex 配置。
+- 不要提交 `.env.local`、API key、GitHub token。
+- 修改脚本后运行 `python scripts/validate_config.py`。
+- 修改 README 版本号时同步更新 `VERSION`。

@@ -1,6 +1,3 @@
-# VS Code Copilot 运行时锁文件
-copilot/ide/
-
 # 备份文件
 *.bak_*
 .env.local
