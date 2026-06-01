@@ -3,7 +3,8 @@ $ErrorActionPreference = "SilentlyContinue"
 $payload = [Console]::In.ReadToEnd()
 
 function Approve-Hook {
-    Write-Output '{"continue":true}'
+    # Current Codex PreToolUse hooks treat exit 0 with no stdout as allow.
+    # Returning {"continue": true} is unsupported for PreToolUse.
 }
 
 function Deny-Hook([string]$reason) {
@@ -132,10 +133,35 @@ $event | Add-Member -MemberType NoteProperty -Name "tool_name" -Value "Bash" -Fo
 $payload = $event | ConvertTo-Json -Depth 20 -Compress
 
 # dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
-$dcgOutput = $payload | & $dcg.Source
-if ($dcgOutput -match '"permissionDecision"\s*:\s*"(deny|ask)"') {
-    Write-Output $dcgOutput
-    exit 0
+# It may also print human-readable UI text after the first JSON line, so relay
+# only the decision JSON that Codex can parse.
+$dcgOutput = @($payload | & $dcg.Source 2>$null)
+foreach ($line in $dcgOutput) {
+    $trimmed = ([string]$line).Trim()
+    if (-not $trimmed.StartsWith("{")) {
+        continue
+    }
+    try {
+        $decision = $trimmed | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        continue
+    }
+    if ($decision.PSObject.Properties.Name -contains "hookSpecificOutput" -and $decision.hookSpecificOutput) {
+        $output = $decision.hookSpecificOutput
+        if ($output.PSObject.Properties.Name -contains "permissionDecision") {
+            if ($output.permissionDecision -eq "deny") {
+                Write-Output $trimmed
+                exit 0
+            }
+            if ($output.permissionDecision -eq "ask") {
+                $reason = "BLOCKED by dcg. This command requires manual confirmation."
+                if ($output.PSObject.Properties.Name -contains "permissionDecisionReason" -and $output.permissionDecisionReason) {
+                    $reason = [string]$output.permissionDecisionReason
+                }
+                Deny-Hook $reason
+            }
+        }
+    }
 }
-Write-Output '{"continue":true}'
+Approve-Hook
 exit 0

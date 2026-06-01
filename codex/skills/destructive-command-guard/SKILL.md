@@ -203,12 +203,12 @@ git push --force origin main
 
 本 skill 是软层。硬层使用社区方案 [`dcg`](https://github.com/Dicklesworthstone/destructive_command_guard)，由 `restore.ps1` / `restore.sh` 检测/安装并默认启用低噪音 hook：
 
-- **实现方**：[@Dicklesworthstone](https://github.com/Dicklesworthstone)（个人维护，已验证 release tag v0.5.2/2026-05，活跃中）
+- **实现方**：[@Dicklesworthstone](https://github.com/Dicklesworthstone)（个人维护，已验证 release tag v0.5.6/2026-05，活跃中）
 - **协议**：使用 OpenAI Codex 官方 [`PreToolUse` Hook](https://developers.openai.com/codex/hooks)，匹配 shell 工具调用，命中规则时返回阻断决策
 - **规则覆盖**：49+ packs（git / 文件系统 / databases / k8s / docker / cloud / IaC / secrets 等），上游 codecov 覆盖率徽章公开
 - **跨平台**：Linux x86_64/aarch64、macOS Intel/Apple Silicon、**Windows x86_64**（原生 .exe）
 - **绕过机制**：`DCG_BYPASS=1 <cmd>` / `dcg allow-once <code>` / `dcg allowlist add <rule>`
-- **本仓库的角色**：restore 脚本检测 dcg 是否安装；未装时弹 `[y/N]` 确认（或显式 `-AutoInstallDcg` / `--auto-install-dcg` 旗标）。如果当前 agent / 平台支持 hooks，就部署对应的低噪音 hook；不支持时只保留软层 SKILL。
+- **本仓库的角色**：restore 脚本检测 dcg 是否安装；未装时弹 `[y/N]` 确认，显式使用 `-AutoInstallDcg` / `--auto-install-dcg` 时会安装或刷新。若当前 agent / 平台支持 hooks，就部署对应的低噪音 hook；不支持时只保留软层 SKILL。
 
 **噪音说明**：当前 hook matcher 往往只能按工具名匹配，不能直接按具体危险命令过滤。因此本仓库的 hook 会先用轻量过滤器判断命令是否疑似高危；只有高危模式才调用 dcg 本体。这样默认仍有自动保护，同时避免每条普通 shell 命令都跑一次 dcg。
 
@@ -217,9 +217,8 @@ git push --force origin main
 ```bash
 # Linux / macOS / Windows（Git Bash / WSL）都适用：只分析字符串，不会真的删除
 dcg --version
-tmpdir="${TMPDIR:-/tmp}/dcg-smoke"
-dcg explain "rm -rf \"$tmpdir\""     # 应输出"会被拦截"的解释
-dcg test "rm -rf \"$tmpdir\""        # 脚本化验证时应返回 decision = block
+dcg explain "rm -rf /"               # 应输出"会被拦截"的解释
+dcg test "rm -rf /"                  # 预期应 BLOCKED
 
 # 让当前 agent 真正触发：在对应对话里让它删除一个刚创建的临时目录（例如 /tmp/dcg-smoke），应被立即拦截
 ```

@@ -2,7 +2,7 @@
 
 > 面向 OpenAI Codex 的全局 `AGENTS.md`、Skills、MCP 和安全 hooks 配置仓库。
 
-当前版本：`1.5.5`
+当前版本：`1.5.6`
 
 本分支是 **Codex-only** 分支，只保留 Codex 相关内容。`main` 分支仍保留原来的多 Agent 配置。
 
@@ -11,7 +11,7 @@
 ### Windows
 
 ```powershell
-git clone https://github.com/yinheljl/ai-agent-config.git "$env:USERPROFILE\.ai-agent-config"
+git clone --branch codex/codex-setup-doc --single-branch https://github.com/yinheljl/ai-agent-config.git "$env:USERPROFILE\.ai-agent-config"
 Set-ExecutionPolicy -Scope Process Bypass -Force
 & "$env:USERPROFILE\.ai-agent-config\restore.ps1"
 ```
@@ -25,7 +25,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 ### macOS / Linux / WSL2
 
 ```bash
-git clone https://github.com/yinheljl/ai-agent-config.git ~/.ai-agent-config
+git clone --branch codex/codex-setup-doc --single-branch https://github.com/yinheljl/ai-agent-config.git ~/.ai-agent-config
 bash ~/.ai-agent-config/restore.sh
 ```
 
@@ -36,6 +36,21 @@ bash ~/.ai-agent-config/restore.sh --auto-install-dcg
 ```
 
 配置完成后，重启 Codex App / Codex CLI / Codex IDE Extension。
+
+## AI Agent 辅助配置
+
+如果同事已经能打开 Codex 或其他本地 AI Agent，建议直接把下面这段话发给 Agent，让它按文档执行。首次配置时建议先 dry-run，再正式写入。
+
+```text
+请按照 https://github.com/yinheljl/ai-agent-config/tree/codex/codex-setup-doc 的 README，帮我在当前设备安装或更新 Codex 全局配置。
+
+要求：
+1. 克隆 codex/codex-setup-doc 分支到 ~/.ai-agent-config（Windows 用 %USERPROFILE%\.ai-agent-config）。
+2. 先执行 restore 的 dry-run，让我确认将写入哪些文件。
+3. 确认后执行 restore，写入 ~/.codex/AGENTS.md、~/.codex/skills/、MCP 和安全 hooks。
+4. 如需安装或刷新 dcg，请先说明它的用途和来源，再让我确认。
+5. 完成后运行验证命令，并告诉我是否需要重启 Codex。
+```
 
 ## 仓库结构
 
@@ -65,7 +80,13 @@ bash ~/.ai-agent-config/restore.sh --auto-install-dcg
 | `~/.codex/hooks.json` | `codex/hooks.json` | `dcg` hook 注册文件 |
 | `~/.codex/hooks/` | `codex/hooks/` | hook 过滤器脚本 |
 
-脚本默认是增量模式。加 `-Force` / `--force` 时，受管理目录会覆盖式写入。
+脚本默认是增量模式。加 `-Force` / `--force` 时，只会覆盖本仓库管理的目标；Codex 自带 `.system` skills 和其他非本仓库 skill 会保留。
+
+## Skills 边界
+
+本仓库只维护用户侧/团队侧共享 skills，也就是会写入 `~/.codex/skills/` 的内容。
+
+Codex 自带的系统 skills 通常位于 `.system` 或由官方插件随 Codex 分发，它们应由 Codex 自身、官方插件或插件更新机制维护；本仓库不复制、不覆盖、不同步这些系统 skills。`sync.ps1` / `sync.sh` 也会跳过 `.system`。
 
 ## 常用命令
 
@@ -91,13 +112,14 @@ bash ~/.ai-agent-config/sync.sh
 
 ## MCP 配置
 
-当前默认只配置一个 MCP server：
+当前默认配置两个 MCP server：
 
 | Server | 用途 | 启动方式 |
 |---|---|---|
 | `markitdown` | 将 PDF、Word、Excel、PowerPoint 等文件转成 Markdown，便于 Codex 读取 | `uv tool run markitdown-mcp` |
+| `openaiDeveloperDocs` | 查询 OpenAI / Codex 官方开发者文档 | `https://developers.openai.com/mcp` |
 
-`restore` 会检测或安装 `uv`，并把 `uv` 的路径写入 `~/.codex/config.toml`。
+`restore` 会检测或安装 `uv`，并把 `uv` 的路径写入 `~/.codex/config.toml`。`openaiDeveloperDocs` 使用官方 Streamable HTTP MCP，不需要本地命令。
 
 ## 安全防护
 
@@ -129,6 +151,19 @@ python scripts/validate_config.py
 python scripts/check_version_sync.py
 bash -n restore.sh update.sh sync.sh
 ```
+
+## 上游核对记录
+
+最近核对：2026-06-01。
+
+| 项目 | 核对结果 | 本仓库处理 |
+|---|---|---|
+| Codex CLI | 本机 `codex-cli 0.135.0`，npm `@openai/codex` 最新同为 `0.135.0` | 无需修改安装脚本 |
+| Codex Hooks | 官方文档说明 `PreToolUse` 不支持 `continue` 字段，允许时应退出 0 且不输出 | 已更新 `dcg_filter.py` / `dcg_filter.ps1` |
+| Codex MCP | 官方支持 STDIO 与 Streamable HTTP MCP server | 保留 `markitdown`，新增官方 `openaiDeveloperDocs` MCP |
+| Codex Skills | 官方系统 skills 由 Codex / 插件自身维护 | 本仓库不维护 `.system` skills，只维护用户侧共享 skills |
+| `dcg` | GitHub 最新 release 为 `v0.5.6` | `-AutoInstallDcg` / `--auto-install-dcg` 现在会刷新已安装的 `dcg` |
+| `markitdown-mcp` | PyPI 最新为 `0.0.1a4`，`markitdown` 最新为 `0.1.6` | 继续使用 `uv tool run markitdown-mcp` 获取当前版本 |
 
 ## 官方资料
 

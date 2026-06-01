@@ -5,11 +5,12 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|shell_command",
+        "matcher": "^(Bash|shell_command)$",
         "hooks": [
           {
             "type": "command",
             "command": "__DCG_HOOK_COMMAND__",
+            "statusMessage": "Checking destructive command risk",
             "timeout": 10
           }
         ]

@@ -20,6 +20,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoUrlFile = if ($PSScriptRoot) { Join-Path $PSScriptRoot "REPO_URL" } else { $null }
+$repoBranch = "codex/codex-setup-doc"
 if ($repoUrlFile -and (Test-Path $repoUrlFile)) {
     $repoUrl = (Get-Content $repoUrlFile -Raw -Encoding UTF8).Trim()
 } else {
@@ -47,7 +48,7 @@ function Get-RemoteVersion {
     try {
         $base = $repoUrl -replace '\.git$', ''
         $base = $base -replace 'github\.com', 'raw.githubusercontent.com'
-        $url = "$base/main/VERSION"
+        $url = "$base/$repoBranch/VERSION"
         return (Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10).Content.Trim()
     } catch {
         Write-Warning "Unable to fetch remote VERSION: $($_.Exception.Message)"
@@ -86,9 +87,16 @@ if (Test-Path (Join-Path $repoDir ".git")) {
     Push-Location $repoDir
     try {
         if ($DryRun) {
-            Write-Host "  [DryRun] git pull --ff-only"
+            Write-Host "  [DryRun] git fetch origin $repoBranch"
+            Write-Host "  [DryRun] git switch $repoBranch"
+            Write-Host "  [DryRun] git pull --ff-only origin $repoBranch"
         } else {
-            git pull --ff-only
+            $currentBranch = (git rev-parse --abbrev-ref HEAD).Trim()
+            if ($currentBranch -ne $repoBranch) {
+                git fetch origin $repoBranch
+                git switch $repoBranch
+            }
+            git pull --ff-only origin $repoBranch
         }
     } finally {
         Pop-Location
@@ -98,9 +106,9 @@ if (Test-Path (Join-Path $repoDir ".git")) {
         throw "git is required for first-time update. Install git or clone $repoUrl manually."
     }
     if ($DryRun) {
-        Write-Host "  [DryRun] git clone $repoUrl $repoDir"
+        Write-Host "  [DryRun] git clone --branch $repoBranch --single-branch $repoUrl $repoDir"
     } else {
-        git clone $repoUrl $repoDir
+        git clone --branch $repoBranch --single-branch $repoUrl $repoDir
     }
 }
 

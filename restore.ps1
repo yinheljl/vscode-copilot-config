@@ -77,6 +77,22 @@ function Copy-DirReplace([string]$Src, [string]$Dst) {
     Copy-Item $Src $Dst -Recurse -Force
 }
 
+function Copy-ManagedSkills([string]$Src, [string]$Dst) {
+    if (-not (Test-Path $Dst)) {
+        New-Item -ItemType Directory -Path $Dst -Force | Out-Null
+    }
+
+    Get-ChildItem $Src -Force | ForEach-Object {
+        if ($_.Name -ne ".system") {
+            $target = Join-Path $Dst $_.Name
+            if ($Force -and (Test-Path $target)) {
+                Remove-Item $target -Recurse -Force
+            }
+            Copy-Item $_.FullName $Dst -Recurse -Force
+        }
+    }
+}
+
 function Resolve-UvPath {
     $candidates = @(
         (Join-Path $env:USERPROFILE ".local\bin\uv.exe"),
@@ -131,9 +147,12 @@ function Install-DcgIfRequested {
     }
 
     $dcg = Resolve-DcgPath
-    if ($dcg) {
+    if ($dcg -and -not $AutoInstallDcg) {
         Write-Host "  dcg found: $dcg"
         return $true
+    }
+    if ($dcg -and $AutoInstallDcg) {
+        Write-Host "  dcg found: $dcg; refreshing from upstream installer."
     }
 
     $shouldInstall = $false
@@ -198,6 +217,15 @@ args = ["tool", "run", "markitdown-mcp"]
     return $withoutOld + "`r`n`r`n" + $block + "`r`n"
 }
 
+function Upsert-OpenAiDocsMcp([string]$Content) {
+    $block = @"
+[mcp_servers.openaiDeveloperDocs]
+url = "https://developers.openai.com/mcp"
+"@
+    $withoutOld = [regex]::Replace($Content, '(?ms)^\[mcp_servers\.openaiDeveloperDocs\]\s*\r?\n.*?(?=^\[|\z)', '').TrimEnd()
+    return $withoutOld + "`r`n`r`n" + $block + "`r`n"
+}
+
 function Update-CodexConfig([string]$UvPath, [bool]$HooksEnabled) {
     if ($DryRun) {
         Write-Host "  [DryRun] would merge $configSrc -> $configDst"
@@ -218,6 +246,7 @@ function Update-CodexConfig([string]$UvPath, [bool]$HooksEnabled) {
     $content = $content.Replace('__UV_PATH__', (Escape-TomlString $UvPath))
     $content = Set-HooksFeature $content $HooksEnabled
     $content = Upsert-MarkitdownMcp $content $UvPath
+    $content = Upsert-OpenAiDocsMcp $content
     Write-Utf8NoBomFile $configDst $content
     Write-Host "  + ~/.codex/config.toml"
 }
@@ -282,11 +311,7 @@ if ($DryRun) {
 if ($DryRun) {
     Write-Host "  [DryRun] $skillsSrc -> $skillsDst"
 } else {
-    if ($Force) {
-        Copy-DirReplace $skillsSrc $skillsDst
-    } else {
-        Copy-DirMerge $skillsSrc $skillsDst
-    }
+    Copy-ManagedSkills $skillsSrc $skillsDst
     Write-Host "  + ~/.codex/skills/"
 }
 

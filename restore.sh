@@ -72,15 +72,32 @@ dcg_available() {
     command -v dcg >/dev/null 2>&1 || command -v dcg.exe >/dev/null 2>&1
 }
 
+copy_managed_skills() {
+    mkdir -p "$CODEX_DST/skills"
+    for src in "$CODEX_SRC"/skills/* "$CODEX_SRC"/skills/.[!.]* "$CODEX_SRC"/skills/..?*; do
+        [ -e "$src" ] || continue
+        name="$(basename "$src")"
+        [ "$name" = ".system" ] && continue
+        dst="$CODEX_DST/skills/$name"
+        if [ "$FORCE" = true ] && [ -e "$dst" ]; then
+            rm -rf "$dst"
+        fi
+        cp -R "$src" "$CODEX_DST/skills/"
+    done
+}
+
 install_dcg_if_requested() {
     if [ "$SKIP_DCG" = true ]; then
         echo "  dcg skipped; Codex hooks will be disabled." >&2
         return 1
     fi
 
-    if dcg_available; then
+    if dcg_available && [ "$AUTO_INSTALL_DCG" = false ]; then
         echo "  dcg found: $(command -v dcg || command -v dcg.exe)" >&2
         return 0
+    fi
+    if dcg_available && [ "$AUTO_INSTALL_DCG" = true ]; then
+        echo "  dcg found: $(command -v dcg || command -v dcg.exe); refreshing from upstream installer." >&2
     fi
 
     should_install=false
@@ -163,6 +180,11 @@ content += (
     f'command = "{toml_string(uv_path)}"\n'
     'args = ["tool", "run", "markitdown-mcp"]\n'
 )
+content = re.sub(r"(?ms)^\[mcp_servers\.openaiDeveloperDocs\]\s*\n.*?(?=^\[|\Z)", "", content).rstrip()
+content += (
+    "\n\n[mcp_servers.openaiDeveloperDocs]\n"
+    'url = "https://developers.openai.com/mcp"\n'
+)
 
 dst.parent.mkdir(parents=True, exist_ok=True)
 dst.write_text(content, encoding="utf-8")
@@ -234,13 +256,7 @@ else
     cp "$CODEX_SRC/AGENTS.md" "$CODEX_DST/AGENTS.md"
     echo "  + ~/.codex/AGENTS.md"
 
-    if [ "$FORCE" = true ]; then
-        rm -rf "$CODEX_DST/skills"
-        cp -R "$CODEX_SRC/skills" "$CODEX_DST/skills"
-    else
-        mkdir -p "$CODEX_DST/skills"
-        cp -R "$CODEX_SRC/skills/." "$CODEX_DST/skills/"
-    fi
+    copy_managed_skills
     echo "  + ~/.codex/skills/"
 fi
 

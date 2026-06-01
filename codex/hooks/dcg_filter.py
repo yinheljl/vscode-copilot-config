@@ -74,7 +74,8 @@ LOCAL_BLOCK_RE = re.compile(
 
 
 def approve() -> int:
-    print(json.dumps({"continue": True}, separators=(",", ":")))
+    # Current Codex PreToolUse hooks treat exit 0 with no stdout as allow.
+    # Returning {"continue": true} is unsupported for PreToolUse.
     return 0
 
 
@@ -98,6 +99,21 @@ def extract_command(event: object) -> str:
             return value["command"]
     value = event.get("command")
     return value if isinstance(value, str) else ""
+
+
+def extract_dcg_decision(stdout: str) -> dict | None:
+    """Return dcg's first JSON decision object, ignoring its human UI output."""
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    return None
 
 
 def main() -> int:
@@ -132,19 +148,21 @@ def main() -> int:
 
     proc = subprocess.run([dcg], input=payload, text=True, capture_output=True)
     # dcg communicates decisions via stdout JSON (permissionDecision field), NOT exit code.
-    sys.stderr.write(proc.stderr)
-    if proc.stdout.strip():
-        try:
-            decision = json.loads(proc.stdout)
-            if decision.get("hookSpecificOutput", {}).get("permissionDecision") in {"deny", "ask"}:
-                # dcg's decision JSON is relayed to stdout — Codex interprets it natively
-                sys.stdout.write(proc.stdout)
-                return 0
-        except (json.JSONDecodeError, AttributeError):
-            pass
-    # dcg allowed or didn't flag — explicitly approve.
-    print(json.dumps({"continue": True}, separators=(",", ":")))
-    return 0
+    # Suppress dcg's human-readable stderr UI so the hook stays low-noise.
+    decision = extract_dcg_decision(proc.stdout)
+    if decision:
+        output = decision.get("hookSpecificOutput", {})
+        permission_decision = output.get("permissionDecision") if isinstance(output, dict) else None
+        if permission_decision == "deny":
+            sys.stdout.write(json.dumps(decision, separators=(",", ":")))
+            return 0
+        if permission_decision == "ask":
+            # Codex currently treats PreToolUse "ask" as unsupported, which
+            # fails open. Convert it to deny so destructive commands stop.
+            reason = output.get("permissionDecisionReason") if isinstance(output, dict) else None
+            return deny(reason or "BLOCKED by dcg. This command requires manual confirmation.")
+    # dcg allowed or didn't flag.
+    return approve()
 
 
 if __name__ == "__main__":

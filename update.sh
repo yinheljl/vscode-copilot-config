@@ -9,6 +9,7 @@ if [ -f "$SCRIPT_DIR/REPO_URL" ]; then
 else
     REPO_URL="https://github.com/yinheljl/ai-agent-config.git"
 fi
+REPO_BRANCH="${REPO_BRANCH:-codex/codex-setup-doc}"
 
 if [ -f "$SCRIPT_DIR/VERSION" ]; then
     REPO_DIR="$SCRIPT_DIR"
@@ -54,7 +55,7 @@ get_local_version() {
 
 get_remote_version() {
     local raw_url="${REPO_URL%.git}"
-    raw_url="${raw_url//github.com/raw.githubusercontent.com}/main/VERSION"
+    raw_url="${raw_url//github.com/raw.githubusercontent.com}/$REPO_BRANCH/VERSION"
     curl -fsSL "$raw_url" 2>/dev/null | tr -d '[:space:]' || true
 }
 
@@ -82,9 +83,16 @@ echo ""
 echo "[1/2] Sync repository"
 if [ -d "$REPO_DIR/.git" ]; then
     if [ "$DRY_RUN" = true ]; then
-        echo "  [DryRun] git pull --ff-only"
+        echo "  [DryRun] git fetch origin $REPO_BRANCH"
+        echo "  [DryRun] git switch $REPO_BRANCH"
+        echo "  [DryRun] git pull --ff-only origin $REPO_BRANCH"
     else
-        git -C "$REPO_DIR" pull --ff-only
+        current_branch="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
+        if [ "$current_branch" != "$REPO_BRANCH" ]; then
+            git -C "$REPO_DIR" fetch origin "$REPO_BRANCH"
+            git -C "$REPO_DIR" switch "$REPO_BRANCH"
+        fi
+        git -C "$REPO_DIR" pull --ff-only origin "$REPO_BRANCH"
     fi
 else
     command -v git >/dev/null 2>&1 || {
@@ -92,9 +100,9 @@ else
         exit 1
     }
     if [ "$DRY_RUN" = true ]; then
-        echo "  [DryRun] git clone $REPO_URL $REPO_DIR"
+        echo "  [DryRun] git clone --branch $REPO_BRANCH --single-branch $REPO_URL $REPO_DIR"
     else
-        git clone "$REPO_URL" "$REPO_DIR"
+        git clone --branch "$REPO_BRANCH" --single-branch "$REPO_URL" "$REPO_DIR"
     fi
 fi
 

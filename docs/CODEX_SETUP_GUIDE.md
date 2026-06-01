@@ -1,6 +1,6 @@
 # Codex 安装、搭建与配置简易操作文档
 
-本文用于公司内部同事快速安装 Codex，并导入本仓库维护的 Codex 全局配置。
+本文用于快速安装 Codex，并导入本仓库维护的 Codex 全局配置。
 
 ## 1. 适用范围
 
@@ -37,12 +37,12 @@ codex
 
 首次运行 `codex` 时按提示登录。
 
-## 3. 导入公司配置
+## 3. 导入共享配置
 
 ### Windows
 
 ```powershell
-git clone https://github.com/yinheljl/ai-agent-config.git "$env:USERPROFILE\.ai-agent-config"
+git clone --branch codex/codex-setup-doc --single-branch https://github.com/yinheljl/ai-agent-config.git "$env:USERPROFILE\.ai-agent-config"
 Set-ExecutionPolicy -Scope Process Bypass -Force
 & "$env:USERPROFILE\.ai-agent-config\restore.ps1"
 ```
@@ -56,7 +56,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 ### macOS / Linux / WSL2
 
 ```bash
-git clone https://github.com/yinheljl/ai-agent-config.git ~/.ai-agent-config
+git clone --branch codex/codex-setup-doc --single-branch https://github.com/yinheljl/ai-agent-config.git ~/.ai-agent-config
 bash ~/.ai-agent-config/restore.sh
 ```
 
@@ -72,7 +72,7 @@ bash ~/.ai-agent-config/restore.sh --auto-install-dcg
 
 | 目标 | 说明 |
 |---|---|
-| `~/.codex/AGENTS.md` | 公司统一 Codex 行为规范 |
+| `~/.codex/AGENTS.md` | 统一 Codex 行为规范 |
 | `~/.codex/skills/` | Codex skills |
 | `~/.codex/config.toml` | `markitdown` MCP 与 hooks feature |
 | `~/.codex/hooks.json` | Codex `PreToolUse` hook 注册 |
@@ -100,7 +100,7 @@ codex mcp list
 
 预期结果：
 
-- `codex mcp list` 能看到 `markitdown`。
+- `codex mcp list` 能看到 `markitdown` 和 `openaiDeveloperDocs`。
 - 新 Codex 会话会读取全局 `AGENTS.md` 和 skills。
 - 如果启用了 `dcg`，危险 shell 命令会先经过 hook 过滤。
 
@@ -140,6 +140,14 @@ bash ~/.ai-agent-config/restore.sh --disable-dcg-hooks
 
 ## 8. 常见问题
 
+### 可以让 AI Agent 帮我配置吗
+
+可以。建议对 AI Agent 这样说：
+
+```text
+请按照 https://github.com/yinheljl/ai-agent-config/tree/codex/codex-setup-doc 的 README，帮我在当前设备安装或更新 Codex 全局配置。先 dry-run，再让我确认是否正式执行。不要同步或覆盖 Codex 自带的 .system skills；只处理本仓库管理的 ~/.codex/AGENTS.md、~/.codex/skills/、MCP 和 hooks。
+```
+
 ### PowerShell 拦截脚本
 
 ```powershell
@@ -169,6 +177,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 ## 9. 维护者说明
 
 - 当前分支只维护 Codex 配置。
+- 本仓库不维护 Codex 自带的 `.system` skills。
 - 不要提交 `.env.local`、API key、GitHub token。
 - 修改脚本后运行 `python scripts/validate_config.py`。
 - 修改 README 版本号时同步更新 `VERSION`。

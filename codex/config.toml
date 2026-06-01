@@ -18,3 +18,6 @@ hooks = true
 [mcp_servers.markitdown]
 command = "__UV_PATH__"
 args = ["tool", "run", "markitdown-mcp"]
+
+[mcp_servers.openaiDeveloperDocs]
+url = "https://developers.openai.com/mcp"

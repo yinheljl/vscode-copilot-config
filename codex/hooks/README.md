@@ -47,7 +47,7 @@ hooks = true
 
 ```bash
 dcg --version
-dcg test "rm -rf /tmp/dcg-smoke"
+dcg test "rm -rf /"
 ```
 
 `dcg test` 只分析字符串，不会执行删除。预期应返回阻止或高风险判断。
@@ -85,4 +85,4 @@ bash restore.sh --skip-dcg
 - hook 是运行时护栏，不等于系统级沙箱。
 - 如果命令被写进脚本文件再执行，hook 只能看到执行脚本的命令，不能保证理解脚本全部内容。
 - 需要当前 Codex 版本支持 hooks feature。
-- `dcg` 是社区项目，属于供应链依赖；如公司策略不允许安装，可使用 `-SkipDcg`，仅保留软层 skill。
+- `dcg` 是社区项目，属于供应链依赖；如团队策略不允许安装，可使用 `-SkipDcg`，仅保留软层 skill。
