@@ -140,6 +140,67 @@ function Resolve-DcgPath {
     return $null
 }
 
+function Test-IsWindows {
+    return [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+}
+
+function Install-DcgWindowsRelease {
+    $headers = @{ "User-Agent" = "ai-agent-config" }
+    $release = Invoke-RestMethod "https://api.github.com/repos/Dicklesworthstone/destructive_command_guard/releases/latest" -Headers $headers
+    $version = $release.tag_name
+    if (-not $version) {
+        throw "Unable to resolve latest dcg release."
+    }
+
+    $assetName = "dcg-x86_64-pc-windows-msvc.zip"
+    $asset = $release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
+    $checksumAsset = $release.assets | Where-Object { $_.name -eq "$assetName.sha256" } | Select-Object -First 1
+    if (-not $asset -or -not $checksumAsset) {
+        throw "dcg release $version does not contain expected Windows assets."
+    }
+
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("dcg-" + [guid]::NewGuid().ToString("N"))
+    $zip = Join-Path $tmp $assetName
+    $checksumFile = Join-Path $tmp "$assetName.sha256"
+    $extractDir = Join-Path $tmp "extract"
+
+    New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+    New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+
+    try {
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -Headers $headers
+        Invoke-WebRequest -Uri $checksumAsset.browser_download_url -OutFile $checksumFile -Headers $headers
+
+        $expected = ((Get-Content $checksumFile -Raw -Encoding UTF8).Trim() -split '\s+')[0].ToLowerInvariant()
+        if ($expected -notmatch '^[0-9a-f]{64}$') {
+            throw "Invalid dcg checksum content: $expected"
+        }
+
+        $actual = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+        if ($actual -ne $expected) {
+            throw "dcg checksum mismatch: expected $expected, actual $actual"
+        }
+
+        Expand-Archive -Path $zip -DestinationPath $extractDir -Force
+        $exe = Get-ChildItem $extractDir -Recurse -Filter "dcg.exe" | Select-Object -First 1
+        if (-not $exe) {
+            throw "dcg.exe not found in downloaded archive."
+        }
+
+        $destDir = Join-Path $env:USERPROFILE ".local\bin"
+        if (-not (Test-Path $destDir)) {
+            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+        }
+        Copy-Item $exe.FullName (Join-Path $destDir "dcg.exe") -Force
+        Write-Host "  dcg $version installed from verified GitHub release asset."
+        return $true
+    } finally {
+        if (Test-Path $tmp) {
+            Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Install-DcgIfRequested {
     if ($SkipDcg) {
         Write-Host "  dcg skipped; Codex hooks will be disabled."
@@ -175,6 +236,15 @@ function Install-DcgIfRequested {
     if ($DryRun) {
         Write-Host "  [DryRun] would install dcg from upstream installer."
         return $true
+    }
+
+    if (Test-IsWindows) {
+        try {
+            return [bool](Install-DcgWindowsRelease)
+        } catch {
+            Write-Warning "dcg Windows release install failed: $($_.Exception.Message)"
+            return $false
+        }
     }
 
     try {

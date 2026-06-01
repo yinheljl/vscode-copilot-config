@@ -2,7 +2,7 @@
 
 > 面向 OpenAI Codex 的全局 `AGENTS.md`、Skills、MCP 和安全 hooks 配置仓库。
 
-当前版本：`1.5.6`
+当前版本：`1.5.7`
 
 本分支是 **Codex-only** 分支，只保留 Codex 相关内容。`main` 分支仍保留原来的多 Agent 配置。
 
@@ -45,11 +45,12 @@ bash ~/.ai-agent-config/restore.sh --auto-install-dcg
 请按照 https://github.com/yinheljl/ai-agent-config/tree/codex/codex-setup-doc 的 README，帮我在当前设备安装或更新 Codex 全局配置。
 
 要求：
-1. 克隆 codex/codex-setup-doc 分支到 ~/.ai-agent-config（Windows 用 %USERPROFILE%\.ai-agent-config）。
+1. 如果配置仓库目录不存在，克隆 codex/codex-setup-doc 分支到 ~/.ai-agent-config（Windows PowerShell 用 $env:USERPROFILE\.ai-agent-config）；如果目录已存在，先确认它在 codex/codex-setup-doc 分支并拉取最新代码，或直接运行 update 脚本。
 2. 先执行 restore 的 dry-run，让我确认将写入哪些文件。
 3. 确认后执行 restore，写入 ~/.codex/AGENTS.md、~/.codex/skills/、MCP 和安全 hooks。
-4. 如需安装或刷新 dcg，请先说明它的用途和来源，再让我确认。
-5. 完成后运行验证命令，并告诉我是否需要重启 Codex。
+4. 不要同步或覆盖 Codex 自带的 .system skills；只处理本仓库管理的用户侧配置。
+5. 如需安装或刷新 dcg，请先说明它的用途和来源，再让我确认。
+6. 完成后运行验证命令，并告诉我是否需要重启 Codex。
 ```
 
 ## 仓库结构

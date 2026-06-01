@@ -145,7 +145,7 @@ bash ~/.ai-agent-config/restore.sh --disable-dcg-hooks
 可以。建议对 AI Agent 这样说：
 
 ```text
-请按照 https://github.com/yinheljl/ai-agent-config/tree/codex/codex-setup-doc 的 README，帮我在当前设备安装或更新 Codex 全局配置。先 dry-run，再让我确认是否正式执行。不要同步或覆盖 Codex 自带的 .system skills；只处理本仓库管理的 ~/.codex/AGENTS.md、~/.codex/skills/、MCP 和 hooks。
+请按照 https://github.com/yinheljl/ai-agent-config/tree/codex/codex-setup-doc 的 README，帮我在当前设备安装或更新 Codex 全局配置。如果 ~/.ai-agent-config 已存在，请先确认它在 codex/codex-setup-doc 分支并拉取最新代码，或直接运行 update 脚本；如果不存在再 clone。先 dry-run，再让我确认是否正式执行。不要同步或覆盖 Codex 自带的 .system skills；只处理本仓库管理的 ~/.codex/AGENTS.md、~/.codex/skills/、MCP 和 hooks。
 ```
 
 ### PowerShell 拦截脚本
