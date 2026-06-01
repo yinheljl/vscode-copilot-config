@@ -16,7 +16,7 @@ if [ -f "$SCRIPT_DIR/VERSION" ]; then
 elif [ -f "$PWD/VERSION" ]; then
     REPO_DIR="$PWD"
 else
-    REPO_DIR="$HOME/.copilot-config"
+    REPO_DIR="$HOME/.ai-agent-config"
 fi
 
 get_local_version() {

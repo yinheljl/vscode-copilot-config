@@ -50,7 +50,7 @@ if ($scriptDir -and (Test-Path (Join-Path $scriptDir "VERSION"))) {
 } elseif (Test-Path (Join-Path $PWD "VERSION")) {
     $repoDir = $PWD.Path
 } else {
-    $repoDir = Join-Path $env:USERPROFILE ".copilot-config"
+    $repoDir = Join-Path $env:USERPROFILE ".ai-agent-config"
 }
 
 function Get-LocalVersion($dir) {

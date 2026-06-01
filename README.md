@@ -14,7 +14,7 @@
 >
 > ⚠️ **重要：必须通过运行 `restore.ps1` / `restore.sh` 脚本来配置，禁止手动复制文件。脚本会自动处理 IDE 检测、路径替换、MCP 配置生成、hooks 部署等工作。**
 >
-> ℹ️ **兼容说明**：仓库名已统一为 `ai-agent-config`；本地持久目录仍使用 `~/.copilot-config`，用于兼容已安装用户的更新路径。
+> ℹ️ **路径说明**：本地持久目录统一使用 `~/.ai-agent-config`。
 
 ### 场景一：首次配置
 
@@ -22,24 +22,24 @@
 
 **操作步骤（按顺序执行，不可跳过）**：
 
-1. **克隆仓库**（如 `~/.copilot-config` 已存在则跳过）
+1. **克隆仓库**（如 `~/.ai-agent-config` 已存在则跳过）
    ```powershell
    # Windows
-   git clone https://github.com/yinheljl/ai-agent-config.git "$env:USERPROFILE\.copilot-config"
+   git clone https://github.com/yinheljl/ai-agent-config.git "$env:USERPROFILE\.ai-agent-config"
    ```
    ```bash
    # Linux / macOS
-   git clone https://github.com/yinheljl/ai-agent-config.git ~/.copilot-config
+   git clone https://github.com/yinheljl/ai-agent-config.git ~/.ai-agent-config
    ```
 
 2. **运行还原脚本**（脚本会检测或安装 `uv`，生成 MCP 配置，并按需部署低噪音 hooks）
    ```powershell
    # Windows
-   & "$env:USERPROFILE\.copilot-config\restore.ps1"
+   & "$env:USERPROFILE\.ai-agent-config\restore.ps1"
    ```
    ```bash
    # Linux / macOS
-   bash ~/.copilot-config/restore.sh
+   bash ~/.ai-agent-config/restore.sh
    ```
 
 3. **提示用户重启所有已安装的 IDE**（VS Code、Cursor、Codex、Claude、Antigravity、Windsurf 等）
@@ -73,21 +73,21 @@
 1. **运行更新脚本**（自动完成 git pull + 重新还原）
    ```powershell
    # Windows — 全部更新
-   & "$env:USERPROFILE\.copilot-config\update.ps1"
+   & "$env:USERPROFILE\.ai-agent-config\update.ps1"
    # Windows — 仅更新指定 IDE
-   & "$env:USERPROFILE\.copilot-config\update.ps1" -Target Codex
-   & "$env:USERPROFILE\.copilot-config\update.ps1" -Target Claude
-   & "$env:USERPROFILE\.copilot-config\update.ps1" -Target Windsurf
+   & "$env:USERPROFILE\.ai-agent-config\update.ps1" -Target Codex
+   & "$env:USERPROFILE\.ai-agent-config\update.ps1" -Target Claude
+   & "$env:USERPROFILE\.ai-agent-config\update.ps1" -Target Windsurf
    ```
    ```bash
    # Linux / macOS
-   bash ~/.copilot-config/update.sh
+   bash ~/.ai-agent-config/update.sh
    # Linux / macOS — 仅更新指定 IDE
-   bash ~/.copilot-config/update.sh --target=codex
-   bash ~/.copilot-config/update.sh --target=claude
-   bash ~/.copilot-config/update.sh --target=windsurf
+   bash ~/.ai-agent-config/update.sh --target=codex
+   bash ~/.ai-agent-config/update.sh --target=claude
+   bash ~/.ai-agent-config/update.sh --target=windsurf
    ```
-   > 如果持久目录不存在，update 脚本会自动克隆仓库到 `~/.copilot-config`。
+   > 如果持久目录不存在，update 脚本会自动克隆仓库到 `~/.ai-agent-config`。
 
 2. **验证版本**
    - 读取 `VERSION` 文件确认已更新到最新版本
@@ -99,12 +99,12 @@
 
 ```powershell
 # Windows — 按 Ctrl+` 打开 VS Code 终端
-& "$env:USERPROFILE\.copilot-config\update.ps1"
+& "$env:USERPROFILE\.ai-agent-config\update.ps1"
 ```
 
 ```bash
 # Linux / macOS
-~/.copilot-config/update.sh
+~/.ai-agent-config/update.sh
 ```
 
 或直接对 AI 说：_"帮我更新 AI Agent 全局配置"_

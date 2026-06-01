@@ -4,7 +4,7 @@
 
 本文基于当前仓库 `ai-agent-config` 编写，推荐优先使用本仓库脚本完成 Codex 配置，不建议手工复制配置文件。
 
-兼容说明：仓库名已统一为 `ai-agent-config`；本地持久目录仍使用 `~/.copilot-config`，用于兼容已安装用户的更新路径。
+路径说明：本地持久目录统一使用 `~/.ai-agent-config`。
 
 ## 1. 适用范围
 
@@ -88,28 +88,28 @@ wsl
 首次配置：
 
 ```powershell
-git clone https://github.com/yinheljl/ai-agent-config.git "$env:USERPROFILE\.copilot-config"
+git clone https://github.com/yinheljl/ai-agent-config.git "$env:USERPROFILE\.ai-agent-config"
 Set-ExecutionPolicy -Scope Process Bypass -Force
-& "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex
 ```
 
 如果已经克隆过仓库：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
-& "$env:USERPROFILE\.copilot-config\update.ps1" -Target Codex
+& "$env:USERPROFILE\.ai-agent-config\update.ps1" -Target Codex
 ```
 
 如果希望无人值守安装/刷新 `dcg` 破坏性命令防护：
 
 ```powershell
-& "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex -AutoInstallDcg
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -AutoInstallDcg
 ```
 
 如果公司环境暂时不允许安装 `dcg`，但仍想写入软层规则和 MCP 配置：
 
 ```powershell
-& "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex -SkipDcg
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -SkipDcg
 ```
 
 ### 4.2 macOS / Linux / WSL2 一键配置
@@ -117,26 +117,26 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 首次配置：
 
 ```bash
-git clone https://github.com/yinheljl/ai-agent-config.git ~/.copilot-config
-bash ~/.copilot-config/restore.sh --target=codex
+git clone https://github.com/yinheljl/ai-agent-config.git ~/.ai-agent-config
+bash ~/.ai-agent-config/restore.sh --target=codex
 ```
 
 已配置用户更新：
 
 ```bash
-bash ~/.copilot-config/update.sh --target=codex
+bash ~/.ai-agent-config/update.sh --target=codex
 ```
 
 无人值守安装/刷新 `dcg`：
 
 ```bash
-bash ~/.copilot-config/restore.sh --target=codex --auto-install-dcg
+bash ~/.ai-agent-config/restore.sh --target=codex --auto-install-dcg
 ```
 
 跳过 `dcg`：
 
 ```bash
-bash ~/.copilot-config/restore.sh --target=codex --skip-dcg
+bash ~/.ai-agent-config/restore.sh --target=codex --skip-dcg
 ```
 
 ## 5. 脚本实际做了什么
@@ -193,25 +193,25 @@ dcg test 'rm -rf C:\Temp\dcg-smoke'
 更新公司配置：
 
 ```powershell
-& "$env:USERPROFILE\.copilot-config\update.ps1" -Target Codex
+& "$env:USERPROFILE\.ai-agent-config\update.ps1" -Target Codex
 ```
 
 只预览不写入：
 
 ```powershell
-& "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex -DryRun
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -DryRun
 ```
 
 覆盖式重装 Codex 配置：
 
 ```powershell
-& "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex -Force
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -Force
 ```
 
 关闭硬层 hook，但保留软层 skill：
 
 ```powershell
-& "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex -DisableDcgHooks
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -DisableDcgHooks
 ```
 
 ## 8. 推荐的 Windows Sandbox 配置
@@ -245,7 +245,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 先重新执行：
 
 ```powershell
-& "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex
 ```
 
 脚本会检测或安装 `uv`，并把 `markitdown` MCP 写入 `~/.codex/config.toml`。首次调用 `markitdown` 时可能需要联网下载工具包。
@@ -268,7 +268,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 可以使用：
 
 ```powershell
-& "$env:USERPROFILE\.copilot-config\restore.ps1" -Target Codex -SkipDcg
+& "$env:USERPROFILE\.ai-agent-config\restore.ps1" -Target Codex -SkipDcg
 ```
 
 这样不会安装 `dcg`，也不会启用硬层 hook；但 `destructive-command-guard` skill 仍会作为软层规则生效。
